@@ -27,7 +27,9 @@ startup), the Celery worker + beat, the dashboard, and nginx in front of
 everything.
 
 - App: http://localhost/ (via nginx) or http://localhost:3000 (dashboard directly)
-- API docs (OpenAPI): http://localhost:8000/docs (or http://localhost/api/docs)
+- API docs (OpenAPI): http://localhost:8000/docs (or http://localhost/backend/docs
+  through nginx — see `infrastructure/nginx/nginx.conf`'s comment on why this isn't
+  `/api/docs`: the dashboard's own BFF routes already own `/api/*`)
 - MinIO console: http://localhost:9001
 
 Load demo data (20 promoters across 2 parallel branches / 6 levels deep, sample

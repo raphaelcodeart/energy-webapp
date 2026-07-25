@@ -20,8 +20,10 @@ reality.
 **Monorepo & infra**
 - [x] pnpm workspace (`apps/api`, `apps/dashboard`; `apps/worker` shares the api image)
 - [x] `docker-compose.dev.yml` (postgres, redis, minio, api, celery-worker,
-      celery-beat, dashboard, nginx) — YAML-validated; not run under real Docker in
-      this sandbox (no Docker daemon available), see "Verification method" below
+      celery-beat, dashboard, nginx) — actually run with `docker compose up --build`
+      on the target server (Docker installed this session); all 8 containers
+      healthy, demo data seeded, full login flow verified through the public
+      nginx entrypoint. Three real bugs found and fixed in the process (see below).
 - [x] `docker-compose.production.yml`, multi-stage `Dockerfile`s (non-root users,
       healthchecks) for api and dashboard
 - [x] `.env.example`, `.gitignore`, `scripts/{deploy,backup,restore,health-check,migrate,rollback}.sh`
@@ -68,6 +70,38 @@ reality.
       same agent impossible — broke every `move_agent()` call. Replaced with a
       partial unique index (`WHERE effective_to IS NULL`).
 
+**Docker Compose — actually run on the target server, 4 more real bugs found and fixed**
+- [x] `apps/dashboard/Dockerfile` created a group/user at gid/uid 1000, but
+      `node:22-slim` already ships a `node` user at that exact id → build failure.
+      Fixed by reusing the image's own `node` user instead of creating one.
+- [x] Corepack fetched pnpm `latest` (11.x) inside the build, whose stricter
+      default blocks native postinstall scripts (`sharp`, `unrs-resolver`) unless
+      explicitly approved → build failure. Fixed by pinning
+      `"packageManager": "pnpm@9.15.9"` in the root `package.json` so the container
+      uses the exact version the lockfile was generated with.
+- [x] `apps/dashboard/public/` didn't exist (never created) → `COPY` in the
+      Dockerfile failed. Created an (empty, `.gitkeep`) directory.
+- [x] `celery-beat` tried to write `celerybeat-schedule` into `/app`, which is
+      root-owned (only files explicitly `COPY --chown`'d are not) → permission
+      denied, crash loop. Fixed by pointing `--schedule` at `/tmp`.
+- [x] `celery-worker`/`celery-beat` inherited the api image's `HEALTHCHECK`
+      (`curl localhost:8000/health`), which is meaningless for a process with no
+      HTTP server → both reported "unhealthy" even though they worked fine. Fixed
+      with a real `celery inspect ping` check for the worker and `disable: true`
+      for beat.
+- [x] The dashboard's Next.js standalone `server.js` was binding to the
+      container's own interface IP instead of the wildcard address, so anything
+      probing `localhost:3000` from inside the same container (the healthcheck)
+      got `ECONNREFUSED` even though the app was reachable fine from other
+      containers via the `dashboard` service name. Fixed by setting `HOSTNAME=0.0.0.0`.
+- [x] **The most consequential one**: nginx's `location /api/` forwarded straight
+      to FastAPI, silently swallowing the dashboard's own BFF routes at
+      `/api/auth/login` and `/api/proxy/*` — login appeared to "work" (no error)
+      but never actually went through the BFF, so no session cookie was ever set
+      and every protected page redirected back to `/login`. Fixed by moving direct
+      backend access to `/backend/` and leaving `/api/*` exclusively to the
+      dashboard, matching the BFF pattern the architecture actually calls for.
+
 **Seed data** (`python -m app.seed`)
 - [x] 1 organization, 7 demo logins (`SUPER_ADMIN`, `ADMIN`, `BACK_OFFICE_OPERATOR`,
       `ACCOUNTING_OPERATOR`, `SALES_MANAGER`, plus a real `PROMOTER` login linked to
@@ -110,20 +144,29 @@ reality.
 - [x] `pnpm typecheck`, `pnpm lint`, `pnpm build` all pass with zero errors
 
 ### Verification method (be explicit about what was and wasn't run)
-This sandbox has no Docker daemon. To verify for real rather than trust untested
-code, `postgresql`, `nodejs`/`npm`, and `pnpm` were installed directly on the host;
-the backend was migrated/seeded/tested against a real local Postgres 18 instance,
-and the frontend was installed/typechecked/linted/built with real `next build`.
-Both servers were then started directly (`uvicorn`, `next dev`) and driven with
-`curl` through the actual BFF login flow — login, cookie issuance, and all three
-role dashboards were confirmed to render real server-fetched data, and
-unauthenticated access to `/admin` was confirmed to redirect to `/login`.
-`docker-compose.dev.yml`/`docker-compose.production.yml` were YAML-validated and
-their image build steps mirror exactly what was run manually, but `docker compose
-up --build` itself was not executed in this environment. Recommended first step
-next session: run it in an environment with Docker to catch anything
-Docker-specific (volume permissions, inter-container DNS) that manual testing
-can't.
+This machine is the actual target server (a Hetzner VM, public IP
+`46.225.127.164`), not a disposable sandbox. Verification happened in two passes:
+
+1. **Host-level**, before Docker was installed: `postgresql`, `nodejs`/`npm`/`pnpm`
+   installed directly; backend migrated/seeded/tested against a real local
+   Postgres; frontend installed/typechecked/linted/built with real `next build`;
+   both servers driven directly (`uvicorn`, `next dev`) via `curl` through the
+   actual BFF login flow.
+2. **Full Docker Compose**, once Docker was installed at the user's request:
+   `docker compose -f docker-compose.dev.yml up --build` — all 8 containers
+   (postgres, redis, minio, api, celery-worker, celery-beat, dashboard, nginx)
+   came up healthy after fixing the 6 bugs listed above. Demo data was seeded
+   into the running stack (`docker compose exec api python -m app.seed`), and the
+   full login → session cookie → protected dashboard flow was verified through
+   the **public IP** (`http://46.225.127.164/`), not just localhost — including
+   confirming unauthenticated requests to `/admin` still redirect to `/login`
+   when hit from outside the server.
+
+**Caveat**: this is HTTP only (no TLS/certbot wired yet, Phase H), and the current
+`.env` was generated with strong random secrets but the running stack still uses
+**seed/demo data** — do not treat this as production-ready as-is. See "Next
+recommended session" for the concrete gap list before this should be treated as
+more than a live demo.
 
 ### Explicitly NOT in this session's scope (tracked for later phases)
 - Payments beyond the `PaymentProvider` interface (no `MockPaymentProvider` class
@@ -146,9 +189,14 @@ Circolare formula, reversal proration formula, GDPR retention, 33% cap denominat
 MFA/lockout policy — all placeholders pending the real business-rules document.
 
 ### Next recommended session
-1. Run `docker compose -f docker-compose.dev.yml up --build` in a Docker-capable
-   environment and fix anything that manual host-level testing couldn't catch.
-2. Phase F: notifications (Celery tasks + templates) and a minimal reports domain.
-3. Phase D hardening: `documents` domain (MinIO upload/download with signed URLs)
+1. If a real domain will point at this server: add a DNS A record to
+   `46.225.127.164`, set `server_name` in `infrastructure/nginx/nginx.conf`
+   accordingly, and wire certbot/Let's Encrypt for TLS (currently HTTP only).
+2. Decide whether this server should keep running the demo/seed stack publicly or
+   be reset before real customer data ever touches it — seed data and demo
+   credentials (`DemoPass123!` for every seeded user) are live on the public IP
+   right now.
+3. Phase F: notifications (Celery tasks + templates) and a minimal reports domain.
+4. Phase D hardening: `documents` domain (MinIO upload/download with signed URLs)
    and a real `PaymentProvider` + `MockPaymentProvider`.
-4. Wire CI (lint/typecheck/test/build) once there's a git remote to attach it to.
+5. Wire CI (lint/typecheck/test/build) once there's a git remote to attach it to.

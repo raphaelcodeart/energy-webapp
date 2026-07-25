@@ -22,14 +22,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter dashboard build
 
 FROM base AS runtime
-RUN groupadd --gid 1000 app && useradd --uid 1000 --gid app --create-home app
+# node:22-slim already ships a non-root "node" user at uid/gid 1000 -- reuse it
+# instead of creating a colliding "app" user.
 WORKDIR /app
 
-COPY --from=builder --chown=app:app /repo/apps/dashboard/.next/standalone ./
-COPY --from=builder --chown=app:app /repo/apps/dashboard/.next/static ./apps/dashboard/.next/static
-COPY --from=builder --chown=app:app /repo/apps/dashboard/public ./apps/dashboard/public
+COPY --from=builder --chown=node:node /repo/apps/dashboard/.next/standalone ./
+COPY --from=builder --chown=node:node /repo/apps/dashboard/.next/static ./apps/dashboard/.next/static
+COPY --from=builder --chown=node:node /repo/apps/dashboard/public ./apps/dashboard/public
 
-USER app
+USER node
 ENV NODE_ENV=production
 EXPOSE 3000
 

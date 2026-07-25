@@ -84,6 +84,13 @@ services:
       api:
         condition: service_healthy
     command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
+    # Overrides the api image's baked-in HTTP healthcheck, which is meaningless
+    # here -- the worker doesn't serve HTTP. `celery inspect ping` is the real check.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   celery-beat:
     build:
@@ -97,7 +104,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+    # /app is owned by root (only the files COPY --chown'd into it belong to the
+    # app user) -- beat's schedule file must live somewhere the app user can write.
+    command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    # No HTTP server here either -- disable the inherited api-image healthcheck
+    # rather than report a false "unhealthy".
+    healthcheck:
+      disable: true
 
   dashboard:
     build:
@@ -107,6 +120,11 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      # Next's standalone server.js binds to this exact address; without it, it
+      # binds to the container's own interface IP instead of the wildcard, and
+      # the healthcheck's `localhost` probe (and anything else hitting localhost)
+      # fails with ECONNREFUSED despite the app working fine.
+      HOSTNAME: "0.0.0.0"
     depends_on:
       api:
         condition: service_healthy
