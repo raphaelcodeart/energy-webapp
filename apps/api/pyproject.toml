@@ -1,0 +1,55 @@
+[project]
+name = "lial-energy-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.5",
+    "celery>=5.4",
+    "redis>=5.1",
+    "httpx>=0.27",
+    "pyjwt>=2.9",
+    "cryptography>=43.0",
+    "pwdlib[argon2]>=0.2",
+    "structlog>=24.4",
+    "tenacity>=9.0",
+    "orjson>=3.10",
+    "python-multipart>=0.0.12",
+    "boto3>=1.35",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "polyfactory>=2.16",
+    "aiosqlite>=0.20",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# B008: FastAPI's Depends(...)-as-default-argument is the framework's intended
+# pattern, not a bug -- flagging it here would just be permanent noise.
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["app", "tests"]

@@ -1,0 +1,40 @@
+# Node
+node_modules/
+.next/
+out/
+dist/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Claude Code local settings (per-user, not project config)
+.claude/settings.local.json
+
+# Docker volumes mounted locally (dev only, not used by default)
+infrastructure/postgres/data/
+infrastructure/minio/data/
+
+# Test / coverage
+.coverage
+htmlcov/
+coverage.xml
