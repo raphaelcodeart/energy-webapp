@@ -166,18 +166,98 @@ Poi prova il login vero (vedi `docs/user-guide.md` per la procedura completa
 lato utente) con le credenziali del seed (`DemoPass123!`) o le credenziali reali
 migrate.
 
-### 4.6 Dominio e HTTPS (se applicabile)
+### 4.6 Dominio e HTTPS
 
-Se il nuovo server deve rispondere su un dominio invece che sul solo IP:
+**Obbligatorio, non opzionale**: il cookie di sessione (`apps/dashboard/lib/session.ts`)
+è marcato `Secure`, quindi i browser lo scartano silenziosamente su una connessione
+HTTP — il login sembra "non fare nulla" (nessun errore, ma nessuna sessione viene
+salvata). Il sito **deve** girare su HTTPS perché il login funzioni davvero in un
+browser reale (curl/Postman non applicano questa regola e possono ingannevolmente
+sembrare funzionare anche su HTTP).
 
-1. Aggiungi un record DNS **A** che punti il dominio all'IP pubblico del nuovo server.
-2. Aggiorna `server_name` in `infrastructure/nginx/nginx.conf` (attualmente `_`,
-   cioè "accetta qualsiasi host") con il dominio reale, se vuoi essere restrittivo.
-3. Aggiungi certbot (Let's Encrypt) per il TLS — **non ancora presente in questo
-   progetto** (vedi `docs/implementation-progress.md`, è lavoro di Fase H). Finché
-   non è wired, il sito resta solo HTTP.
-4. Aggiorna `NEXT_PUBLIC_APP_URL` in `.env` con il nuovo dominio e riavvia
-   `docker compose -f docker-compose.dev.yml up -d dashboard`.
+Se non hai ancora un dominio vero, un hostname temporaneo funziona benissimo per
+Let's Encrypt: Hetzner fornisce automaticamente un rDNS del tipo
+`static.<IP-con-i-punti-invertiti>.clients.your-server.de` per ogni IP — verificalo con:
+```bash
+getent hosts static.X.X.X.X.clients.your-server.de   # sostituisci con il tuo IP
+```
+Se risolve al tuo server, puoi usarlo subito per ottenere un certificato reale.
+
+**Procedura completa** (questi sono gli stessi comandi eseguiti su questo
+server — non teoria, comandi verificati):
+
+```bash
+DOMAIN="il-tuo-dominio-o-hostname-temporaneo"
+
+# 1. Installa certbot sull'host (non serve dentro Docker)
+apt-get install -y certbot
+
+# 2. Prepara le cartelle (root del progetto)
+mkdir -p certbot/www certbot/conf
+
+# 3. Certificato "dummy" temporaneo, SOLO per permettere a nginx di avviarsi la
+#    prima volta con un blocco server 443 già configurato (altrimenti nginx non
+#    parte proprio, perché il file del certificato reale non esiste ancora):
+mkdir -p "certbot/conf/live/$DOMAIN"
+openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+  -keyout "certbot/conf/live/$DOMAIN/privkey.pem" \
+  -out "certbot/conf/live/$DOMAIN/fullchain.pem" \
+  -subj "/CN=$DOMAIN"
+
+# 4. Aggiorna infrastructure/nginx/nginx.conf: imposta ssl_certificate e
+#    ssl_certificate_key sul path /etc/letsencrypt/live/$DOMAIN/... (vedi il
+#    file attuale come esempio -- il dominio è scritto esplicitamente, non è
+#    templatizzato). Aggiorna anche docker-compose.dev.yml: il servizio nginx
+#    deve montare ./certbot/conf:/etc/letsencrypt:ro e
+#    ./certbot/www:/var/www/certbot:ro, e pubblicare anche la porta 443:443
+#    (non solo 80:80). Guarda il diff già applicato su questo server per
+#    l'esempio completo.
+
+# 5. Avvia/ricrea nginx con il certificato dummy (deve partire senza errori)
+docker compose -f docker-compose.dev.yml up -d nginx --force-recreate
+docker exec lial-energy-dev-nginx-1 nginx -t   # "syntax ok" atteso
+
+# 6. IMPORTANTE: rimuovi la cartella live/$DOMAIN dummy PRIMA di chiedere il
+#    certificato vero -- se certbot la trova già lì (anche se creata a mano)
+#    si rifiuta con "live directory exists for ...". Rimuovi tutto lo stato
+#    dummy e riparti pulito:
+rm -rf certbot/conf   # sì, tutto -- ricreato al passo successivo da certbot stesso
+mkdir -p certbot/conf
+
+# 7. Richiedi il certificato vero via webroot (nginx deve già rispondere sulla
+#    porta 80 con la challenge ACME -- lo fa di default col nginx.conf di questo
+#    progetto, verifica con un test manuale prima se hai dubbi)
+certbot certonly --webroot -w certbot/www \
+  -d "$DOMAIN" \
+  --config-dir certbot/conf --work-dir certbot/work --logs-dir certbot/logs \
+  --register-unsafely-without-email --agree-tos --non-interactive
+
+# 8. IMPORTANTE: se il container nginx è stato avviato PRIMA che questa
+#    cartella esistesse/fosse ricreata, il suo bind mount punta ancora al
+#    vecchio inode (cancellato) e vedrà una cartella vuota anche se sull'host
+#    i file ci sono -- serve ricreare il container, un semplice reload non basta:
+docker compose -f docker-compose.dev.yml up -d nginx --force-recreate
+docker exec lial-energy-dev-nginx-1 nginx -t   # deve dare "syntax ok" e trovare i file veri
+
+# 9. Verifica
+curl -I https://$DOMAIN/login   # atteso: HTTP/2 200, con un certificato reale
+```
+
+Poi:
+- Aggiorna `NEXT_PUBLIC_APP_URL=https://$DOMAIN` in `.env` e riavvia il dashboard:
+  `docker compose -f docker-compose.dev.yml up -d dashboard --force-recreate`
+- Aggiungi `scripts/renew-cert.sh` al crontab (i certificati Let's Encrypt
+  scadono ogni 90 giorni; il timer systemd installato di default da certbot **non**
+  rinnova questo certificato perché usa un percorso di configurazione non
+  standard — vedi il commento in cima allo script):
+  ```bash
+  crontab -e
+  # aggiungi:
+  0 3 * * * /opt/lialenergy/scripts/renew-cert.sh >> /opt/lialenergy/certbot/renew.log 2>&1
+  ```
+
+**Non committare mai `certbot/`** (contiene chiavi private) — è già in
+`.gitignore`. Se cambi dominio, ripeti l'intera procedura per il nuovo nome.
 
 ## 5. Migrare i dati da un server esistente (non solo il codice)
 
@@ -313,9 +393,25 @@ probabilmente il problema è un altro. Documentati per intero in
    BFF del dashboard (`/api/auth/login`, `/api/proxy/*`) che vivono sulla stessa
    porta 80. Risolto spostando l'accesso diretto al backend su `/backend/`,
    lasciando `/api/*` esclusivamente al dashboard.
+8. **Login "non fa nulla" su un sito servito in HTTP puro**: il cookie di
+   sessione è marcato `Secure`, e i browser reali (non `curl`) lo scartano
+   silenziosamente se la pagina non è servita su HTTPS. Non è un bug da
+   correggere abbassando il livello di sicurezza (rimuovere `Secure` esporrebbe
+   i token in chiaro) — la correzione corretta è attivare HTTPS, vedi sezione
+   4.6. Sintomo tipico: il form di login sembra caricare per un paio di secondi
+   e poi resta sulla pagina di login, senza errori visibili nella UI (l'errore
+   compare solo nella console del browser: *"Cookie ... rifiutato in quanto un
+   cookie non-HTTPS non può essere impostato come 'secure'"*).
+9. **Dopo aver rigenerato `certbot/conf` (`rm -rf` + ricreato), nginx vede una
+   cartella vuota anche se sull'host i file ci sono**: un bind mount Docker
+   stabilito PRIMA che la cartella host venga cancellata e ricreata resta
+   agganciato al vecchio inode (ormai orfano), non alla nuova directory. Un
+   `nginx -s reload` non basta — serve ricreare il container
+   (`docker compose up -d nginx --force-recreate`) perché il bind mount venga
+   ristabilito contro il percorso host attuale.
 
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
-risolto, per lo stesso motivo per cui questi sette lo sono.
+risolto, per lo stesso motivo per cui questi nove lo sono.
 
 ## 9. Cosa NON aspettarsi che funzioni già
 

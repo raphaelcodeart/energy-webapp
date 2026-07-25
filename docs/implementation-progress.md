@@ -189,18 +189,59 @@ Circolare formula, reversal proration formula, GDPR retention, 33% cap denominat
 MFA/lockout policy — all placeholders pending the real business-rules document.
 
 ### Next recommended session
-1. If a real domain will point at this server: add a DNS A record to
-   `46.225.127.164`, set `server_name` in `infrastructure/nginx/nginx.conf`
-   accordingly, and wire certbot/Let's Encrypt for TLS (currently HTTP only).
+1. ~~Wire HTTPS~~ — done in Session 3, see below. If a *permanent* domain
+   replaces the temporary Hetzner rDNS hostname, redo the certbot procedure in
+   `docs/server-migration-guide.md` §4.6 for the new name.
 2. Decide whether this server should keep running the demo/seed stack publicly or
    be reset before real customer data ever touches it — seed data and demo
-   credentials (`DemoPass123!` for every seeded user) are live on the public IP
-   right now.
+   credentials (`DemoPass123!` for every seeded user) are live on the public
+   internet right now.
 3. Phase F: notifications (Celery tasks + templates) and a minimal reports domain.
 4. Phase D hardening: `documents` domain (MinIO upload/download with signed URLs)
    and a real `PaymentProvider` + `MockPaymentProvider`.
 5. Wire CI (lint/typecheck/test/build) — the repo now has a remote
    (`github.com/raphaelcodeart/energy-webapp`, branch `main`), so this is unblocked.
+
+## Session 3 — 2026-07-25 (same day, continued) — HTTPS wired
+
+The user tried logging in over plain HTTP and hit exactly the security behavior
+`docs/security-model.md` describes: the browser silently discards the `Secure`
+session cookie on a non-HTTPS connection, so login looked like it did nothing
+(no visible error, page just reloads to `/login`). The correct fix was never to
+weaken the cookie — it was to actually wire the TLS termination this project had
+deferred to "Phase H".
+
+- [x] Real Let's Encrypt certificate issued for the server's temporary Hetzner
+  rDNS hostname (`static.164.127.225.46.clients.your-server.de`), via certbot in
+  webroot mode, non-standard config dir (`./certbot/`, not `/etc/letsencrypt`)
+  so it lives alongside the project rather than in host-global state.
+- [x] `infrastructure/nginx/nginx.conf`: HTTP (80) now serves only the ACME
+  challenge and 301-redirects everything else to HTTPS; HTTPS (443) terminates
+  TLS and proxies exactly as before (`/backend/` → API, everything else →
+  dashboard).
+- [x] `docker-compose.dev.yml`: nginx now publishes 443, mounts
+  `./certbot/conf` (read-only) and `./certbot/www` (read-only, ACME challenge
+  webroot).
+- [x] `scripts/renew-cert.sh` + a crontab entry (daily at 03:00) — **the
+  certbot package's own systemd renewal timer does NOT cover this certificate**
+  because it uses a non-default config directory; without this script, the
+  cert would silently expire in 90 days.
+- [x] `.env`'s `NEXT_PUBLIC_APP_URL` updated to the `https://` hostname.
+- [x] `certbot/` added to `.gitignore` — it holds private keys, must never be committed.
+- [x] Verified end-to-end over the real HTTPS URL: HTTP→HTTPS redirect, real
+  cert served (not self-signed), login issues a cookie the browser will
+  actually keep, and the admin dashboard renders live data through it.
+
+Two more real bugs found and fixed while wiring this (bringing the running
+total to 9 — see `docs/server-migration-guide.md` §8 for the full list with
+symptoms, so they're recognized immediately if hit again on a future server):
+- Certbot refuses to issue a certificate into a `live/<domain>` directory that
+  already exists (even if it's just a manually-placed bootstrap/dummy cert) —
+  has to be removed first.
+- A Docker bind mount established before a host directory is `rm -rf`'d and
+  recreated stays attached to the old (now-orphaned) inode; the container sees
+  an empty directory even though the host has fresh files. `nginx -s reload`
+  doesn't fix this — the container itself must be recreated.
 
 ## Session 2 — 2026-07-25 (same day, continued)
 

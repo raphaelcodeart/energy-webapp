@@ -14,6 +14,11 @@ every real bug already found and fixed while standing this up.
 
 **Using the app day to day?** See `docs/user-guide.md` (in Italian).
 
+**Login requires HTTPS.** The session cookie is `Secure`; real browsers silently
+drop it over plain HTTP (a real login attempt just reloads to `/login` with no
+visible error). See `docs/server-migration-guide.md` §4.6 for the exact certbot
+procedure used to wire this — it's already live on this deployment.
+
 ## Stack
 
 - **Backend**: FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL 16, Celery + Redis

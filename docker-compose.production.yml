@@ -2,8 +2,11 @@ name: lial-energy-production
 
 # Production topology: no MinIO (use real S3-compatible storage via S3_* env vars),
 # no seed data, images built once and referenced by tag (adjust ${IMAGE_TAG} in your
-# CI/CD pipeline), TLS terminated by nginx via Let's Encrypt/certbot (not wired here
-# -- see docs/deployment.md for the certbot renewal cron and volume layout).
+# CI/CD pipeline). TLS: nginx bind-mounts ./certbot/conf and ./certbot/www from the
+# host, exactly like docker-compose.dev.yml -- certbot itself runs on the HOST (not
+# in a container), via scripts/renew-cert.sh on a cron job. See
+# docs/server-migration-guide.md §4.6 for the verified, step-by-step procedure
+# (this is not a placeholder -- it's the same setup already running in dev).
 # Postgres/Redis are never published to the host, matching docs/network-model.md.
 
 services:
@@ -93,8 +96,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - certbot_www:/var/www/certbot:ro
-      - certbot_certs:/etc/letsencrypt:ro
+      # Bind mounts (not named volumes) so the host's certbot -- run via
+      # scripts/renew-cert.sh, not a container -- can read/write them directly.
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
     ports:
       - "80:80"
       - "443:443"
@@ -104,5 +109,3 @@ services:
 
 volumes:
   postgres_data:
-  certbot_www:
-  certbot_certs:
