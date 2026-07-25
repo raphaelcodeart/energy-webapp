@@ -199,4 +199,22 @@ MFA/lockout policy — all placeholders pending the real business-rules document
 3. Phase F: notifications (Celery tasks + templates) and a minimal reports domain.
 4. Phase D hardening: `documents` domain (MinIO upload/download with signed URLs)
    and a real `PaymentProvider` + `MockPaymentProvider`.
-5. Wire CI (lint/typecheck/test/build) once there's a git remote to attach it to.
+5. Wire CI (lint/typecheck/test/build) — the repo now has a remote
+   (`github.com/raphaelcodeart/energy-webapp`, branch `main`), so this is unblocked.
+
+## Session 2 — 2026-07-25 (same day, continued)
+
+- [x] Pushed the full repository to `git@github.com:raphaelcodeart/energy-webapp.git`
+  (branch `main`), via a dedicated deploy-key SSH identity generated on this server.
+- [x] `docs/server-migration-guide.md` — step-by-step server rebuild/migration
+  runbook: prerequisites, `.env` generation, data migration from an existing
+  server (`scripts/backup.sh` output restored into a fresh Postgres), domain/TLS
+  setup, a code map, and the full list of the 7 real deployment bugs found in
+  Session 1 (so they're not rediscovered from scratch on a new server).
+- [x] `docs/database-schema.sql` — ground-truth schema dump (`pg_dump
+  --schema-only`) of the actual running database, 43 tables, generated from the
+  live stack rather than hand-written. `docs/database-model.md` now points to it
+  explicitly as the authority in case of drift.
+- [x] `docs/user-guide.md` (Italian) — end-user guide for the three dashboards as
+  they exist today, written to match actual behavior rather than aspirational
+  scope (explicitly lists what each dashboard does *not* yet do).

@@ -1,6 +1,13 @@
 # Database Model
 
-PostgreSQL 16+. All tables carry `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`,
+> **Ground truth**: this document explains the *why*. For the exact, current
+> column types/constraints/indexes, see `docs/database-schema.sql` — a real
+> `pg_dump --schema-only` of the live database, not hand-written. If the two ever
+> disagree, trust the SQL dump and fix this file (or the SQLAlchemy models it
+> drifted from). See `docs/server-migration-guide.md` for how to regenerate it.
+
+PostgreSQL 16+. All tables carry `id UUID PRIMARY KEY` (generated client-side via
+Python's `uuid.uuid4()` at insert time — not a Postgres server-side default),
 `created_at TIMESTAMPTZ NOT NULL DEFAULT now()` unless noted. Money columns are
 `NUMERIC(14,2)` (EUR) or integer cents (`*_cents BIGINT`) per `business-rules.md §Money`.
 Every tenant-scoped table carries `organization_id UUID NOT NULL REFERENCES organizations(id)`.

@@ -7,6 +7,13 @@ dashboard cliente/promoter/amministratore.
 See `docs/` for the full documentation set — start with `docs/architecture.md` and
 `docs/implementation-progress.md` (what's actually built vs. planned).
 
+**Migrating or rebuilding on a new server?** Go straight to
+`docs/server-migration-guide.md` — it has the exact steps, the full database
+schema (`docs/database-schema.sql`, a real `pg_dump` of the live database), and
+every real bug already found and fixed while standing this up.
+
+**Using the app day to day?** See `docs/user-guide.md` (in Italian).
+
 ## Stack
 
 - **Backend**: FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL 16, Celery + Redis
