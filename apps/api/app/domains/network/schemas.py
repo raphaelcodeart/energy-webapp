@@ -26,6 +26,10 @@ class NetworkNodeRead(BaseModel):
 class BranchMemberRead(BaseModel):
     agent_id: uuid.UUID
     depth: int
+    display_name: str
+    promoter_code: str
+    status: str
+    rank_code: str | None
 
 
 class MoveAgentRequest(BaseModel):

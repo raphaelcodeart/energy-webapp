@@ -6,12 +6,23 @@ import type { BranchMemberRead } from "@/lib/types";
 const columnHelper = createColumnHelper<BranchMemberRead>();
 
 const columns = [
-  columnHelper.accessor("agent_id", {
-    header: "Agente",
-    cell: (info) => <span className="font-mono text-xs">{info.getValue()}</span>,
+  columnHelper.accessor("display_name", {
+    header: "Nome",
+    cell: (info) => <span className="font-medium">{info.getValue()}</span>,
+  }),
+  columnHelper.accessor("promoter_code", {
+    header: "Codice",
+    cell: (info) => <span className="font-mono text-xs text-slate-400 light:text-slate-500">{info.getValue()}</span>,
+  }),
+  columnHelper.accessor("rank_code", {
+    header: "Qualifica",
+    cell: (info) => info.getValue() ?? "—",
   }),
   columnHelper.accessor("depth", {
     header: "Profondità nel ramo",
+  }),
+  columnHelper.accessor("status", {
+    header: "Stato",
   }),
 ];
 

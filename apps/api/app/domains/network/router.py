@@ -74,7 +74,7 @@ async def get_branch(
     branch = await network_service.get_branch(
         db, organization_id=current_user.organization_id, root_agent_id=agent_id
     )
-    return [BranchMemberRead(agent_id=a, depth=d) for a, d in branch]
+    return [BranchMemberRead(**row) for row in branch]
 
 
 @router.get("/agents", response_model=list[AgentListItemRead])

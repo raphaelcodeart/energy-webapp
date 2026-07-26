@@ -24,6 +24,10 @@ export type CommissionMovementRead = {
 export type BranchMemberRead = {
   agent_id: string;
   depth: number;
+  display_name: string;
+  promoter_code: string;
+  status: string;
+  rank_code: string | null;
 };
 
 export type AgentProfileRead = {

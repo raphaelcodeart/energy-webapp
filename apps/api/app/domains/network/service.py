@@ -408,8 +408,42 @@ async def is_ancestor(
 
 async def get_branch(
     db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
-) -> list[tuple[uuid.UUID, int]]:
-    return await _get_active_descendants(db, organization_id=organization_id, agent_id=root_agent_id)
+) -> list[dict]:
+    """Descendants of root_agent_id (including itself, depth 0) with the display
+    fields the network tree UI needs -- joined here so the router doesn't do a
+    second round-trip per node."""
+    from app.domains.commissions.models import Rank
+
+    descendants = await _get_active_descendants(
+        db, organization_id=organization_id, agent_id=root_agent_id
+    )
+    if not descendants:
+        return []
+    depth_by_agent = {agent_id: depth for agent_id, depth in descendants}
+
+    stmt = (
+        select(
+            AgentProfile.id,
+            AgentProfile.display_name,
+            AgentProfile.promoter_code,
+            AgentProfile.status,
+            Rank.code,
+        )
+        .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
+        .where(AgentProfile.id.in_(depth_by_agent.keys()))
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "agent_id": row[0],
+            "depth": depth_by_agent[row[0]],
+            "display_name": row[1],
+            "promoter_code": row[2],
+            "status": row[3],
+            "rank_code": row[4],
+        }
+        for row in rows
+    ]
 
 
 async def create_snapshot_for_contract(
