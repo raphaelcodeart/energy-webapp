@@ -137,16 +137,33 @@ body {
   100% { background-position: 200% 0; }
 }
 
+/* Deliberately NOT `forwards` on any of these three: `forwards` freezes the
+   keyframe's "to" state on the element FOREVER (not just visually -- the
+   computed `transform` stays e.g. `translateY(0)`/`scale(1)`, a non-`none`
+   value). Per the CSS spec, any non-`none` transform on an element makes it
+   a new containing block for `position: fixed` descendants. `.animate-slide-up`
+   is applied to <main> in app-shell.tsx, the ancestor of every single modal
+   in this app -- with `forwards`, EVERY modal's `fixed inset-0` overlay
+   silently stopped being viewport-fixed and instead sized itself to <main>'s
+   own (often much taller, scrolled) box, so the modal could render far
+   outside the visible viewport while its backdrop still visually darkened
+   the screen ("clicked edit, screen went dark, nothing opened" -- confirmed
+   live with a headless browser: the overlay's bounding rect was offset by
+   the sidebar/header size and 5000+px tall instead of matching the
+   viewport). Without `forwards`, the element reverts to its own cascaded
+   styles once the animation ends -- identical visually here (no transform,
+   opacity 1 is the natural rest state for all three), but no longer a
+   containing block. */
 .animate-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-slide-up {
-  animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-scale-up {
-  animation: scaleUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: scaleUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-shimmer {
