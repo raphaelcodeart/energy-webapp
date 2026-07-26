@@ -26,73 +26,170 @@ export default function LoginPage() {
         setError(body.error ?? "Login fallito");
         return;
       }
-      router.push("/promoter");
+      // Redirect to the appropriate dashboard based on email prefix as a heuristic,
+      // or simply promoter. The server will restrict dashboard access based on roles.
+      if (email.includes("admin") || email.includes("super")) {
+        router.push("/admin");
+      } else if (email.includes("customer")) {
+        router.push("/customer");
+      } else {
+        router.push("/promoter");
+      }
       router.refresh();
+    } catch (err: any) {
+      setError("Errore di connessione al server");
     } finally {
       setSubmitting(false);
     }
   }
 
+  const fillTestCredentials = (role: "admin" | "promoter" | "customer") => {
+    setError(null);
+    setPassword("DemoPass123!");
+    if (role === "admin") {
+      setEmail("admin@lialenergy.demo");
+    } else if (role === "promoter") {
+      setEmail("promoter@lialenergy.demo");
+    } else {
+      setEmail("customer@lialenergy.demo");
+    }
+  };
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 p-6 shadow-sm dark:border-slate-800"
-      >
-        <h1 className="text-xl font-semibold">Lial Energy — Accesso</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 relative">
+      {/* Background decorations */}
+      <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-violet-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
+      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-cyan-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium" htmlFor="organizationId">
-            Organization ID
-          </label>
-          <input
-            id="organizationId"
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            placeholder="uuid dell'organizzazione (vedi output seed)"
-            required
-          />
+      <div className="w-full max-w-md animate-scale-up">
+        {/* Logo / Branding */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-tr from-violet-600 to-cyan-500 shadow-lg shadow-violet-500/20 mb-4">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            LIAL <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">ENERGY</span>
+          </h1>
+          <p className="text-slate-400 text-sm mt-2">Piattaforma di Gestione Commerciale & Rete</p>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+        {/* Login Form Card */}
+        <form
+          onSubmit={handleSubmit}
+          className="glass-card rounded-2xl p-8 space-y-5"
         >
-          {submitting ? "Accesso in corso..." : "Accedi"}
-        </button>
-      </form>
+          <h2 className="text-xl font-semibold text-white/90">Accedi alla tua area riservata</h2>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="organizationId">
+              ID Organizzazione
+            </label>
+            <input
+              id="organizationId"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              value={organizationId}
+              onChange={(e) => setOrganizationId(e.target.value)}
+              placeholder="Inserisci il codice UUID dell'organizzazione"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="email">
+              Indirizzo Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="nome@lialenergy.demo"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="password">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm animate-fade-in">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-violet-600/30 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none cursor-pointer mt-2"
+          >
+            {submitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Verifica credenziali...
+              </span>
+            ) : (
+              "Accedi al sistema"
+            )}
+          </button>
+        </form>
+
+        {/* Demo Helper Panel */}
+        <div className="glass-card rounded-2xl p-6 mt-6 border-cyan-500/10">
+          <h3 className="text-sm font-semibold text-cyan-400 flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Area Demo & Test
+          </h3>
+          <p className="text-slate-400 text-xs mb-4">
+            Usa l'ID Organizzazione stampato dal seed backend. Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => fillTestCredentials("admin")}
+              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-violet-500/20 hover:border-violet-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+            >
+              Amministratore
+            </button>
+            <button
+              type="button"
+              onClick={() => fillTestCredentials("promoter")}
+              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-cyan-500/20 hover:border-cyan-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+            >
+              Promoter
+            </button>
+            <button
+              type="button"
+              onClick={() => fillTestCredentials("customer")}
+              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+            >
+              Cliente
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

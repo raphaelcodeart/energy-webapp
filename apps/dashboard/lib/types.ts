@@ -34,3 +34,12 @@ export type AgentProfileRead = {
   status: string;
   current_rank_id: string | null;
 };
+
+export type SimulationStepRead = {
+  beneficiary_agent_id: string;
+  rank_code: string;
+  gross_amount_cents: number;
+  movement_type: string;
+  explanation: string;
+};
+
