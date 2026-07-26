@@ -34,6 +34,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      # Must match S3_REGION in .env (passed to boto3 as region_name) --
+      # MinIO defaults to us-east-1 otherwise, which fails SigV4 signature
+      # verification against a client signing requests for a different
+      # region (confirmed live: every request 403'd until these matched).
+      MINIO_REGION: ${S3_REGION:-eu-central-1}
     volumes:
       - minio_data:/data
     ports:
@@ -63,7 +68,7 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

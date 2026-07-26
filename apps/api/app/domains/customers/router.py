@@ -1,20 +1,23 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
+from app.core.storage import UploadValidationError, upload_media
 from app.domains.customers import service as customer_service
 from app.domains.customers.schemas import (
     CustomerCreate,
     CustomerDetailRead,
     CustomerRead,
     CustomerUpdate,
+    ReassignPromoterRequest,
     SupplyPointCreate,
     SupplyPointRead,
     SupplyPointUpdate,
 )
+from app.domains.referral import service as referral_service
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -80,6 +83,60 @@ async def update_customer(
     row = await customer_service.get_customer_detail(
         db, organization_id=current_user.organization_id, customer_id=customer_id
     )
+    return CustomerRead(**row)
+
+
+@router.post("/{customer_id}/photo", response_model=CustomerRead)
+async def upload_customer_photo(
+    customer_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("customers.update")),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    file_bytes = await file.read()
+    try:
+        photo_url = upload_media(
+            file_bytes=file_bytes, content_type=file.content_type or "", key_prefix="photos/customers"
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    customer = await customer_service.set_customer_photo(
+        db, organization_id=current_user.organization_id, customer_id=customer_id,
+        photo_url=photo_url, actor_user_id=current_user.user_id,
+    )
+    if customer is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found")
+    row = await customer_service.get_customer_detail(
+        db, organization_id=current_user.organization_id, customer_id=customer_id
+    )
+    return CustomerRead(**row)
+
+
+@router.post("/{customer_id}/reassign-promoter", response_model=CustomerRead)
+async def reassign_customer_promoter(
+    customer_id: uuid.UUID,
+    payload: ReassignPromoterRequest,
+    current_user: CurrentUser = Depends(require_permission("customers.update")),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    """Admin-only: moves a customer's attribution from their current promoter
+    to a different one. See referral_service.reassign_customer_promoter for
+    why this always keeps the customer attributed to SOMEONE ("nessuno può
+    stare senza promoter che lo invita")."""
+    try:
+        await referral_service.reassign_customer_promoter(
+            db, organization_id=current_user.organization_id, customer_id=customer_id,
+            new_agent_id=payload.new_agent_id, requested_by=current_user.user_id, reason=payload.reason,
+        )
+    except referral_service.ReassignmentError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    row = await customer_service.get_customer_detail(
+        db, organization_id=current_user.organization_id, customer_id=customer_id
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found")
     return CustomerRead(**row)
 
 

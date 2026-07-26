@@ -42,6 +42,13 @@ sessions
   id, user_id, refresh_token_hash, user_agent, ip_address,
   created_at, expires_at, revoked_at
 
+password_reset_tokens (added Session 13 -- same shape/reasoning as sessions:
+    the opaque random token is only ever handed to the client in the reset
+    link, the DB stores just its sha256 hash. Single-use (used_at) and
+    time-limited (expires_at, 60 minutes). A successful reset revokes every
+    active session for that user -- see auth/service.py::reset_password())
+  id, user_id, token_hash, expires_at, used_at nullable, created_at
+
 audit_log (append-only, no updates/deletes)
   id, organization_id, actor_user_id nullable, action, entity_type, entity_id,
   previous_value jsonb, new_value jsonb, reason, ip_address, user_agent,
@@ -53,7 +60,13 @@ audit_log (append-only, no updates/deletes)
 ```
 agent_profiles
   id, organization_id, user_id nullable (promoters may predate a user account),
-  display_name, promoter_code (unique), status, joined_at
+  display_name, promoter_code (unique), status,
+  photo_url nullable (added Session 13 -- profile photo, uploaded via
+    POST /network/agents/{id}/photo to the public "lial-media" bucket, see
+    §6 in server-migration-guide.md and core/storage.py. Same "name
+    prominent, id small below" spirit -- a person recognizes a face faster
+    than a promoter code),
+  joined_at
 
 network_nodes
   id, organization_id, agent_id (unique), direct_parent_agent_id nullable,
@@ -91,6 +104,18 @@ network_change_requests
   status (PENDING/APPROVED/REJECTED), reviewed_by nullable, reason, created_at
 ```
 
+**Session 13 bug fix worth knowing about**: `network/service.py::get_branch()` (the
+flat descendant list the promoter tree UI builds itself from) had no `ORDER BY`
+and no parent linkage -- the frontend reconstructed the tree by ASSUMING the
+rows came back in pre-order traversal order, which Postgres never guarantees
+for a plain `WHERE id IN (...)`. Whenever it didn't, most of the tree
+silently failed to attach to its real parent, which is exactly what "only see
+the first name, opening it shows nothing" looked like from the outside. Fixed
+by joining `network_nodes.direct_parent_agent_id` into `BranchMemberRead` as
+`parent_agent_id` (null for the branch's own root) and having the frontend
+(`branch-visualizer.tsx::buildTree()`) build strictly from that field via a
+map, never from row order.
+
 `network_edges` and `network_nodes.direct_parent_agent_id` look redundant; they aren't:
 `network_nodes` is the current-state pointer used for writes and simple lookups,
 `network_edges` is the append-only history of every parent/child relationship that ever
@@ -127,6 +152,14 @@ contract_attributions
 attribution_corrections
   id, organization_id, contract_attribution_id, previous_promoter_id, new_promoter_id,
   requested_by, approved_by nullable, reason, created_at
+  -- Existed since Session 1 but, like customer_attributions above, had no
+  -- live write path until Session 13 added admin-triggered reassignment:
+  -- POST /customers/{id}/reassign-promoter (referral/service.py::
+  -- reassign_customer_promoter()). Moves customer_attributions.promoter_code_id
+  -- to the new promoter and writes one of these rows as the audit trail of
+  -- who requested the move, from which promoter, to which, and why. A
+  -- customer is never left without SOME promoter -- reassignment is
+  -- rejected if there's no existing attribution to correct.
 ```
 
 ## 4. Catalog, customers, contracts
@@ -145,7 +178,7 @@ product_versions
   id, product_id, version_label, base_price_cents, initial_fee_cents,
   recurring_fee_cents, billing_period, tax_configuration jsonb (carries
     vat_percentage as of Session 9 -- pre-existing column, previously unused),
-  contract_duration_months nullable (added Session 11 -- contract term length in
+  contract_duration_months nullable (added Session 12 -- contract term length in
     months, e.g. 12 for a standard yearly energy contract; NULL for a one-off
     DIGITAL/PHYSICAL product with no renewal concept. No DB/ORM-level default --
     "12 unless told otherwise" lives only in ProductCreate/ProductVersionCreate,
@@ -159,6 +192,8 @@ customers
   fiscal_code, vat_number nullable, email, phone,
   pec nullable (added Session 10 -- Italian certified email, distinct from
     the ordinary contact email),
+  photo_url nullable (added Session 13 -- same reasoning as
+    agent_profiles.photo_url, see §2),
   created_at
 
 customer_profiles
@@ -172,7 +207,7 @@ addresses
 
 supply_points
   id, organization_id, customer_id,
-  label nullable (added Session 11 -- human-readable identifier, e.g.
+  label nullable (added Session 12 -- human-readable identifier, e.g.
     "Energia elettrica - Via Roma 12, Milano". POD/PDR codes are correct but
     meaningless to a person scanning a list; auto-computed from energy_type +
     address at creation if not given explicitly, always editable afterwards.
@@ -188,9 +223,9 @@ contracts
   notes nullable (added Session 10 -- free-text context set at creation by
     whoever originated the deal, promoter or admin; distinct from
     contract_status_history.notes, which is per-transition, not per-contract),
-  activated_at nullable (added Session 11 -- set, and reset on every renewal, by
+  activated_at nullable (added Session 12 -- set, and reset on every renewal, by
     transition_contract() whenever the contract enters ACTIVE or RENEWED),
-  expires_at nullable, indexed (added Session 11 -- activated_at +
+  expires_at nullable, indexed (added Session 12 -- activated_at +
     product_versions.contract_duration_months at that same moment; never
     recomputed retroactively if the product version's duration later changes.
     Powers the admin contract list's expiry column + year filter and the
@@ -247,7 +282,7 @@ commission_adjustments / commission_offsets / commission_reversals
   approved_by nullable, created_at
 ```
 
-## 6. Support tickets (added Session 11)
+## 6. Support tickets (added Session 12)
 
 ```
 tickets

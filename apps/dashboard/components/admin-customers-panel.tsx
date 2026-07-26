@@ -1,8 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CustomerDetailRead, CustomerRead } from "@/lib/types";
+import { PhotoUpload } from "@/components/photo-upload";
+import type { AgentListItemRead, ContractRead, CustomerDetailRead, CustomerRead } from "@/lib/types";
+
+const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Bozza",
+  SUBMITTED: "Inviata",
+  DOCUMENTS_PENDING: "Documenti mancanti",
+  UNDER_REVIEW: "In revisione",
+  APPROVED: "Approvata",
+  PAYMENT_PENDING: "In attesa di pagamento",
+  PAID: "Pagata",
+  ACTIVATION_PENDING: "In attivazione",
+  ACTIVE: "Attiva",
+  SUSPENDED: "Sospesa",
+  CANCELLED: "Cessata",
+  EXPIRED: "Scaduta",
+  RENEWED: "Rinnovata",
+  REJECTED: "Respinta",
+};
+
+function contractStatusColor(status: string): string {
+  if (status === "ACTIVE" || status === "RENEWED") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  if (status === "REJECTED" || status === "CANCELLED") return "bg-rose-500/10 text-rose-400 border-rose-500/20";
+  if (status === "DRAFT") return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+  return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+}
+
+async function fetchAllContracts(): Promise<ContractRead[]> {
+  const res = await fetch("/api/proxy/contracts");
+  if (!res.ok) throw new Error("Impossibile caricare i contratti.");
+  return res.json();
+}
 
 async function fetchCustomers(): Promise<CustomerRead[]> {
   const res = await fetch("/api/proxy/customers");
@@ -14,6 +45,30 @@ async function fetchCustomerDetail(id: string): Promise<CustomerDetailRead> {
   const res = await fetch(`/api/proxy/customers/${id}`);
   if (!res.ok) throw new Error("Impossibile caricare i dettagli del cliente.");
   return res.json();
+}
+
+async function fetchAgentsForReassign(): Promise<AgentListItemRead[]> {
+  const res = await fetch("/api/proxy/network/agents");
+  if (!res.ok) throw new Error("Impossibile caricare i promoter.");
+  return res.json();
+}
+
+function CustomerAvatar({ url, size = 36 }: { url: string | null; size?: number }) {
+  return (
+    <div
+      className="rounded-full overflow-hidden border border-white/10 light:border-slate-200 bg-slate-800 light:bg-slate-100 flex items-center justify-center shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- externally-hosted, variable-source uploaded photo
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <svg className="w-1/2 h-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      )}
+    </div>
+  );
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -41,6 +96,13 @@ export function AdminCustomersPanel() {
     queryFn: () => fetchCustomerDetail(viewingId!),
     enabled: viewingId !== null,
   });
+  const { data: allContracts } = useQuery({
+    queryKey: ["admin", "contracts", "all"],
+    queryFn: fetchAllContracts,
+    enabled: viewingId !== null,
+  });
+  const [expandedContractId, setExpandedContractId] = useState<string | null>(null);
+  const customerContracts = (allContracts ?? []).filter((c) => c.customer_id === viewingId);
 
   // Edit form
   const [editingCustomer, setEditingCustomer] = useState<CustomerRead | null>(null);
@@ -54,6 +116,48 @@ export function AdminCustomersPanel() {
   const [editVatNumber, setEditVatNumber] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null);
+
+  const { data: editingDetail } = useQuery({
+    queryKey: ["admin", "customers", "detail", editingCustomer?.id],
+    queryFn: () => fetchCustomerDetail(editingCustomer!.id),
+    enabled: !!editingCustomer,
+  });
+  const { data: agentsForReassign } = useQuery({
+    queryKey: ["admin", "agents", "for-reassign"],
+    queryFn: fetchAgentsForReassign,
+  });
+
+  // Reassign promoter
+  const [reassignAgentId, setReassignAgentId] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
+  const [reassignSuccess, setReassignSuccess] = useState(false);
+
+  async function handleReassign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCustomer || !reassignAgentId) return;
+    setReassignLoading(true);
+    setReassignError(null);
+    try {
+      const res = await fetch(`/api/proxy/customers/${editingCustomer.id}/reassign-promoter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_agent_id: reassignAgentId, reason: reassignReason }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setReassignSuccess(true);
+      setReassignAgentId("");
+      setReassignReason("");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "customers", "detail", editingCustomer.id] });
+      setTimeout(() => setReassignSuccess(false), 3000);
+    } catch (err: any) {
+      setReassignError(err.message || "Impossibile riassegnare il promoter.");
+    } finally {
+      setReassignLoading(false);
+    }
+  }
 
   function openEdit(c: CustomerRead) {
     setEditEmail(c.email);
@@ -72,6 +176,10 @@ export function AdminCustomersPanel() {
       setEditCompanyName(c.display_name);
     }
     setEditError(null);
+    setEditPhotoUrl(c.photo_url);
+    setReassignAgentId("");
+    setReassignReason("");
+    setReassignError(null);
     setEditingCustomer(c);
   }
 
@@ -192,6 +300,7 @@ export function AdminCustomersPanel() {
           <table className="w-full border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold">
+                <th className="py-3 px-6"></th>
                 <th className="py-3 px-6">Nominativo</th>
                 <th className="py-3 px-6">Tipo</th>
                 <th className="py-3 px-6">Email</th>
@@ -202,15 +311,16 @@ export function AdminCustomersPanel() {
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {customers === undefined ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-slate-500">Caricamento...</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">Caricamento...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-slate-500">Nessun cliente trovato.</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">Nessun cliente trovato.</td>
                 </tr>
               ) : (
                 filtered.map((c) => (
                   <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
+                    <td className="py-4 px-6"><CustomerAvatar url={c.photo_url} /></td>
                     <td className="py-4 px-6 font-medium text-white light:text-slate-900">{c.display_name}</td>
                     <td className="py-4 px-6">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
@@ -400,6 +510,60 @@ export function AdminCustomersPanel() {
                   </div>
                 </div>
 
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Contratti</p>
+                  {customerContracts.length === 0 ? (
+                    <p className="text-xs text-slate-500">Nessun contratto per questo cliente.</p>
+                  ) : (
+                    <div className="rounded-xl border border-white/5 light:border-slate-200 overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-white/5 light:bg-slate-900/5 text-slate-400 light:text-slate-500">
+                            <th className="py-2 px-3 font-semibold">Prodotto</th>
+                            <th className="py-2 px-3 font-semibold">Stato</th>
+                            <th className="py-2 px-3 font-semibold">Scadenza</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 light:divide-slate-200">
+                          {customerContracts.map((c) => (
+                            <Fragment key={c.id}>
+                              <tr
+                                onClick={() => setExpandedContractId(expandedContractId === c.id ? null : c.id)}
+                                className="cursor-pointer hover:bg-white/5 transition-colors text-slate-300 light:text-slate-600"
+                              >
+                                <td className="py-2 px-3">
+                                  <div className="font-medium text-white light:text-slate-900">{c.product_name ?? "Prodotto"}</div>
+                                  <div className="text-slate-500">{c.supply_point_label ?? ""}</div>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${contractStatusColor(c.status)}`}>
+                                    {CONTRACT_STATUS_LABELS[c.status] ?? c.status}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  {c.expires_at ? new Date(c.expires_at).toLocaleDateString("it-IT") : "—"}
+                                </td>
+                              </tr>
+                              {expandedContractId === c.id && (
+                                <tr className="bg-white/5 light:bg-slate-900/5">
+                                  <td colSpan={3} className="py-3 px-3 text-slate-300 light:text-slate-600 space-y-1">
+                                    <div><span className="text-slate-500">Creato:</span> {new Date(c.created_at).toLocaleDateString("it-IT")}</div>
+                                    {c.activated_at && (
+                                      <div><span className="text-slate-500">Attivato:</span> {new Date(c.activated_at).toLocaleDateString("it-IT")}</div>
+                                    )}
+                                    {c.notes && <div><span className="text-slate-500">Note:</span> {c.notes}</div>}
+                                    <div className="font-mono text-[10px] text-slate-500">{c.id}</div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 {viewingDetail.addresses.length > 0 && (
                   <div>
                     <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Indirizzi</p>
@@ -448,6 +612,19 @@ export function AdminCustomersPanel() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+
+            <div className="mb-5 pb-5 border-b border-white/5 light:border-slate-200">
+              <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block mb-2">Foto profilo</label>
+              <PhotoUpload
+                currentUrl={editPhotoUrl}
+                uploadPath={`customers/${editingCustomer.id}/photo`}
+                onUploaded={(url) => {
+                  setEditPhotoUrl(url);
+                  queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+                }}
+                alt={editingCustomer.display_name}
+              />
             </div>
 
             <form onSubmit={handleEditSave} className="space-y-4">
@@ -520,6 +697,45 @@ export function AdminCustomersPanel() {
                 </button>
               </div>
             </form>
+
+            <div className="mt-6 pt-5 border-t border-white/5 light:border-slate-200">
+              <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block mb-2">Promoter di riferimento</label>
+              <p className="text-xs text-slate-400 light:text-slate-500 mb-3">
+                Attualmente attribuito a: <span className="font-semibold text-white light:text-slate-900">{editingDetail?.current_promoter_name ?? "—"}</span>
+              </p>
+              <form onSubmit={handleReassign} className="space-y-3">
+                <select
+                  required
+                  value={reassignAgentId}
+                  onChange={(e) => setReassignAgentId(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  <option value="">— Seleziona nuovo promoter —</option>
+                  {(agentsForReassign ?? [])
+                    .filter((a) => a.id !== editingDetail?.current_promoter_agent_id)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>{a.display_name} ({a.promoter_code})</option>
+                    ))}
+                </select>
+                <input
+                  required
+                  value={reassignReason}
+                  onChange={(e) => setReassignReason(e.target.value)}
+                  placeholder="Motivo della riassegnazione..."
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
+                />
+                {reassignError && (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{reassignError}</div>
+                )}
+                {reassignSuccess && (
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">Promoter riassegnato con successo.</div>
+                )}
+                <button type="submit" disabled={reassignLoading}
+                  className="w-full px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/10 light:border-slate-300 transition cursor-pointer disabled:opacity-50">
+                  {reassignLoading ? "Riassegnazione..." : "Riassegna Promoter"}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}

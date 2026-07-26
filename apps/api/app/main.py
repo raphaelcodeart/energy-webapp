@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 # Import every domain's models module so SQLAlchemy's metadata (and therefore
 # Alembic autogenerate) sees all tables, even though nothing else here references
@@ -36,6 +40,9 @@ app = FastAPI(
     title="Lial Energy Platform API",
     version="0.1.0",
     description="See /opt/lialenergy/docs for architecture and business rules.",
+    docs_url="/docs" if settings.enable_api_docs else None,
+    redoc_url="/redoc" if settings.enable_api_docs else None,
+    openapi_url="/openapi.json" if settings.enable_api_docs else None,
 )
 
 app.add_middleware(
@@ -56,6 +63,18 @@ app.include_router(customers_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
+
+
+@app.on_event("startup")
+async def _ensure_media_bucket() -> None:
+    from app.core.storage import ensure_media_bucket
+
+    try:
+        ensure_media_bucket()
+    except Exception:
+        # Photo upload is a nice-to-have, not core to the app -- a MinIO
+        # hiccup at startup must never take down the whole API.
+        logger.exception("Could not ensure media bucket exists -- photo upload will fail until this is resolved")
 
 
 @app.get("/health")

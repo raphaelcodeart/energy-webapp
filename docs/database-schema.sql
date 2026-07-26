@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict xx9DNkDMCnWrrOklPOARp3vUpt06o2HEJyVUmHni1k76TMzc6a1xKwpHPw7xGP2
+\restrict nHtcFUse65bkOcAIhDrxeeah6aLv7ThcPnU93dMdBzpo7GLeq36kuUqntRaJgye
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -54,7 +54,8 @@ CREATE TABLE public.agent_profiles (
     joined_at timestamp with time zone NOT NULL,
     current_rank_id uuid,
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    photo_url character varying(1000)
 );
 
 
@@ -420,7 +421,8 @@ CREATE TABLE public.customers (
     phone character varying(32),
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    pec character varying(255)
+    pec character varying(255),
+    photo_url character varying(1000)
 );
 
 
@@ -557,6 +559,22 @@ CREATE TABLE public.organizations (
 
 
 ALTER TABLE public.organizations OWNER TO lial;
+
+--
+-- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: lial
+--
+
+CREATE TABLE public.password_reset_tokens (
+    user_id uuid NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.password_reset_tokens OWNER TO lial;
 
 --
 -- Name: permissions; Type: TABLE; Schema: public; Owner: lial
@@ -1073,6 +1091,14 @@ ALTER TABLE ONLY public.organizations
 
 
 --
+-- Name: password_reset_tokens pk_password_reset_tokens; Type: CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT pk_password_reset_tokens PRIMARY KEY (id);
+
+
+--
 -- Name: permissions pk_permissions; Type: CONSTRAINT; Schema: public; Owner: lial
 --
 
@@ -1570,6 +1596,20 @@ CREATE INDEX ix_network_nodes_organization_id ON public.network_nodes USING btre
 --
 
 CREATE INDEX ix_network_snapshots_organization_id ON public.network_snapshots USING btree (organization_id);
+
+
+--
+-- Name: ix_password_reset_tokens_token_hash; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE UNIQUE INDEX ix_password_reset_tokens_token_hash ON public.password_reset_tokens USING btree (token_hash);
+
+
+--
+-- Name: ix_password_reset_tokens_user_id; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_password_reset_tokens_user_id ON public.password_reset_tokens USING btree (user_id);
 
 
 --
@@ -2412,6 +2452,14 @@ ALTER TABLE ONLY public.network_snapshots
 
 
 --
+-- Name: password_reset_tokens fk_password_reset_tokens_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.password_reset_tokens
+    ADD CONSTRAINT fk_password_reset_tokens_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: product_versions fk_product_versions_commission_plan_version_id_commissi_c160; Type: FK CONSTRAINT; Schema: public; Owner: lial
 --
 
@@ -2623,5 +2671,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xx9DNkDMCnWrrOklPOARp3vUpt06o2HEJyVUmHni1k76TMzc6a1xKwpHPw7xGP2
+\unrestrict nHtcFUse65bkOcAIhDrxeeah6aLv7ThcPnU93dMdBzpo7GLeq36kuUqntRaJgye
 

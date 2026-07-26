@@ -21,10 +21,38 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_bucket_documents: str = "lial-documents"
+    # Separate PUBLIC-read bucket for profile/product photos -- never the
+    # same bucket as documents, which must stay private. See core/storage.py.
+    s3_bucket_media: str = "lial-media"
     s3_region: str = "eu-central-1"
     s3_use_ssl: bool = False
 
     cors_origins: list[str] = ["http://localhost:3000"]
+
+    # /backend/docs, /backend/redoc and /backend/openapi.json are reachable
+    # directly from the internet (see infrastructure/nginx/nginx.conf) --
+    # convenient for development but a full API-surface disclosure in a real
+    # production deployment. Defaults to enabled here because this project's
+    # only environment today IS the dev/demo one and docs/user-guide.md
+    # already documents /backend/docs as a real, relied-upon feature; set
+    # ENABLE_API_DOCS=false in .env for a real production deployment (see
+    # docs/server-migration-guide.md).
+    enable_api_docs: bool = True
+
+    # SMTP for password-reset emails (see auth/service.py::request_password_reset).
+    # Left unset (smtp_host empty) falls back to logging the reset link via the
+    # audit trail instead of failing -- see docs/business-rules.md §Password reset.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_address: str = "no-reply@lialenergy.demo"
+    smtp_use_tls: bool = True
+
+    # Base URL the dashboard is reachable at, used to build the link inside a
+    # password-reset email (the API has no other way to know its own public
+    # hostname -- it's never addressed directly by end users, see nginx.conf).
+    public_app_base_url: str = "http://localhost:3000"
 
 
 @lru_cache

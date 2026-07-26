@@ -319,6 +319,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             AgentProfile.joined_at,
             Rank.code,
             NetworkNode.direct_parent_agent_id,
+            AgentProfile.photo_url,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -340,6 +341,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "joined_at": r[5],
             "rank_code": r[6],
             "direct_parent_agent_id": r[7],
+            "photo_url": r[8],
         }
         for r in rows
     ]
@@ -392,6 +394,23 @@ async def update_agent(
     return agent
 
 
+async def set_agent_photo(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID, photo_url: str, actor_user_id: uuid.UUID
+) -> AgentProfile | None:
+    agent = await db.get(AgentProfile, agent_id)
+    if agent is None or agent.organization_id != organization_id:
+        return None
+
+    agent.photo_url = photo_url
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="network.agent_photo_updated", entity_type="agent_profile", entity_id=str(agent_id),
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
 async def is_ancestor(
     db: AsyncSession, *, organization_id: uuid.UUID, ancestor_agent_id: uuid.UUID, agent_id: uuid.UUID
 ) -> bool:
@@ -428,8 +447,14 @@ async def get_branch(
             AgentProfile.promoter_code,
             AgentProfile.status,
             Rank.code,
+            NetworkNode.direct_parent_agent_id,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
+        .join(
+            NetworkNode,
+            (NetworkNode.agent_id == AgentProfile.id) & (NetworkNode.effective_to.is_(None)),
+            isouter=True,
+        )
         .where(AgentProfile.id.in_(depth_by_agent.keys()))
     )
     rows = (await db.execute(stmt)).all()
@@ -441,6 +466,11 @@ async def get_branch(
             "promoter_code": row[2],
             "status": row[3],
             "rank_code": row[4],
+            # The root's own parent (if any) sits outside this branch -- the UI
+            # must not try to attach the root to a node it never fetched, so
+            # this is null for the root agent specifically even though it has
+            # a real parent in the full org tree.
+            "parent_agent_id": row[5] if row[0] != root_agent_id else None,
         }
         for row in rows
     ]

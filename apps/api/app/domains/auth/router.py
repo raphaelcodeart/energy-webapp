@@ -4,8 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.rate_limit import rate_limit
 from app.domains.auth import service as auth_service
-from app.domains.auth.schemas import LoginRequest, RegisterRequest, TokenResponse
+from app.domains.auth.schemas import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,7 +30,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit("login", max_requests=10, window_seconds=60))])
 async def login(
     payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
@@ -45,7 +52,11 @@ async def login(
     return TokenResponse(access_token=access_token)
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("register", max_requests=5, window_seconds=60))],
+)
 async def register(
     payload: RegisterRequest, db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -89,3 +100,35 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
     if refresh_token:
         await auth_service.revoke_session(db, refresh_token=refresh_token)
     response.delete_cookie(REFRESH_COOKIE_NAME, path="/api/auth")
+
+
+@router.post(
+    "/forgot-password",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit("forgot-password", max_requests=5, window_seconds=300))],
+)
+async def forgot_password(
+    payload: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Always returns 202 regardless of whether the email exists -- see
+    auth_service.request_password_reset for why."""
+    await auth_service.request_password_reset(
+        db,
+        organization_id=uuid.UUID(payload.organization_id),
+        email=payload.email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return {"ok": True}
+
+
+@router.post(
+    "/reset-password",
+    dependencies=[Depends(rate_limit("reset-password", max_requests=10, window_seconds=300))],
+)
+async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    try:
+        await auth_service.reset_password(db, token=payload.token, new_password=payload.new_password)
+    except auth_service.PasswordResetError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"ok": True}

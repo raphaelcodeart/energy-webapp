@@ -63,6 +63,69 @@ async def test_closure_table_reflects_full_chain_depth(db, organization_id):
 
 
 @pytest.mark.asyncio
+async def test_get_branch_returns_parent_agent_id_for_tree_reconstruction(db, organization_id):
+    """The frontend tree (branch-visualizer.tsx) builds its hierarchy from
+    parent_agent_id, not from row order -- get_branch()'s query has no
+    ORDER BY, so relying on pre-order row sequence silently broke the tree
+    whenever Postgres didn't happen to return rows in traversal order. This
+    covers the fix: every non-root row must carry its real parent, and the
+    root itself must have none (its own parent, if any, is outside the
+    branch that was fetched)."""
+    a = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="A", promoter_code=f"PA-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None,
+    )
+    b = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="B", promoter_code=f"PB-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=a.id,
+    )
+    c = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="C", promoter_code=f"PC-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=b.id,
+    )
+    d = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="D", promoter_code=f"PD-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=b.id,
+    )
+
+    branch = await network_service.get_branch(db, organization_id=organization_id, root_agent_id=a.id)
+    parent_by_agent = {row["agent_id"]: row["parent_agent_id"] for row in branch}
+
+    assert parent_by_agent[a.id] is None
+    assert parent_by_agent[b.id] == a.id
+    assert parent_by_agent[c.id] == b.id
+    assert parent_by_agent[d.id] == b.id
+
+
+@pytest.mark.asyncio
+async def test_get_branch_from_a_non_root_agent_hides_its_own_parent(db, organization_id):
+    """Fetching the branch rooted at B (not the whole org's root A) must not
+    include A -- and B's own parent_agent_id in that fetch must be None, since
+    A was never fetched and the frontend must not try to attach B to a node
+    it doesn't have."""
+    a = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="A", promoter_code=f"QA-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None,
+    )
+    b = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="B", promoter_code=f"QB-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=a.id,
+    )
+    c = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="C", promoter_code=f"QC-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=b.id,
+    )
+
+    branch = await network_service.get_branch(db, organization_id=organization_id, root_agent_id=b.id)
+    agent_ids = {row["agent_id"] for row in branch}
+    parent_by_agent = {row["agent_id"]: row["parent_agent_id"] for row in branch}
+
+    assert a.id not in agent_ids
+    assert parent_by_agent[b.id] is None
+    assert parent_by_agent[c.id] == b.id
+
+
+@pytest.mark.asyncio
 async def test_move_agent_prevents_cycle(db, organization_id):
     a = await network_service.create_agent(
         db, organization_id=organization_id, display_name="A", promoter_code="A2", parent_agent_id=None

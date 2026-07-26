@@ -14,6 +14,7 @@ class CustomerRead(BaseModel):
     email: str
     phone: str | None
     pec: str | None
+    photo_url: str | None
     display_name: str
 
 
@@ -96,3 +97,10 @@ class SupplyPointUpdate(BaseModel):
 class CustomerDetailRead(CustomerRead):
     addresses: list[AddressRead] = []
     supply_points: list[SupplyPointRead] = []
+    current_promoter_agent_id: uuid.UUID | None = None
+    current_promoter_name: str | None = None
+
+
+class ReassignPromoterRequest(BaseModel):
+    new_agent_id: uuid.UUID
+    reason: str

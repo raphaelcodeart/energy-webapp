@@ -46,3 +46,14 @@ def hash_refresh_token(token: str) -> str:
     import hashlib
 
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def generate_password_reset_token() -> str:
+    """Same shape as a refresh token (opaque, high-entropy, hashed at rest) --
+    separate function only so call sites read clearly, not because the
+    underlying mechanism differs."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_password_reset_token(token: str) -> str:
+    return hash_refresh_token(token)

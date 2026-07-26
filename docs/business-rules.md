@@ -157,6 +157,64 @@ formula is implemented yet — only the extension point.
   open a ticket directly "about this contract" instead of the admin having to guess
   which one they mean from free text.
 
+## Promoter reassignment
+
+- An admin can move a customer's attribution from one promoter to another
+  (`POST /customers/{id}/reassign-promoter`) -- but a customer can never end up
+  with NO promoter ("nessuno può stare senza promoter che lo invita" is a closed
+  circuit both at registration and afterward): reassignment is rejected if the
+  customer has no existing `customer_attributions` row to correct in the first
+  place (e.g. a customer created directly by admin, never through a referral
+  link, has none).
+- Reassigning to the SAME promoter the customer is already attributed to is
+  rejected as a no-op, not silently accepted -- it would create a meaningless
+  `attribution_corrections` audit row.
+- Every reassignment writes an `attribution_corrections` row (previous promoter,
+  new promoter, who requested it, why) -- this table existed since the first
+  session's schema but had no code path writing to it until this feature.
+- Reassignment only changes future commission attribution going forward; it never
+  retroactively touches `network_snapshots` or past `commission_movements` for
+  contracts already activated under the previous promoter (same "frozen at
+  activation" rule as everywhere else commission chains are involved).
+
+## Photo uploads
+
+- Customer, promoter, and product photos are stored in a bucket
+  (`lial-media`/`S3_BUCKET_MEDIA`) that is deliberately SEPARATE from and less
+  restrictive than the documents bucket (`lial-documents`): public-read, no
+  signed URLs, because these are ordinary profile/product photos, not sensitive
+  documents. Never put anything sensitive in this bucket -- see
+  `security-model.md §Documents`.
+- Uploads are validated server-side regardless of what the browser claims:
+  content-type must be one of `image/jpeg|png|webp|gif`, max 5 MB
+  (`core/storage.py::upload_media()`). A new upload never overwrites the
+  previous photo's object in place -- it gets a fresh random key and the
+  `photo_url` column is repointed; the old object is simply orphaned (not worth
+  a cleanup job for a handful of KB-sized images).
+- If no photo has been uploaded, `photo_url` is `NULL` and every list/detail view
+  shows a generic person icon -- never a broken `<img>` tag.
+
+## Password reset
+
+- `POST /auth/forgot-password` always returns success regardless of whether the
+  email exists for that organization -- the same enumeration-safety principle as
+  login. If the account is real, a `password_reset_tokens` row is created: an
+  opaque random token (only its sha256 hash persisted), expiring in 60 minutes,
+  single-use (`used_at`).
+- Email delivery is real SMTP when `SMTP_HOST` is configured (`core/email.py`); if
+  not, the reset link is written to the API process log only
+  (`docker compose logs api`) -- **never** to `audit_log` or any other place a
+  web-UI role could read it, since that would let staff take over any account by
+  reading its reset link. This is a genuine, working fallback, not a stub: the
+  link is real and valid the moment it's generated, only its delivery channel
+  differs.
+- `POST /auth/reset-password` (token + new password) revokes every active session
+  for that user on success -- a password reset is exactly the moment to assume the
+  old password may have leaked, so anyone still logged in with it is logged out.
+- Both endpoints are rate-limited per client IP (`core/rate_limit.py`, Redis
+  fixed-window counter) -- 5 requests/5min for `forgot-password`, 10/5min for
+  `reset-password` -- independent of the per-account lockout in `authenticate()`.
+
 ## GDPR notes
 
 Consent versions, retention periods, and the legal basis for each processing purpose

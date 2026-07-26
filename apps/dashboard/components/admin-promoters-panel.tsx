@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PhotoUpload } from "@/components/photo-upload";
 import type { AgentListItemRead, RankRead } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -20,6 +21,24 @@ async function fetchRanks(): Promise<RankRead[]> {
   const res = await fetch("/api/proxy/commissions/ranks");
   if (!res.ok) throw new Error("Impossibile caricare le qualifiche.");
   return res.json();
+}
+
+function AgentAvatar({ url, size = 36 }: { url: string | null; size?: number }) {
+  return (
+    <div
+      className="rounded-full overflow-hidden border border-white/10 light:border-slate-200 bg-slate-800 light:bg-slate-100 flex items-center justify-center shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- externally-hosted, variable-source uploaded photo
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <svg className="w-1/2 h-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+        </svg>
+      )}
+    </div>
+  );
 }
 
 export function AdminPromotersPanel() {
@@ -43,6 +62,49 @@ export function AdminPromotersPanel() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const nameById = new Map((agents ?? []).map((a) => [a.id, a.display_name]));
+
+  // Edit
+  const [editingAgent, setEditingAgent] = useState<AgentListItemRead | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editStatus, setEditStatus] = useState("ACTIVE");
+  const [editRankId, setEditRankId] = useState("");
+  const [editPhotoUrl, setEditPhotoUrl] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openEdit(a: AgentListItemRead) {
+    setEditDisplayName(a.display_name);
+    setEditStatus(a.status);
+    setEditRankId(a.current_rank_id ?? "");
+    setEditPhotoUrl(a.photo_url);
+    setEditError(null);
+    setEditingAgent(a);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingAgent) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/proxy/network/agents/${editingAgent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: editDisplayName,
+          status: editStatus,
+          current_rank_id: editRankId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setEditingAgent(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "agents"] });
+    } catch (err: any) {
+      setEditError(err.message || "Impossibile salvare le modifiche.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -109,21 +171,24 @@ export function AdminPromotersPanel() {
           <table className="w-full border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold">
+                <th className="py-3 px-6"></th>
                 <th className="py-3 px-6">Nome</th>
                 <th className="py-3 px-6">Codice</th>
                 <th className="py-3 px-6">Qualifica</th>
                 <th className="py-3 px-6">Sponsor</th>
                 <th className="py-3 px-6">Stato</th>
+                <th className="py-3 px-6 text-right">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {agents === undefined ? (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-500">Caricamento...</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-slate-500">Caricamento...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-500">Nessun promoter trovato.</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-slate-500">Nessun promoter trovato.</td></tr>
               ) : (
                 filtered.map((a) => (
                   <tr key={a.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
+                    <td className="py-4 px-6"><AgentAvatar url={a.photo_url} /></td>
                     <td className="py-4 px-6 font-medium text-white light:text-slate-900">{a.display_name}</td>
                     <td className="py-4 px-6 font-mono text-xs">{a.promoter_code}</td>
                     <td className="py-4 px-6">
@@ -138,6 +203,17 @@ export function AdminPromotersPanel() {
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[a.status] ?? STATUS_COLORS.ACTIVE}`}>
                         {a.status}
                       </span>
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <button
+                        onClick={() => openEdit(a)}
+                        title="Modifica promoter"
+                        className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -214,6 +290,92 @@ export function AdminPromotersPanel() {
                 <button type="submit" disabled={createLoading}
                   className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
                   {createLoading ? "Creazione..." : "Crea Promoter"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white light:text-slate-900">Modifica Promoter</h3>
+              <button onClick={() => setEditingAgent(null)}
+                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-5 pb-5 border-b border-white/5 light:border-slate-200">
+              <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block mb-2">Foto profilo</label>
+              <PhotoUpload
+                currentUrl={editPhotoUrl}
+                uploadPath={`network/agents/${editingAgent.id}/photo`}
+                onUploaded={(url) => {
+                  setEditPhotoUrl(url);
+                  queryClient.invalidateQueries({ queryKey: ["admin", "agents"] });
+                }}
+                alt={editingAgent.display_name}
+              />
+            </div>
+
+            <form onSubmit={handleEditSave} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome e Cognome</label>
+                <input required value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Promoter</label>
+                <input disabled value={editingAgent.promoter_code}
+                  title="Il codice promoter non è modificabile: è incorporato nei link di invito già condivisi"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono opacity-60 cursor-not-allowed" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Qualifica</label>
+                <select
+                  value={editRankId}
+                  onChange={(e) => setEditRankId(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  <option value="">— Nessuna —</option>
+                  {ranks.map((r) => (
+                    <option key={r.id} value={r.id}>{r.code} — {r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Stato</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  <option value="ACTIVE">Attivo</option>
+                  <option value="SUSPENDED">Sospeso</option>
+                  <option value="TERMINATED">Cessato</option>
+                </select>
+              </div>
+
+              {editError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{editError}</div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setEditingAgent(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer">
+                  Annulla
+                </button>
+                <button type="submit" disabled={editLoading}
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
+                  {editLoading ? "Salvataggio..." : "Salva Modifiche"}
                 </button>
               </div>
             </form>

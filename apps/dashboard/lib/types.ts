@@ -34,6 +34,7 @@ export type BranchMemberRead = {
   promoter_code: string;
   status: string;
   rank_code: string | null;
+  parent_agent_id: string | null;
 };
 
 export type AgentProfileRead = {
@@ -42,6 +43,7 @@ export type AgentProfileRead = {
   display_name: string;
   promoter_code: string;
   status: string;
+  photo_url: string | null;
   current_rank_id: string | null;
 };
 
@@ -70,6 +72,7 @@ export type CustomerRead = {
   email: string;
   phone: string | null;
   pec: string | null;
+  photo_url: string | null;
   display_name: string;
 };
 
@@ -96,6 +99,8 @@ export type SupplyPointRead = {
 export type CustomerDetailRead = CustomerRead & {
   addresses: AddressRead[];
   supply_points: SupplyPointRead[];
+  current_promoter_agent_id: string | null;
+  current_promoter_name: string | null;
 };
 
 export type AgentListItemRead = {
@@ -103,6 +108,7 @@ export type AgentListItemRead = {
   display_name: string;
   promoter_code: string;
   status: string;
+  photo_url: string | null;
   current_rank_id: string | null;
   rank_code: string | null;
   direct_parent_agent_id: string | null;

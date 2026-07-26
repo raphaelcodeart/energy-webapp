@@ -104,21 +104,30 @@ cp .env.example .env
 # genera segreti forti al posto dei placeholder:
 python3 -c "
 import secrets
+minio_secret = secrets.token_hex(24)
 print('POSTGRES_PASSWORD=' + secrets.token_hex(24))
 print('JWT_SECRET_KEY=' + secrets.token_hex(32))
 print('MINIO_ROOT_USER=lial_minio_admin')
-print('MINIO_ROOT_PASSWORD=' + secrets.token_hex(24))
+print('MINIO_ROOT_PASSWORD=' + minio_secret)
 print('S3_ACCESS_KEY=lial_minio_admin')
-print('S3_SECRET_KEY=' + secrets.token_hex(24))
+print('S3_SECRET_KEY=' + minio_secret)   # <-- SAME value as MINIO_ROOT_PASSWORD, not a separate one -- see §8 #12
 "
 # incolla questi valori dentro .env al posto dei placeholder corrispondenti
 ```
 
 Variabili che vanno adattate al nuovo server (non generate a caso):
-- `NEXT_PUBLIC_APP_URL` — l'URL pubblico con cui si accederà (`http://IP-NUOVO-SERVER`
-  o `https://tuodominio.it` se hai già DNS+TLS pronti)
+- `NEXT_PUBLIC_APP_URL` e `PUBLIC_APP_BASE_URL` — stesso valore, l'URL pubblico
+  con cui si accederà (`http://IP-NUOVO-SERVER` o `https://tuodominio.it` se hai
+  già DNS+TLS pronti). `PUBLIC_APP_BASE_URL` è usata server-side dall'API per
+  costruire il link nelle email di reset password.
 - `API_INTERNAL_URL` — lascialo `http://api:8000` (è interno alla rete Docker, non
   cambia mai tra server)
+- `MINIO_REGION` — deve essere UGUALE a `S3_REGION` (default `eu-central-1` in
+  entrambi) — vedi §8 #12 se li disallinei per errore.
+- `SMTP_*` — opzionali, lascia `SMTP_HOST` vuoto per partire senza email (i link
+  di reset password restano validi, solo loggati invece che inviati — vedi
+  `business-rules.md §Password reset`); compilali quando hai un provider SMTP
+  reale.
 
 **Mai committare `.env` nel repository.** È già in `.gitignore`; se `git status`
 lo mostra come modificabile, fermati e controlla prima di fare qualsiasi `git add`.
@@ -294,7 +303,7 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only`) del database in esecuzione,
-non una ricostruzione a memoria. Contiene tutte le 43 tabelle con tipi esatti,
+non una ricostruzione a memoria. Contiene tutte le 46 tabelle con tipi esatti,
 vincoli, indici, foreign key.
 
 La spiegazione **concettuale** (perché ogni tabella esiste, come si collegano,
@@ -316,20 +325,24 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 43 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 46 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
-                    user_roles, sessions, audit_log
-Rete commerciale:  agent_profiles, network_nodes, network_edges,
-                    network_closure, network_assignment_history,
+                    user_roles, sessions, audit_log, password_reset_tokens
+Rete commerciale:  agent_profiles (ha anche photo_url), network_nodes,
+                    network_edges, network_closure, network_assignment_history,
                     network_snapshots, network_snapshot_nodes
 Referral:          promoter_codes, referral_events, referral_sessions,
                     customer_attributions, attribution_corrections
-Catalogo/clienti:  products, product_versions, customers, customer_profiles,
-                    companies, addresses, supply_points
-Contratti:         contracts, contract_status_history, contract_events,
+Catalogo/clienti:  products, product_versions (ha anche
+                    contract_duration_months), customers (ha anche photo_url),
+                    customer_profiles, companies, addresses,
+                    supply_points (ha anche label)
+Contratti:         contracts (ha anche activated_at/expires_at),
+                    contract_status_history, contract_events,
                     contract_attributions
+Supporto:          tickets, ticket_messages
 Provvigioni:       ranks, agent_rank_history, commission_plan_versions,
                     commission_rule_versions, commission_calculations,
                     commission_calculation_steps, commission_movements,
@@ -339,13 +352,31 @@ Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```
 
+**Object storage (non nel database Postgres)**: due bucket MinIO/S3, entrambi
+creati/gestiti dall'applicazione, mai a mano:
+- `lial-documents` (`S3_BUCKET_DOCUMENTS`) — privato, riservato a documenti
+  reali (dominio `documents`, non ancora costruito in questa versione).
+- `lial-media` (`S3_BUCKET_MEDIA`) — pubblico in lettura (foto profilo
+  cliente/promoter, foto prodotto), creato automaticamente con la sua policy
+  di lettura anonima al primo avvio del container `api`
+  (`app/core/storage.py::ensure_media_bucket()`, chiamata da un evento di
+  startup FastAPI in `main.py`) -- non serve `mc mb` manuale. Le foto sono
+  servite al browser tramite `https://tuodominio/media/...`
+  (`infrastructure/nginx/nginx.conf`, proxy diretto a MinIO), MAI tramite
+  l'host Docker interno `minio:9000`, che non è raggiungibile da fuori la rete
+  Docker.
+
 ## 7. Mappa del codice (per orientarsi velocemente)
 
 ```
 apps/api/app/
-  core/            config, connessione DB, sicurezza (hashing, JWT), dipendenze FastAPI
+  core/            config, connessione DB, sicurezza (hashing, JWT),
+                   dipendenze FastAPI, storage.py (upload MinIO/S3),
+                   email.py (SMTP, fallback a log se non configurato),
+                   rate_limit.py (limite per-IP via Redis su endpoint auth)
   domains/<nome>/  un dominio di business per cartella: models.py, schemas.py,
                    service.py, router.py (+ calculators/policies per commissions)
+                   -- include "support" (ticket cliente/promoter <-> staff)
   celery_app.py    app Celery -- STESSO codice dell'api, non duplicato (vedi
                    apps/worker/README.md e docs/adr/0001-modular-monolith.md)
   seed/            dati demo (python -m app.seed)
@@ -354,13 +385,21 @@ apps/api/app/
 apps/dashboard/app/
   login/           pagina di login
   customer|promoter|admin/   le tre dashboard per ruolo
-  api/auth/        route handler BFF (login/logout) -- QUESTI, non FastAPI
-                   direttamente, sono ciò che il browser chiama su /api/*
-  api/proxy/       proxy autenticato per chiamate client-side (TanStack Query)
+  api/auth/        route handler BFF (login/logout/forgot-password/reset-password)
+                   -- QUESTI, non FastAPI direttamente, sono ciò che il browser
+                   chiama su /api/*
+  api/public/      altre route pubbliche BFF (registrazione via referral,
+                   risoluzione codice referral) -- nessuna sessione richiesta
+  api/proxy/       proxy autenticato per chiamate client-side (TanStack Query),
+                   inoltra anche upload multipart (foto) mantenendo il boundary
   proxy.ts         (era middleware.ts in Next <16) protegge le route autenticate
 
-infrastructure/nginx/nginx.conf   reverse proxy: /backend/ -> FastAPI diretto,
-                                  tutto il resto -> dashboard (BFF)
+infrastructure/nginx/nginx.conf   reverse proxy: /backend/ -> FastAPI diretto
+                                  (proxy_pass STATICO, vedi §8 #11),
+                                  /media/ -> MinIO (foto pubbliche, vedi §6),
+                                  tutto il resto -> dashboard (BFF, proxy_pass
+                                  con variabile + resolver per rebuild senza
+                                  downtime)
 docker-compose.dev.yml            topologia completa (8 servizi)
 scripts/                          deploy, backup, restore, health-check, migrate, rollback
 ```
@@ -409,9 +448,52 @@ probabilmente il problema è un altro. Documentati per intero in
    `nginx -s reload` non basta — serve ricreare il container
    (`docker compose up -d nginx --force-recreate`) perché il bind mount venga
    ristabilito contro il percorso host attuale.
+10. **`nginx -s reload` non basta anche solo dopo aver MODIFICATO
+    `nginx.conf`** (non solo dopo aver toccato `certbot/conf`, vedi punto 9):
+    su questo server un semplice reload non ha ripreso il file bind-mountato
+    aggiornato (89 righe attese, 73 lette) finché non si è fatto
+    `docker compose up -d nginx --force-recreate` (o `restart nginx`). Se dopo
+    un reload `nginx -t` dice "syntax ok" ma il comportamento non cambia,
+    ricrea il container prima di sospettare altro.
+11. **`/backend/*` risponde 500 "invalid URL prefix in http://" su OGNI
+    richiesta**: `location /backend/ { rewrite ^/backend/(.*)$ /$1 break; set
+    $api_upstream api:8000; proxy_pass http://$api_upstream; }` — combinare un
+    `rewrite ... break` con una VARIABILE in `proxy_pass` innesca questo bug
+    nginx reale (non solo teorico: riprodotto su questo server). Fix: per
+    `/backend/` usa un `proxy_pass` STATICO senza variabile
+    (`proxy_pass http://api:8000/;`, senza `rewrite`, con `/` finale sia sulla
+    location che sul target — nginx allora fa da solo lo strip del prefisso,
+    ma SOLO perché non c'è una variabile di mezzo). Con un target statico
+    perdi la ri-risoluzione DNS automatica se il container `api` viene
+    ricreato con un IP diverso mentre nginx resta su — accettabile per
+    `/backend/` (accesso sviluppatore, non il traffico applicativo vero),
+    NON accettabile per `location /` (il proxy verso `dashboard`), che infatti
+    resta con la variabile + `resolver`.
+12. **Upload foto (customer/promoter/product) fallisce con
+    `SignatureDoesNotMatch` su OGNI richiesta a MinIO**: due cause distinte,
+    entrambe reali su questo server, controllale entrambe:
+    - `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` NON erano identiche a
+      `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (stessa lunghezza per
+      coincidenza, valori diversi — probabilmente generate separatamente in
+      una sessione precedente, mai avendo mai avuto un consumatore reale
+      finché non è stato scritto `core/storage.py`). Devono essere
+      **letteralmente la stessa stringa**.
+    - `MINIO_REGION` non era impostata sul container MinIO (default
+      `us-east-1`), mentre il client boto3 firma le richieste per
+      `S3_REGION=eu-central-1` — il mismatch di regione rompe la firma SigV4
+      indipendentemente dalle credenziali. Imposta `MINIO_REGION` uguale a
+      `S3_REGION`.
+13. **Foto caricata non si vede nel browser (404 o connessione rifiutata)**:
+    MinIO non è raggiungibile da internet (nessuna porta pubblicata per la
+    9000 nel compose) — un browser non può MAI caricare
+    `http://minio:9000/...` (hostname Docker interno, non risolve fuori dalla
+    rete Docker). Le foto vanno sempre servite tramite
+    `https://tuodominio/media/...`, che nginx inoltra internamente a MinIO
+    (`location /media/` in `nginx.conf`) — se manca quel blocco, aggiungilo
+    prima di sospettare un bug nell'upload.
 
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
-risolto, per lo stesso motivo per cui questi nove lo sono.
+risolto, per lo stesso motivo per cui questi lo sono.
 
 ## 9. Cosa NON aspettarsi che funzioni già
 

@@ -29,6 +29,13 @@ prima non era così, era un bug reale corretto.
 Puoi passare tra **modalità giorno e notte** dall'icona in alto a destra —
 giorno è la modalità di partenza per chiunque apra il sito per la prima volta.
 
+**Password dimenticata?** Link "Password dimenticata?" sotto il campo password
+nel login → inserisci Organization ID ed email → ricevi un link per scegliere
+una nuova password (valido 60 minuti, utilizzabile una sola volta). Se non
+arriva un'email, chiedi a chi amministra il sistema: finché non è configurato
+un server SMTP, il link viene generato comunque ma non recapitato via email —
+va recuperato manualmente lato server.
+
 ## 2. Registrazione: solo su invito
 
 **Non esiste un modulo di registrazione pubblico aperto a chiunque.** Ogni
@@ -37,9 +44,11 @@ nuovo cliente entra nel sistema tramite il **link personale di un promoter**
 design: nessun cliente può esistere senza un promoter che lo ha invitato.
 
 Chi clicca un link di invito vede una pagina con: nome del promoter che lo ha
-invitato, l'eventuale offerta consigliata (se il promoter ha condiviso un
-prodotto specifico), e un modulo con: tipologia (privato/azienda), nome e
-cognome (o ragione sociale), telefono, email, password. Alla conferma, l'account
+invitato, l'eventuale offerta consigliata (mostrata per nome, non come codice
+tecnico — se il promoter ha condiviso un prodotto specifico), e un modulo con:
+tipologia (privato/azienda), nome e cognome (o ragione sociale), telefono,
+email, password (richiesta due volte per conferma, per evitare refusi). Alla
+conferma, l'account
 viene creato **già collegato al promoter che lo ha invitato** — questo
 collegamento (in `customer_attributions`) è permanente e non richiede nessuna
 azione successiva.
@@ -94,7 +103,10 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   l'amministrazione ha lasciato una nota (es. "manca il documento di identità")
   la vedi direttamente sotto il contratto interessato.
 - **Rete Commerciale** — l'albero visivo della tua rete, colorato per livello
-  (fino a 12), con nomi reali (non solo codici), qualifiche ed espandi/comprimi.
+  (fino a 12), con nomi reali (non solo codici), qualifiche. Naviga livello per
+  livello: si apre subito il tuo primo livello (i tuoi diretti), poi clicchi
+  su una persona per aprire il livello sotto di lei, e così via — non un unico
+  elenco con tutto espanso insieme.
 - **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
   pulsante **Condividi** su ogni prodotto: copia negli appunti un link diretto
   a quel prodotto con il tuo codice promoter già incorporato, pronto da inviare
@@ -133,19 +145,32 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   promoter/venditore che ha portato la vendita, con una nota libera opzionale
   (utile per l'amministrazione — chi lo ha invitato, con quale promozione,
   preferenze di contatto).
-- **Anagrafiche Clienti** — tabella con nome vero in evidenza; ogni riga ha
-  un'icona **Mostra** (popup con tutti i dati: indirizzi, punti di fornitura,
-  dati fiscali) e **Modifica**. Non c'è ancora un'azione di eliminazione — un
-  cliente non può essere cancellato senza rischiare di orfanizzare i suoi
-  contratti, quindi non è stato aggiunto un pulsante che non farebbe nulla di
-  sicuro.
-- **Anagrafiche Promoter** — tabella agenti con qualifica e sponsor.
+- **Anagrafiche Clienti** — foto profilo (o icona generica se non caricata) in
+  ogni riga; icona **Mostra** apre un popup con tutti i dati (indirizzi, punti
+  di fornitura, dati fiscali) e in più un **riepilogo contratti**: prodotto,
+  stato colorato (verde se attivo/rinnovato, rosso se respinto/cessato,
+  ambra se in lavorazione), scadenza — clicca una riga per il dettaglio
+  (date esatte, note, id). L'icona **Modifica** apre una schermata completa:
+  carica/cambia la foto profilo, modifica i dati anagrafici, e in fondo
+  **Riassegna Promoter** (cambia a quale promoter il cliente è attribuito,
+  con motivazione obbligatoria — tracciato come le altre modifiche). Non c'è
+  ancora un'azione di eliminazione — un cliente non può essere cancellato
+  senza rischiare di orfanizzare i suoi contratti, quindi non è stato aggiunto
+  un pulsante che non farebbe nulla di sicuro.
+- **Anagrafiche Promoter** — foto profilo (o icona generica) per ogni agente;
+  tabella con qualifica e sponsor, e ora anche un'icona **Modifica**: nome,
+  foto, qualifica e stato (attivo/sospeso/cessato) sono modificabili (il
+  codice promoter no, è incorporato nei link di invito già condivisi).
 - **Prodotti & Marketplace** — catalogo con foto, prezzo, IVA; pulsante
   **Modifica** su ogni prodotto. Il tipo di prodotto non è più solo "contratto
-  energia": puoi scegliere anche Digitale, Fisico o Abbonamento.
+  energia": puoi scegliere anche Digitale, Fisico o Abbonamento. La foto si
+  può sia incollare come link sia **caricare direttamente un file** dalla
+  schermata di modifica, con anteprima di quella già presente.
 - **Rete Commerciale** — a differenza della vista del promoter (limitata al
   proprio ramo), qui vedi **l'intera organizzazione**: tutti i rami, con
-  ricerca ed espandi/comprimi.
+  ricerca ed espandi/comprimi. Naviga livello per livello come nella vista
+  promoter — "Espandi tutto" o una ricerca forzano l'apertura di tutti i
+  livelli in una volta.
 - **Ticket di Supporto** — tutti i ticket aperti da clienti e promoter, con
   filtro per chi li ha aperti e per stato; rispondi e la risposta appare
   subito nell'area del cliente/promoter. Una risposta su un ticket "Aperto" lo

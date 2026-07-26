@@ -1,11 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
+from app.core.storage import UploadValidationError, upload_media
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
 from app.domains.network.schemas import (
@@ -178,6 +179,30 @@ async def update_agent(
         status_value=payload.status,
         current_rank_id=payload.current_rank_id,
         actor_user_id=current_user.user_id,
+    )
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+    return AgentProfileRead.model_validate(agent)
+
+
+@router.post("/agents/{agent_id}/photo", response_model=AgentProfileRead)
+async def upload_agent_photo(
+    agent_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("network.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> AgentProfileRead:
+    file_bytes = await file.read()
+    try:
+        photo_url = upload_media(
+            file_bytes=file_bytes, content_type=file.content_type or "", key_prefix="photos/promoters"
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    agent = await network_service.set_agent_photo(
+        db, organization_id=current_user.organization_id, agent_id=agent_id,
+        photo_url=photo_url, actor_user_id=current_user.user_id,
     )
     if agent is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")

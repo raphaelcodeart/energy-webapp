@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.db import utcnow
 from app.domains.audit import service as audit_service
 from app.domains.referral.models import (
+    AttributionCorrection,
     CustomerAttribution,
     PromoterCode,
     ReferralEvent,
@@ -158,3 +159,71 @@ async def attribute_customer(
     await db.commit()
     await db.refresh(attribution)
     return attribution
+
+
+class ReassignmentError(Exception):
+    pass
+
+
+async def get_current_attribution(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID
+) -> CustomerAttribution | None:
+    stmt = (
+        select(CustomerAttribution)
+        .where(CustomerAttribution.organization_id == organization_id, CustomerAttribution.customer_id == customer_id)
+        .order_by(CustomerAttribution.attributed_at.desc())
+    )
+    return (await db.execute(stmt)).scalars().first()
+
+
+async def reassign_customer_promoter(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    new_agent_id: uuid.UUID,
+    requested_by: uuid.UUID,
+    reason: str,
+) -> CustomerAttribution:
+    """Changes which promoter a customer is attributed to -- admin-only
+    (see customers/router.py). "nessuno può stare senza promoter che lo
+    invita" (business-rules.md) means every customer keeps an attribution,
+    it just moves from one promoter to another; a customer is never left
+    unattributed. AttributionCorrection is a pre-existing, previously-unused
+    schema (referral/models.py) built for exactly this -- the audit trail of
+    who moved a customer from which promoter to which, requested by whom,
+    and why."""
+    current = await get_current_attribution(db, organization_id=organization_id, customer_id=customer_id)
+    if current is None:
+        raise ReassignmentError("This customer has no existing promoter attribution to correct")
+
+    new_promoter_code = await get_or_create_promoter_code(
+        db, organization_id=organization_id, agent_id=new_agent_id
+    )
+    if new_promoter_code.id == current.promoter_code_id:
+        raise ReassignmentError("Customer is already attributed to this promoter")
+
+    db.add(
+        AttributionCorrection(
+            organization_id=organization_id,
+            customer_attribution_id=current.id,
+            previous_promoter_code_id=current.promoter_code_id,
+            new_promoter_code_id=new_promoter_code.id,
+            requested_by=requested_by,
+            approved_by=requested_by,  # admin-only action -- see router.py permission gate
+            reason=reason,
+        )
+    )
+    previous_promoter_code_id = current.promoter_code_id
+    current.promoter_code_id = new_promoter_code.id
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=requested_by,
+        action="referral.customer_reassigned", entity_type="customer", entity_id=str(customer_id),
+        previous_value={"promoter_code_id": str(previous_promoter_code_id)},
+        new_value={"promoter_code_id": str(new_promoter_code.id)},
+        reason=reason,
+    )
+    await db.commit()
+    await db.refresh(current)
+    return current

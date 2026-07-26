@@ -36,21 +36,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { path } = await params;
   const search = request.nextUrl.search;
-  
-  let bodyContent: string | undefined;
-  try {
-    bodyContent = await request.text();
-  } catch {
-    bodyContent = undefined;
-  }
+  const requestContentType = request.headers.get("content-type") ?? "";
+
+  // Multipart (file uploads, e.g. photo-upload.tsx) must be forwarded as raw
+  // bytes with the ORIGINAL content-type (including its boundary) -- reading
+  // it as text() and re-sending as application/json (the JSON-only path
+  // below) would corrupt the binary body and lose the boundary entirely.
+  const isMultipart = requestContentType.startsWith("multipart/form-data");
 
   const apiRes = await fetch(`${API_INTERNAL_URL}/api/${path.join("/")}${search}`, {
     method: "POST",
-    headers: { 
+    headers: {
       Authorization: `Bearer ${session.accessToken}`,
-      "Content-Type": "application/json",
+      "Content-Type": isMultipart ? requestContentType : "application/json",
     },
-    body: bodyContent,
+    body: isMultipart ? await request.arrayBuffer() : await request.text().catch(() => undefined),
     cache: "no-store",
   });
 

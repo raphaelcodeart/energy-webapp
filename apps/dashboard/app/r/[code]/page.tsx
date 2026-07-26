@@ -25,7 +25,8 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
   const { code } = use(params);
   const searchParams = useSearchParams();
   const organizationId = searchParams.get("org") ?? "";
-  const productName = searchParams.get("product");
+  const productId = searchParams.get("product");
+  const productName = searchParams.get("product_name");
   const router = useRouter();
 
   const { data: promoterCode, error: resolveErrorObj, isLoading: resolving } = useQuery({
@@ -41,6 +42,7 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
   const [kind, setKind] = useState("PRIVATE");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -52,6 +54,10 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
+    if (password !== passwordConfirm) {
+      setSubmitError("Le due password non coincidono.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/public/register", {
@@ -120,9 +126,11 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
                 Sei stato invitato da un promoter Lial Energy
               </span>
               {productName && (
-                <p className="text-sm text-slate-300 light:text-slate-600 mt-3">
-                  Offerta consigliata: <span className="font-semibold text-white light:text-slate-900">{productName}</span>
-                </p>
+                <div className="mt-3">
+                  <p className="text-xs text-slate-400 light:text-slate-500">Offerta consigliata</p>
+                  <p className="text-sm font-semibold text-white light:text-slate-900">{productName}</p>
+                  {productId && <p className="font-mono text-[10px] text-slate-500">{productId}</p>}
+                </div>
               )}
               <h1 className="text-xl font-bold text-white light:text-slate-900 mt-2">Completa la registrazione</h1>
             </div>
@@ -176,6 +184,18 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
                 <input required type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
                   placeholder="Almeno 8 caratteri"
                   className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Ripeti Password</label>
+                <input required type="password" minLength={8} value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
+                  placeholder="Ripeti la password"
+                  className={`w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 ${
+                    passwordConfirm && password !== passwordConfirm ? "border-rose-500/50" : ""
+                  }`} />
+                {passwordConfirm && password !== passwordConfirm && (
+                  <p className="text-[11px] text-rose-400">Le password non coincidono.</p>
+                )}
               </div>
 
               {submitError && (

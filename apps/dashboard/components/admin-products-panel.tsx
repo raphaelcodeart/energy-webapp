@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PhotoUpload } from "@/components/photo-upload";
 import type { ProductCatalogRead } from "@/lib/types";
 
 const ENERGY_LABELS: Record<string, string> = {
@@ -92,9 +93,15 @@ function ProductFormFields({
 
       <div className="space-y-1">
         <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Foto prodotto (URL immagine)</label>
-        <input value={form.imageUrl} onChange={(e) => onChange({ imageUrl: e.target.value })}
-          placeholder="https://..."
-          className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+        <div className="flex items-center gap-3">
+          {form.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- externally-hosted, variable-source image (URL or uploaded)
+            <img src={form.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover border border-white/10 light:border-slate-200 shrink-0" />
+          )}
+          <input value={form.imageUrl} onChange={(e) => onChange({ imageUrl: e.target.value })}
+            placeholder="https://..."
+            className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -432,6 +439,22 @@ export function AdminProductsPanel() {
               </button>
             </div>
             <p className="font-mono text-[10px] text-slate-500 mb-4">{editingProduct.code}</p>
+
+            {editingProduct.current_version && (
+              <div className="mb-5 pb-5 border-b border-white/5 light:border-slate-200">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block mb-2">Carica foto</label>
+                <PhotoUpload
+                  currentUrl={editForm.imageUrl || null}
+                  uploadPath={`products/versions/${editingProduct.current_version.id}/photo`}
+                  onUploaded={(url) => {
+                    setEditForm((f) => ({ ...f, imageUrl: url }));
+                    queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+                  }}
+                  alt={editingProduct.current_version.name}
+                  size={72}
+                />
+              </div>
+            )}
 
             <form onSubmit={handleEditSave} className="space-y-4">
               <ProductFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} />

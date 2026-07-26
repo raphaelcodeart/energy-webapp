@@ -4,6 +4,118 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 13 — 2026-07-26 (same day, continued) — Network tree bug fix, password reset, photo uploads (customer/promoter/product), promoter reassignment, security hardening, three real nginx/MinIO bugs found and fixed
+
+Continuation of another large multi-part request. All items below were built,
+tested, and verified live:
+
+- **Real bug fixed -- network tree navigation**: `network/service.py::get_branch()`
+  had no `ORDER BY` and the frontend (`branch-visualizer.tsx::buildTree()`)
+  assumed the flat row list came back in pre-order traversal order to
+  reconstruct the parent/child hierarchy. Postgres never guarantees that for a
+  plain `WHERE id IN (...)`, so whenever it didn't, most of the tree silently
+  failed to attach to its real parent -- exactly the reported symptom ("only
+  see the first name, opening a level shows nothing"). Fixed by joining
+  `network_nodes.direct_parent_agent_id` into `BranchMemberRead` as
+  `parent_agent_id` and rebuilding the tree strictly from that field via a
+  map, never row order. Also changed `TreeNodeRenderer` so each level starts
+  collapsed by default (only the root/level-1 boundary starts open), giving
+  real "open one level, then the next" navigation instead of one giant
+  all-levels-expanded dump -- `forceOpen` still cascades for the admin's
+  "espandi tutto"/search.
+- **Referral share link display bug fixed**: the `/r/[code]` landing page read
+  the `product` query param (a raw UUID) for "Offerta consigliata" display --
+  the share button had always set BOTH `product` (id) and `product_name`
+  (the actual name) but the landing page only ever read the former. Now shows
+  the name prominently with the id small below, matching the "name
+  prominent, id small below" rule applied everywhere else.
+- **Password confirmation** added to the referral registration form
+  (client-side match validation) and to the new reset-password form.
+- **Password recovery, built end-to-end**: `password_reset_tokens` table
+  (migration `0007`), `POST /auth/forgot-password` (always enumeration-safe)
+  and `POST /auth/reset-password` (single-use, 60-min expiry, revokes every
+  session on success), `/forgot-password` and `/reset-password` pages. Real
+  SMTP delivery when configured (`core/email.py`, new `SMTP_*` settings);
+  when not configured, the reset link is logged to the API process log only
+  -- deliberately never to `audit_log` or anywhere a web-UI role could read
+  it (that would let staff take over any account). Verified live: request →
+  log fallback → reset → new password works → old password rejected → token
+  correctly single-use.
+- **Rate limiting** (`core/rate_limit.py`, Redis fixed-window per client IP,
+  fails open) on login/register/forgot-password/reset-password. Required
+  fixing uvicorn to run with `--proxy-headers --forwarded-allow-ips` so
+  `request.client.host` reflects the real visitor behind nginx instead of
+  nginx's own container IP -- previously every request looked like it came
+  from the same source, silently defeating both rate limiting and
+  `audit_log.ip_address`. Verified live: 11th login attempt in a window
+  correctly 429s.
+- **`/backend/docs` gating**: `ENABLE_API_DOCS` setting (default true, keeping
+  today's behavior) controls whether `/docs`/`/redoc`/`/openapi.json` exist at
+  all -- set false for a real production deployment.
+- **Baseline nginx security headers**: `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`. No CSP
+  yet (would need a nonce-based policy to not break Next.js's inline
+  hydration scripts -- tracked as a follow-up, not guessed at).
+- **Real bug found and fixed -- `/backend/*` returned 500 on every request**:
+  discovered while verifying the docs-gating control actually worked.
+  `location /backend/` combined a `rewrite ... break` with a VARIABLE in
+  `proxy_pass` -- a genuine nginx bug (confirmed live, not theoretical),
+  distinct from the prefix-stripping behavior a variable-based `proxy_pass`
+  actually has (it forwards the ORIGINAL unstripped URI, which was the first,
+  also-broken fix attempt). Resolved with a static `proxy_pass` target for
+  this location specifically (trading the dashboard proxy's zero-downtime
+  re-resolution for simplicity, acceptable since `/backend/` is developer
+  convenience, not the app's own request flow).
+- **Photo uploads, built end-to-end** for customers, promoters, and products:
+  new public-read MinIO bucket `lial-media` (`core/storage.py`), separate
+  from the private documents bucket, auto-created with its anonymous-read
+  policy on API startup. Served to browsers via a new nginx `location
+  /media/` proxying directly to MinIO (MinIO itself isn't internet-reachable).
+  New `photo_url` columns on `customers`/`agent_profiles` (migration `0008`),
+  upload endpoints (`POST .../photo`, multipart), a shared `PhotoUpload`
+  React component (preview, fallback person icon when no photo), wired into
+  the customer edit modal, a brand-new promoter edit modal (promoters were
+  not editable in the admin UI at all before this), and the product edit
+  modal (alongside the existing paste-a-URL field, with a live thumbnail
+  preview).
+  - **Two real infrastructure bugs found and fixed while wiring this up**:
+    (1) `S3_ACCESS_KEY`/`S3_SECRET_KEY` in `.env` were NOT actually identical
+    to `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (same length, different
+    values -- silently wrong since nothing had ever authenticated against
+    MinIO with them before this session). (2) MinIO had no `MINIO_REGION`
+    set (defaults to `us-east-1`) while the app signs requests for
+    `eu-central-1`, breaking SigV4 signature verification regardless of
+    credentials. Both fixed; documented in `server-migration-guide.md §8` so
+    a fresh server setup doesn't reintroduce either.
+  - The BFF's generic proxy route (`/api/proxy/[...path]`) needed a fix too:
+    it unconditionally read every POST body as text and forced
+    `Content-Type: application/json`, which would have corrupted a multipart
+    upload's binary body and dropped its boundary. Now branches on the
+    incoming content-type.
+- **Admin: customer edit graphically improved** (photo upload section) and
+  a working "Riassegna Promoter" control wired to a new
+  `POST /customers/{id}/reassign-promoter` endpoint
+  (`referral/service.py::reassign_customer_promoter()`) -- the customer
+  keeps *some* promoter always; reassignment is rejected if there's no
+  existing attribution to correct, or if the target is the same promoter
+  already attributed. Writes an `attribution_corrections` row (a
+  pre-existing, previously-unused schema table, same story as
+  `customer_attributions` before Session 10).
+- **Admin: customer view -- contract summary table** added (product, supply
+  point, status color-coded green/amber/red/grey, expiry date), clicking a
+  row expands an inline detail (created/activated dates, notes, id) --
+  simpler than a second stacked modal, still gets to "click through to the
+  contract's detail" without a dedicated contract-detail route that doesn't
+  exist yet.
+- Backend: 57 tests passing (was 46 at the end of Session 12 -- new tests for
+  the `get_branch()` parent-linkage fix, the password reset flow, and
+  promoter reassignment). Frontend: clean `tsc --noEmit`, clean `eslint`,
+  clean `next build`. Verified live over HTTPS: photo upload for all three
+  entity types (with the uploaded object confirmed publicly fetchable
+  through nginx), promoter reassignment both directions with the audit trail
+  confirmed in the database, the full password-reset round trip, and the
+  rate limiter actually triggering a 429.
+
 ## Session 12 — 2026-07-26 (same day, continued) — Contract expiry/renewal, supply point labels, support tickets, network stats + drill-down, admin-to-promoter notes, font + section banners
 
 Continuation of another large multi-part request. All items below were built,

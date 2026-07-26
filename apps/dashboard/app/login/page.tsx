@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -125,6 +126,11 @@ export default function LoginPage() {
               placeholder="••••••••"
               required
             />
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-xs text-slate-400 hover:text-orange-400 transition">
+                Password dimenticata?
+              </Link>
+            </div>
           </div>
 
           {error && (

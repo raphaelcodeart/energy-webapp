@@ -7,43 +7,37 @@ import { LevelLegend, TreeNodeRenderer, type TreeNode } from "@/components/netwo
 function buildTree(members: BranchMemberRead[]): TreeNode | null {
   if (!members || members.length === 0) return null;
 
-  const first = members[0];
-  if (!first) return null;
+  // Build strictly from parent_agent_id, not row order -- the API has no
+  // guaranteed ORDER BY (it's a plain `WHERE id IN (...)`), so a previous
+  // depth-stack-based reconstruction silently produced a broken tree
+  // whenever Postgres didn't happen to return rows in pre-order. Every
+  // BranchMemberRead is either the root (parent_agent_id null) or has a
+  // parent that is itself present in this same list.
+  const nodesById = new Map<string, TreeNode>();
+  for (const m of members) {
+    nodesById.set(m.agent_id, {
+      agent_id: m.agent_id,
+      depth: m.depth,
+      display_name: m.display_name,
+      promoter_code: m.promoter_code,
+      status: m.status,
+      rank_code: m.rank_code,
+      children: [],
+    });
+  }
 
-  // We assume the list is in traversal order where the parent of a node at depth D
-  // is the most recently seen node at depth D-1.
-  const toNode = (m: BranchMemberRead): TreeNode => ({
-    agent_id: m.agent_id,
-    depth: m.depth,
-    display_name: m.display_name,
-    promoter_code: m.promoter_code,
-    status: m.status,
-    rank_code: m.rank_code,
-    children: [],
-  });
-
-  const root: TreeNode = toNode(first);
-  const stack: TreeNode[] = [root];
-
-  for (let i = 1; i < members.length; i++) {
-    const member = members[i];
-    if (!member) continue;
-    const node: TreeNode = toNode(member);
-
-    while (stack.length > 0) {
-      const topNode = stack[stack.length - 1];
-      if (topNode && topNode.depth >= member.depth) {
-        stack.pop();
-      } else {
-        break;
-      }
+  let root: TreeNode | null = null;
+  for (const m of members) {
+    const node = nodesById.get(m.agent_id)!;
+    if (m.parent_agent_id && nodesById.has(m.parent_agent_id)) {
+      nodesById.get(m.parent_agent_id)!.children.push(node);
+    } else {
+      root = node; // no parent in this fetch -> this is the branch root
     }
-
-    const parentNode = stack[stack.length - 1];
-    if (parentNode) {
-      parentNode.children.push(node);
-    }
-    stack.push(node);
+  }
+  // Children in a stable, readable order regardless of fetch order.
+  for (const node of nodesById.values()) {
+    node.children.sort((a, b) => a.display_name.localeCompare(b.display_name));
   }
 
   return root;
@@ -85,6 +79,7 @@ export function BranchVisualizer({ members }: { members: BranchMemberRead[] }) {
             node={rootNode}
             onCopy={copyToClipboard}
             copiedId={copiedId}
+            startOpen
           />
         </div>
       </div>

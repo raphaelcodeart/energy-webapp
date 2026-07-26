@@ -12,6 +12,7 @@ class AgentProfileRead(BaseModel):
     display_name: str
     promoter_code: str
     status: str
+    photo_url: str | None = None
     current_rank_id: uuid.UUID | None
 
 
@@ -30,6 +31,11 @@ class BranchMemberRead(BaseModel):
     promoter_code: str
     status: str
     rank_code: str | None
+    # Direct parent within this branch -- null for the root itself, and null
+    # for anyone whose real parent isn't in this fetch (shouldn't happen for a
+    # proper descendant list, but defensive). Lets the frontend build the tree
+    # from actual edges instead of assuming a fragile pre-order row sequence.
+    parent_agent_id: uuid.UUID | None = None
 
 
 class BranchAgentSummaryRead(BaseModel):
@@ -92,6 +98,7 @@ class AgentListItemRead(BaseModel):
     display_name: str
     promoter_code: str
     status: str
+    photo_url: str | None = None
     current_rank_id: uuid.UUID | None
     rank_code: str | None
     direct_parent_agent_id: uuid.UUID | None

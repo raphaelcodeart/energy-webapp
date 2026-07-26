@@ -153,7 +153,8 @@ export function AdminNetworkPanel() {
                 node={root}
                 onCopy={copyToClipboard}
                 copiedId={copiedId}
-                defaultOpen={expandAll || search.trim().length > 0}
+                startOpen
+                forceOpen={expandAll || search.trim().length > 0}
               />
             </div>
           ))}

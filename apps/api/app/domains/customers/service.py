@@ -50,6 +50,7 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
             "email": c.email,
             "phone": c.phone,
             "pec": c.pec,
+            "photo_url": c.photo_url,
             "display_name": display_name_for(c.kind, profiles.get(c.id), companies.get(c.id)),
         }
         for c in customers
@@ -57,6 +58,10 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
 
 
 async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID) -> dict | None:
+    from app.domains.network.models import AgentProfile
+    from app.domains.referral import service as referral_service
+    from app.domains.referral.models import PromoterCode
+
     customer = await db.get(Customer, customer_id)
     if customer is None or customer.organization_id != organization_id:
         return None
@@ -70,6 +75,19 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
         await db.execute(select(SupplyPoint).where(SupplyPoint.customer_id == customer_id))
     ).scalars().all()
 
+    current_promoter_agent_id = None
+    current_promoter_name = None
+    attribution = await referral_service.get_current_attribution(
+        db, organization_id=organization_id, customer_id=customer_id
+    )
+    if attribution is not None:
+        promoter_code = await db.get(PromoterCode, attribution.promoter_code_id)
+        if promoter_code is not None:
+            agent = await db.get(AgentProfile, promoter_code.agent_id)
+            if agent is not None:
+                current_promoter_agent_id = agent.id
+                current_promoter_name = agent.display_name
+
     return {
         "id": customer.id,
         "organization_id": customer.organization_id,
@@ -79,9 +97,12 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
         "email": customer.email,
         "phone": customer.phone,
         "pec": customer.pec,
+        "photo_url": customer.photo_url,
         "display_name": display_name_for(customer.kind, profile, company),
         "addresses": list(addresses),
         "supply_points": list(supply_points),
+        "current_promoter_agent_id": current_promoter_agent_id,
+        "current_promoter_name": current_promoter_name,
     }
 
 
@@ -248,3 +269,20 @@ async def update_supply_point(
     await db.commit()
     await db.refresh(supply_point)
     return supply_point
+
+
+async def set_customer_photo(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID, photo_url: str, actor_user_id: uuid.UUID
+) -> Customer | None:
+    customer = await db.get(Customer, customer_id)
+    if customer is None or customer.organization_id != organization_id:
+        return None
+
+    customer.photo_url = photo_url
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="customer.photo_updated", entity_type="customer", entity_id=str(customer_id),
+    )
+    await db.commit()
+    await db.refresh(customer)
+    return customer

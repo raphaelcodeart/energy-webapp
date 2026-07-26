@@ -25,6 +25,7 @@ class Customer(UUIDPKMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pec: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class CustomerProfile(Base):

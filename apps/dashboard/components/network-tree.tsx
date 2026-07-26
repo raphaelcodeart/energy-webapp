@@ -83,14 +83,24 @@ export function TreeNodeRenderer({
   node,
   onCopy,
   copiedId,
-  defaultOpen = true,
+  startOpen = false,
+  forceOpen = false,
 }: {
   node: TreeNode;
   onCopy: (id: string) => void;
   copiedId: string | null;
-  defaultOpen?: boolean;
+  /** Initial open state for THIS node only -- never propagated to children,
+      so by default each level starts collapsed and has to be opened one
+      click at a time ("apri il primo livello, vedi il secondo, apri
+      quello..."). Pass true on the root call so level 1 is visible without
+      an extra click. */
+  startOpen?: boolean;
+  /** When true, every node in this subtree renders open regardless of user
+      clicks (search / "espandi tutto") -- propagated to every descendant. */
+  forceOpen?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [manuallyOpen, setManuallyOpen] = useState(startOpen);
+  const isOpen = forceOpen || manuallyOpen;
   const hasChildren = node.children.length > 0;
   const depthStyle = getDepthStyle(node.depth);
 
@@ -104,7 +114,7 @@ export function TreeNodeRenderer({
         {/* Collapse / Expand toggle button */}
         {hasChildren ? (
           <button
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => setManuallyOpen(!isOpen)}
             className="w-5 h-5 flex items-center justify-center rounded bg-slate-800 light:bg-slate-100 hover:bg-slate-700 text-white light:text-slate-900 text-xs border border-white/5 light:border-slate-200 transition cursor-pointer"
           >
             {isOpen ? "−" : "+"}
@@ -157,7 +167,11 @@ export function TreeNodeRenderer({
         </div>
       </div>
 
-      {/* Children rendering */}
+      {/* Children rendering -- each level starts collapsed (startOpen is
+          intentionally not propagated), so navigating the tree is an
+          explicit "open this level, then the next" action instead of one
+          giant dump of all 12 levels at once. forceOpen DOES propagate, for
+          search/"espandi tutto". */}
       {hasChildren && isOpen && (
         <div className="flex flex-col ml-2 border-l border-dashed border-slate-800 light:border-slate-200 pl-2">
           {node.children.map((child) => (
@@ -166,7 +180,7 @@ export function TreeNodeRenderer({
               node={child}
               onCopy={onCopy}
               copiedId={copiedId}
-              defaultOpen={defaultOpen}
+              forceOpen={forceOpen}
             />
           ))}
         </div>

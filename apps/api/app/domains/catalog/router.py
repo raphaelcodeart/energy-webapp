@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
+from app.core.storage import UploadValidationError, upload_media
 from app.domains.catalog import service as catalog_service
 from app.domains.catalog.schemas import (
     ProductCatalogRead,
@@ -124,6 +125,30 @@ async def update_product_version(
         version_id=version_id,
         payload=payload,
         actor_user_id=current_user.user_id,
+    )
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product version not found")
+    return ProductVersionRead.from_version(version)
+
+
+@router.post("/versions/{version_id}/photo", response_model=ProductVersionRead)
+async def upload_product_version_photo(
+    version_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductVersionRead:
+    file_bytes = await file.read()
+    try:
+        photo_url = upload_media(
+            file_bytes=file_bytes, content_type=file.content_type or "", key_prefix="photos/products"
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    version = await catalog_service.update_product_version(
+        db, organization_id=current_user.organization_id, version_id=version_id,
+        payload=ProductVersionUpdate(image_url=photo_url), actor_user_id=current_user.user_id,
     )
     if version is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product version not found")

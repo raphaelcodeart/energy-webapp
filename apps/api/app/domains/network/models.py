@@ -21,6 +21,7 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(String(255))
     promoter_code: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
+    photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     joined_at: Mapped[datetime] = mapped_column()
     current_rank_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ranks.id"), nullable=True
