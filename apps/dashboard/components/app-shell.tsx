@@ -127,13 +127,19 @@ export function AppShell({
                 onNavigate(item.key);
                 setMobileOpen(false);
               }}
-              className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all cursor-pointer group ${
+              className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all cursor-pointer group ${
                 active
                   ? "bg-gradient-to-r from-violet-600/15 to-cyan-500/10 text-violet-300 light:text-violet-700 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25)]"
                   : "text-slate-400 light:text-slate-500 hover:bg-white/5 light:hover:bg-slate-900/5 hover:text-white light:hover:text-slate-900"
               }`}
             >
-              <span className={`shrink-0 ${active ? "text-violet-400 light:text-violet-600" : "opacity-70 group-hover:opacity-100"}`}>
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                  active
+                    ? "bg-violet-500/20 text-violet-400 light:bg-violet-100 light:text-violet-600"
+                    : "bg-white/5 light:bg-slate-900/5 text-current opacity-80 group-hover:opacity-100 group-hover:bg-white/10 light:group-hover:bg-slate-900/10"
+                }`}
+              >
                 {item.icon}
               </span>
               <span className="flex-1 text-left truncate">{item.label}</span>

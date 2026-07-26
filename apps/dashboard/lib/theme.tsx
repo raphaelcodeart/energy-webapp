@@ -17,16 +17,16 @@ export const themeInitScript = `
 (function () {
   try {
     var stored = localStorage.getItem("${STORAGE_KEY}");
-    var theme = stored === "light" || stored === "dark"
-      ? stored
-      : (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    // Day mode is the product default on first visit -- night mode is an
+    // explicit opt-in via the toggle, not inferred from the OS preference.
+    var theme = stored === "light" || stored === "dark" ? stored : "light";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {}
 })();
 `;
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
     // Reads the attribute themeInitScript already set before hydration (see

@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="it" className={`${outfit.variable}`} data-theme="dark" suppressHydrationWarning>
+    <html lang="it" className={`${outfit.variable}`} data-theme="light" suppressHydrationWarning>
       <head>
         {/* Runs before hydration so the stored/system theme applies on first
             paint -- prevents a flash of the wrong theme. */}
