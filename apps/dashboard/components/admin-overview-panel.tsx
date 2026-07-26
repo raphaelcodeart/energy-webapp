@@ -16,6 +16,7 @@ import {
 import type {
   AttentionItem,
   DashboardSummary,
+  OrganizationNetworkLevelsRead,
   RecentActivityItem,
   TimeseriesPoint,
 } from "@/lib/types";
@@ -80,6 +81,12 @@ async function fetchAttentionItems(): Promise<AttentionItem[]> {
 async function fetchRecentActivity(): Promise<RecentActivityItem[]> {
   const res = await fetch("/api/proxy/reports/recent-activity?limit=10");
   if (!res.ok) throw new Error("Impossibile caricare l'attività recente.");
+  return res.json();
+}
+
+async function fetchNetworkLevels(): Promise<OrganizationNetworkLevelsRead> {
+  const res = await fetch("/api/proxy/network/organization/levels");
+  if (!res.ok) throw new Error("Impossibile caricare i livelli della rete.");
   return res.json();
 }
 
@@ -202,6 +209,15 @@ export function AdminOverviewPanel({ onNavigate }: { onNavigate?: (key: string) 
     queryKey: ["admin", "reports", "recent-activity"],
     queryFn: fetchRecentActivity,
   });
+  const { data: networkLevels } = useQuery({
+    queryKey: ["admin", "network", "levels"],
+    queryFn: fetchNetworkLevels,
+  });
+
+  const networkLevelsChartData = Object.entries(networkLevels?.people_by_level ?? {})
+    .map(([depth, count]) => ({ depth: Number(depth), Persone: count }))
+    .sort((a, b) => a.depth - b.depth)
+    .map((row) => ({ name: row.depth === 0 ? "Livello 0 (root)" : `Livello ${row.depth}`, Persone: row.Persone }));
 
   const contractsChartData = (contractsSeries ?? []).map((p) => ({ ...p, label: monthLabel(p.period) }));
   const commissionsChartData = (commissionsSeries ?? []).map((p) => ({
@@ -342,6 +358,38 @@ export function AdminOverviewPanel({ onNavigate }: { onNavigate?: (key: string) 
             </svg>
           }
         />
+      </div>
+
+      {/* Network levels -- whole-company org chart depth/headcount. Unlike the
+          promoter "La mia Azienda" view (branch-scoped to one downline), this
+          has no root: it's every agent in the organization. */}
+      <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h4 className="text-sm font-semibold text-white light:text-slate-900">Rete commerciale: livelli e persone</h4>
+          <div className="flex gap-4">
+            <div className="text-right">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Persone totali</p>
+              <p className="text-lg font-bold text-white light:text-slate-900">{networkLevels?.people_total ?? 0}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Livelli totali</p>
+              <p className="text-lg font-bold text-white light:text-slate-900">{networkLevels?.levels_total ?? 0}</p>
+            </div>
+          </div>
+        </div>
+        {networkLevelsChartData.length > 0 && (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={networkLevelsChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 8, fontSize: 12 }} />
+                <Bar dataKey="Persone" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* Charts */}

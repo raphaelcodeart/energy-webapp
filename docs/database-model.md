@@ -145,6 +145,12 @@ product_versions
   id, product_id, version_label, base_price_cents, initial_fee_cents,
   recurring_fee_cents, billing_period, tax_configuration jsonb (carries
     vat_percentage as of Session 9 -- pre-existing column, previously unused),
+  contract_duration_months nullable (added Session 11 -- contract term length in
+    months, e.g. 12 for a standard yearly energy contract; NULL for a one-off
+    DIGITAL/PHYSICAL product with no renewal concept. No DB/ORM-level default --
+    "12 unless told otherwise" lives only in ProductCreate/ProductVersionCreate,
+    so an explicit NULL from the API is never silently coerced to 12. Drives
+    contracts.expires_at, see below),
   commission_plan_version_id, required_documents jsonb, terms_version,
   valid_from, valid_to nullable, status
 
@@ -165,7 +171,14 @@ addresses
   id, organization_id, customer_id, kind, street, city, province, postal_code, country
 
 supply_points
-  id, organization_id, customer_id, energy_type, pod_code nullable, pdr_code nullable,
+  id, organization_id, customer_id,
+  label nullable (added Session 11 -- human-readable identifier, e.g.
+    "Energia elettrica - Via Roma 12, Milano". POD/PDR codes are correct but
+    meaningless to a person scanning a list; auto-computed from energy_type +
+    address at creation if not given explicitly, always editable afterwards.
+    "Name prominent, id small below" applies to supply points the same way it
+    already applied to customers/products/network agents),
+  energy_type, pod_code nullable, pdr_code nullable,
   meter_number, supply_address_id, estimated_consumption, actual_consumption,
   provider_reference
 
@@ -175,6 +188,13 @@ contracts
   notes nullable (added Session 10 -- free-text context set at creation by
     whoever originated the deal, promoter or admin; distinct from
     contract_status_history.notes, which is per-transition, not per-contract),
+  activated_at nullable (added Session 11 -- set, and reset on every renewal, by
+    transition_contract() whenever the contract enters ACTIVE or RENEWED),
+  expires_at nullable, indexed (added Session 11 -- activated_at +
+    product_versions.contract_duration_months at that same moment; never
+    recomputed retroactively if the product version's duration later changes.
+    Powers the admin contract list's expiry column + year filter and the
+    promoter's per-contract expiry display),
   created_at
 
 contract_status_history
@@ -227,7 +247,37 @@ commission_adjustments / commission_offsets / commission_reversals
   approved_by nullable, created_at
 ```
 
-## 6. ER diagram (core slice)
+## 6. Support tickets (added Session 11)
+
+```
+tickets
+  id, organization_id, opened_by_user_id,
+  opened_by_role (CUSTOMER/PROMOTER -- snapshot at creation, not derived from
+    the user's current roles at read time; a later role change never rewrites
+    who a past ticket "belongs to", same rule as network_snapshots),
+  subject, category (ASSISTENZA_TECNICA/FATTURAZIONE/CONTRATTO/COMMISSIONI/ALTRO),
+  status (OPEN/IN_PROGRESS/RESOLVED/CLOSED),
+  contract_id nullable (optional link so a customer/promoter can open a ticket
+    directly "about this contract"),
+  created_at
+
+ticket_messages
+  id, ticket_id, author_user_id,
+  author_role (CUSTOMER/PROMOTER/ADMIN -- snapshot, same reasoning as
+    tickets.opened_by_role),
+  body, created_at
+```
+
+Visibility: a customer or promoter sees only tickets where `opened_by_user_id` is
+themselves -- there is no shared inbox between a customer and the promoter who
+referred them. Staff (`tickets.respond` permission) sees every ticket in the
+organization and can reply to any of them; a staff reply on an `OPEN` ticket
+auto-transitions it to `IN_PROGRESS`. New permission codes: `tickets.create`
+(open/read/reply to your own tickets -- granted to `CUSTOMER`, `PROMOTER`) and
+`tickets.respond` (see/reply to any ticket, change status -- granted to
+`ADMIN`-tier roles). See `business-rules.md §Support tickets`.
+
+## 7. ER diagram (core slice)
 
 ```mermaid
 erDiagram
@@ -249,6 +299,9 @@ erDiagram
   commission_calculations ||--o{ commission_calculation_steps : breaks_down
   commission_calculation_steps ||--o{ commission_movements : posts
   agent_profiles ||--o{ commission_movements : receives
+  users ||--o{ tickets : opens
+  tickets ||--o{ ticket_messages : contains
+  contracts ||--o{ tickets : "optionally about"
 ```
 
 Full ER diagram will grow as Phase F/G tables land; kept mermaid so it renders directly

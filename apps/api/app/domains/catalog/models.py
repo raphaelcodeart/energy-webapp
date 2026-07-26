@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,6 +36,16 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     initial_fee_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     recurring_fee_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     billing_period: Mapped[str] = mapped_column(String(16), default="MONTHLY")
+    # Contract term length, e.g. 12 for a standard yearly energy contract. Null
+    # for product types with no renewal concept (a one-off DIGITAL/PHYSICAL
+    # purchase). Drives Contract.expires_at -- see contracts/service.py.
+    # No `default=` here deliberately: SQLAlchemy's Python-side column default
+    # fires even when the ORM constructor is given an explicit None, which
+    # would silently turn "no renewal" (None) into 12 for every DIGITAL/
+    # PHYSICAL product. The "12 unless told otherwise" default belongs one
+    # layer up, in ProductCreate/ProductVersionCreate (schemas.py), where an
+    # omitted field and an explicit null are still distinguishable.
+    contract_duration_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tax_configuration: Mapped[dict] = mapped_column(JSONB, default=dict)
     commission_plan_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("commission_plan_versions.id"), nullable=True

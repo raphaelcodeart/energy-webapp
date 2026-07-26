@@ -1,13 +1,79 @@
+import calendar
 import uuid
+from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import utcnow
 from app.domains.audit import service as audit_service
+from app.domains.catalog.models import ProductVersion
 from app.domains.contracts.models import Contract, ContractAttribution, ContractStatusHistory
 from app.domains.contracts.state_machine import assert_transition_allowed, event_name_for
+from app.domains.customers.models import SupplyPoint
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
 from app.domains.outbox import service as outbox_service
+
+# Statuses that represent "the contract's term is running" -- entering one of
+# these (re)starts the clock on activated_at/expires_at. Renewing a lapsed
+# (EXPIRED) contract restarts it too, same as the first activation.
+TERM_START_STATUSES = {"ACTIVE", "RENEWED"}
+
+
+def _add_months(dt: datetime, months: int) -> datetime:
+    """Stdlib month arithmetic (no dateutil dependency): clamps the day to the
+    target month's actual length, e.g. Jan 31 + 1 month -> Feb 28/29."""
+    total_months = dt.month - 1 + months
+    year = dt.year + total_months // 12
+    month = total_months % 12 + 1
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return dt.replace(year=year, month=month, day=day)
+
+
+async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dict]:
+    """Bulk-attaches product_name/supply_point_label to a page of contracts --
+    the "name prominent, id small below" rule applies to every contract list in
+    the app, so this is the single place that does the join instead of each
+    caller re-deriving it (or, worse, the UI showing a bare UUID)."""
+    if not contracts:
+        return []
+
+    product_version_ids = {c.product_version_id for c in contracts}
+    supply_point_ids = {c.supply_point_id for c in contracts}
+
+    product_names = dict(
+        (
+            await db.execute(
+                select(ProductVersion.id, ProductVersion.name).where(ProductVersion.id.in_(product_version_ids))
+            )
+        ).all()
+    )
+    supply_point_labels = dict(
+        (
+            await db.execute(
+                select(SupplyPoint.id, SupplyPoint.label).where(SupplyPoint.id.in_(supply_point_ids))
+            )
+        ).all()
+    )
+
+    result = []
+    for c in contracts:
+        row = {
+            "id": c.id,
+            "customer_id": c.customer_id,
+            "supply_point_id": c.supply_point_id,
+            "product_version_id": c.product_version_id,
+            "status": c.status,
+            "notes": c.notes,
+            "created_at": c.created_at,
+            "activated_at": c.activated_at,
+            "expires_at": c.expires_at,
+            "product_name": product_names.get(c.product_version_id),
+            "supply_point_label": supply_point_labels.get(c.supply_point_id),
+        }
+        result.append(row)
+    return result
 
 
 class InvalidProducerAgentError(Exception):
@@ -112,6 +178,13 @@ async def transition_contract(
             producer_agent_id=attribution.producer_agent_id,
         )
         contract.network_snapshot_id = snapshot.id
+
+    if to_status in TERM_START_STATUSES:
+        now = utcnow()
+        contract.activated_at = now
+        product_version = await db.get(ProductVersion, contract.product_version_id)
+        duration = product_version.contract_duration_months if product_version else None
+        contract.expires_at = _add_months(now, duration) if duration else None
 
     contract.status = to_status
     db.add(

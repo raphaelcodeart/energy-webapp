@@ -45,7 +45,8 @@ async def create_contract(
         )
     except InvalidProducerAgentError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    return ContractRead.model_validate(contract)
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])
 
 
 @router.get("", response_model=list[ContractRead])
@@ -61,7 +62,8 @@ async def list_contracts(
         .limit(limit)
     )
     contracts = (await db.execute(stmt)).scalars().all()
-    return [ContractRead.model_validate(c) for c in contracts]
+    rows = await contract_service.to_read_dicts(db, list(contracts))
+    return [ContractRead(**row) for row in rows]
 
 
 @router.get("/mine", response_model=list[ContractRead])
@@ -86,7 +88,8 @@ async def list_my_contracts(
         .order_by(Contract.created_at.desc())
     )
     contracts = (await db.execute(stmt)).scalars().all()
-    return [ContractRead.model_validate(c) for c in contracts]
+    rows = await contract_service.to_read_dicts(db, list(contracts))
+    return [ContractRead(**row) for row in rows]
 
 
 @router.get("/{contract_id}", response_model=ContractRead)
@@ -98,7 +101,8 @@ async def get_contract(
     contract = await _get_org_scoped_contract(
         db, organization_id=current_user.organization_id, contract_id=contract_id
     )
-    return ContractRead.model_validate(contract)
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])
 
 
 @router.post("/{contract_id}/transition", response_model=ContractRead)
@@ -124,4 +128,5 @@ async def transition_contract(
         )
     except InvalidTransitionError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    return ContractRead.model_validate(contract)
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])

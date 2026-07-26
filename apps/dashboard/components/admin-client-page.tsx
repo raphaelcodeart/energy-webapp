@@ -9,6 +9,8 @@ import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
+import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
+import { SectionBanner } from "@/components/section-banner";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
@@ -104,6 +106,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "tickets",
+    label: "Ticket di Supporto",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
@@ -113,9 +124,13 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [yearFilter, setYearFilter] = useState<string>("ALL");
+  // Lazy initializer: Date.now() runs once at mount, not on every render --
+  // the sanctioned way to capture an impure value for use during render.
+  const [nowMs] = useState(() => Date.now());
 
   // State for transitioning a contract
   const [selectedContract, setSelectedContract] = useState<ContractRead | null>(null);
@@ -131,13 +146,29 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     return acc;
   }, {});
 
+  const contractYears = Array.from(
+    new Set(contracts.map((c) => new Date(c.created_at).getFullYear()))
+  ).sort((a, b) => b - a);
+
   const filteredContracts = contracts.filter((c) => {
     const matchesSearch =
+      (c.product_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (customerNameById.get(c.customer_id) ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.customer_id.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "ALL" || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesYear = yearFilter === "ALL" || new Date(c.created_at).getFullYear().toString() === yearFilter;
+    return matchesSearch && matchesStatus && matchesYear;
   });
+
+  const EXPIRY_URGENT_MS = 30 * 24 * 60 * 60 * 1000;
+  const expiryColor = (expiresAt: string | null) => {
+    if (!expiresAt) return "text-slate-500";
+    const delta = new Date(expiresAt).getTime() - nowMs;
+    if (delta < 0) return "text-rose-400 font-semibold";
+    if (delta < EXPIRY_URGENT_MS) return "text-amber-400 font-semibold";
+    return "text-slate-300 light:text-slate-600";
+  };
 
   const handleOpenTransition = (contract: ContractRead) => {
     setSelectedContract(contract);
@@ -223,11 +254,15 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         }
       >
         {activeTab === "overview" && (
-          <AdminOverviewPanel onNavigate={(key) => setActiveTab(key as typeof activeTab)} />
+          <>
+            <SectionBanner image="energy" alt="Panoramica" />
+            <AdminOverviewPanel onNavigate={(key) => setActiveTab(key as typeof activeTab)} />
+          </>
         )}
 
         {activeTab === "list" && (
           <div className="space-y-6">
+            <SectionBanner image="energy" alt="Contratti" />
             {/* Quick Metrics Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/20 light:bg-slate-50 text-center">
@@ -272,6 +307,20 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                   ))}
                 </select>
               </div>
+
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                <span className="text-xs text-slate-400 light:text-slate-500 shrink-0 font-medium">Anno:</span>
+                <select
+                  value={yearFilter}
+                  onChange={(e) => setYearFilter(e.target.value)}
+                  className="w-full sm:w-32 rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  <option value="ALL">Storico completo</option>
+                  {contractYears.map((year) => (
+                    <option key={year} value={year.toString()}>{year}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Contract List Table */}
@@ -281,8 +330,9 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                   <thead>
                     <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold bg-white/2 light:bg-slate-900/[0.02]">
                       <th className="py-3 px-6">Cliente</th>
-                      <th className="py-3 px-6">Contratto</th>
+                      <th className="py-3 px-6">Prodotto / Punto di Fornitura</th>
                       <th className="py-3 px-6">Stato</th>
+                      <th className="py-3 px-6">Scadenza / Rinnovo</th>
                       <th className="py-3 px-6 text-right">Azioni</th>
                     </tr>
                   </thead>
@@ -295,12 +345,23 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                           </div>
                           <div className="font-mono text-[10px] text-slate-500">{c.customer_id}</div>
                         </td>
-                        <td className="py-4 px-6 font-mono text-xs text-slate-400 light:text-slate-500">
-                          {c.id}
+                        <td className="py-4 px-6">
+                          <div className="text-xs font-semibold text-white light:text-slate-900">
+                            {c.product_name ?? "Prodotto"}
+                          </div>
+                          <div className="text-[11px] text-slate-400 light:text-slate-500">
+                            {c.supply_point_label ?? "Punto di fornitura"}
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-500">{c.id}</div>
                         </td>
                         <td className="py-4 px-6">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeColor(c.status)}`}>
                             {STATUS_LABELS[c.status] ?? c.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={`text-xs ${expiryColor(c.expires_at)}`}>
+                            {c.expires_at ? new Date(c.expires_at).toLocaleDateString("it-IT") : "—"}
                           </span>
                         </td>
                         <td className="py-4 px-6 text-right">
@@ -315,7 +376,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                     ))}
                     {filteredContracts.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="text-center py-8 text-slate-500">
+                        <td colSpan={5} className="text-center py-8 text-slate-500">
                           Nessun contratto corrisponde ai filtri impostati.
                         </td>
                       </tr>
@@ -327,12 +388,43 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           </div>
         )}
 
-        {activeTab === "create" && <AdminCreateContractPanel onCreated={handleContractCreated} />}
+        {activeTab === "create" && (
+          <div className="space-y-6">
+            <SectionBanner image="energy" alt="Nuovo contratto" />
+            <AdminCreateContractPanel onCreated={handleContractCreated} />
+          </div>
+        )}
 
-        {activeTab === "customers" && <AdminCustomersPanel />}
-        {activeTab === "promoters" && <AdminPromotersPanel />}
-        {activeTab === "products" && <AdminProductsPanel />}
-        {activeTab === "network" && <AdminNetworkPanel />}
+        {activeTab === "customers" && (
+          <div className="space-y-6">
+            <SectionBanner image="customers" alt="Clienti" />
+            <AdminCustomersPanel />
+          </div>
+        )}
+        {activeTab === "promoters" && (
+          <div className="space-y-6">
+            <SectionBanner image="network" alt="Promoter" />
+            <AdminPromotersPanel />
+          </div>
+        )}
+        {activeTab === "products" && (
+          <div className="space-y-6">
+            <SectionBanner image="products" alt="Prodotti" />
+            <AdminProductsPanel />
+          </div>
+        )}
+        {activeTab === "network" && (
+          <div className="space-y-6">
+            <SectionBanner image="network" alt="Rete Commerciale" />
+            <AdminNetworkPanel />
+          </div>
+        )}
+        {activeTab === "tickets" && (
+          <div className="space-y-6">
+            <SectionBanner image="support" alt="Ticket di Supporto" />
+            <AdminTicketsPanel />
+          </div>
+        )}
       </AppShell>
 
       {/* Transition Modal / Drawer Overlay */}

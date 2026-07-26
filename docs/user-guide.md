@@ -64,8 +64,13 @@ La prima cosa che un cliente vede è lo **Shop** — il catalogo dei prodotti
 pubblicati dall'amministrazione (offerte luce, gas, dual fuel, ma anche
 eventuali prodotti digitali/fisici/abbonamenti), con foto, descrizione,
 prezzo e IVA. Le altre sezioni: **I miei Contratti** (stato tradotto in
-italiano, prodotto acquistato mostrato per nome non per codice tecnico) e
-**Supporto & Assistenza**.
+italiano, prodotto acquistato mostrato per nome non per codice tecnico, punto
+di fornitura mostrato con un nome comprensibile — es. "Energia elettrica - Via
+Roma 12, Milano" — non solo il codice POD/PDR, e data di scadenza/rinnovo ben
+in evidenza, colorata in ambra quando manca meno di 30 giorni) e **Supporto &
+Assistenza** — qui puoi aprire un ticket vero (non solo un modulo che scompare):
+resta visibile nella tua area finché non viene risolto, e vedi le risposte
+dell'amministrazione direttamente nella conversazione.
 
 Cosa non è ancora disponibile: acquisto/checkout diretto dallo shop (oggi la
 vetrina è consultabile, l'attivazione di un contratto passa dall'amministrazione
@@ -75,15 +80,19 @@ o dal promoter), download documenti, storico pagamenti/fatture.
 
 Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 
-- **La mia Azienda** (schermata di apertura) — quante persone hai in diretta,
-  quante in totale nella tua rete (fino a 12 livelli), contratti totali,
-  provvigioni totali. Sotto: una tabella per livello (persone, contratti,
-  provvigioni per ciascuno dei 12 livelli), una tabella per persona (contratti
-  totali/processati/in lavorazione/con problemi, provvigioni), e l'elenco
-  di **tutti i contratti della tua rete** con cliente, prodotto, venditore,
-  stato e provvigione generata — con un pulsante **Contatta** (apre l'email al
-  cliente) per i contratti con problemi (es. documenti mancanti), così puoi
-  intervenire prima che si blocchino.
+- **La mia Azienda** (schermata di apertura) — statistiche generali in alto:
+  persone totali nella tua rete, livelli sotto di te (puoi vedere solo il tuo
+  ramo, mai il resto dell'organizzazione), contratti chiusi, rifiutati, in
+  attesa (pending) e in lavorazione, provvigioni totali. Sotto, un grafico a
+  barre per livello (persone e contratti) e una tabella riepilogativa —
+  **clicca un livello per il dettaglio**: persone di quel livello, chiusi, in
+  lavorazione, problemi. Più giù: una tabella per persona (contratti
+  totali/processati/in lavorazione/con problemi, provvigioni), e l'elenco di
+  **tutti i contratti della tua rete** con cliente, prodotto, punto di
+  fornitura, venditore, stato e provvigione generata — con un pulsante
+  **Contatta** (apre l'email al cliente) per i contratti con problemi, e se
+  l'amministrazione ha lasciato una nota (es. "manca il documento di identità")
+  la vedi direttamente sotto il contratto interessato.
 - **Rete Commerciale** — l'albero visivo della tua rete, colorato per livello
   (fino a 12), con nomi reali (non solo codici), qualifiche ed espandi/comprimi.
 - **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
@@ -95,6 +104,9 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   imprenditoriali maturate.
 - **Simulatore Provvigioni** — anteprima di quanto genererebbe un contratto
   ipotetico, senza toccare i dati reali.
+- **Supporto** — apri un ticket verso l'amministrazione (es. per un chiarimento
+  su una provvigione o un problema con un cliente) e segui la conversazione
+  nella tua area finché non è risolto.
 
 ### 3.3 Area Amministratore (`/admin`)
 
@@ -102,12 +114,18 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
 — permessi leggermente diversi tra loro, vedi `docs/security-model.md`).
 
 - **Panoramica** — pulsanti grandi verso le sezioni principali, KPI (contratti
-  per stato, provvigioni maturate/pagate, promoter e clienti attivi), grafici
-  di andamento a 12 mesi, elenco "Richiede attenzione" (contratti fermi in
-  revisione da troppo tempo, o **pagati ma non ancora attivati** — quindi con
-  provvigioni non ancora generate), attività recente.
-- **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), filtri per
-  stato, azione di transizione di stato con motivazione obbligatoria.
+  per stato, provvigioni maturate/pagate, promoter e clienti attivi), la rete
+  commerciale **di tutta l'azienda** (persone totali, livelli totali, grafico
+  per livello — a differenza della vista del promoter, qui non c'è alcuna
+  restrizione di ramo), grafici di andamento a 12 mesi, elenco "Richiede
+  attenzione" (contratti fermi in revisione da troppo tempo, o **pagati ma non
+  ancora attivati** — quindi con provvigioni non ancora generate), attività
+  recente.
+- **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), prodotto e
+  punto di fornitura con nome comprensibile, colonna scadenza/rinnovo colorata
+  per urgenza, filtro per anno (storico separato per anno, utile perché ogni
+  anno ci saranno contratti da rinnovare), filtri per stato, azione di
+  transizione di stato con motivazione obbligatoria.
 - **Nuovo Contratto** — form completo: scegli se cliente nuovo o esistente; per
   un cliente nuovo raccoglie tipologia (privato/azienda), codice fiscale o
   partita IVA, nome e cognome (o ragione sociale), email, cellulare, PEC
@@ -128,6 +146,11 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
 - **Rete Commerciale** — a differenza della vista del promoter (limitata al
   proprio ramo), qui vedi **l'intera organizzazione**: tutti i rami, con
   ricerca ed espandi/comprimi.
+- **Ticket di Supporto** — tutti i ticket aperti da clienti e promoter, con
+  filtro per chi li ha aperti e per stato; rispondi e la risposta appare
+  subito nell'area del cliente/promoter. Una risposta su un ticket "Aperto" lo
+  sposta automaticamente in "In lavorazione"; solo l'amministrazione può
+  segnarlo come "Risolto" o "Chiuso".
 
 ## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 

@@ -15,8 +15,14 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "SUSPENDED": {"ACTIVE", "CANCELLED"},
     "REJECTED": set(),
     "CANCELLED": set(),
-    "EXPIRED": set(),
-    "RENEWED": set(),
+    "EXPIRED": {"RENEWED", "CANCELLED"},
+    # RENEWED was previously a dead end (empty set) -- a renewed contract could
+    # never be renewed again the following year, nor suspended, cancelled, or
+    # left to expire. A contract's term is expected to renew repeatedly over
+    # its lifetime (energy contracts are typically 12/24-month terms), so
+    # RENEWED gets the same onward transitions ACTIVE has -- it IS still an
+    # in-force contract, "renewed" just describes how it got there.
+    "RENEWED": {"SUSPENDED", "CANCELLED", "EXPIRED", "RENEWED"},
 }
 
 EVENT_FOR_TRANSITION: dict[tuple[str, str], str] = {
@@ -26,6 +32,12 @@ EVENT_FOR_TRANSITION: dict[tuple[str, str], str] = {
     ("ACTIVATION_PENDING", "ACTIVE"): "ContractActivated",
     ("ACTIVE", "CANCELLED"): "ContractCancelled",
     ("ACTIVE", "RENEWED"): "ContractRenewed",
+    # Renewing a contract that is already in a RENEWED or EXPIRED state (a
+    # later year's renewal, or reviving a lapsed contract) must trigger the
+    # same recalculation as the first renewal -- same event name, so the
+    # dispatcher's existing COMMISSION_TRIGGER_EVENTS handling needs no change.
+    ("RENEWED", "RENEWED"): "ContractRenewed",
+    ("EXPIRED", "RENEWED"): "ContractRenewed",
 }
 
 

@@ -418,9 +418,12 @@ export function AdminCustomersPanel() {
                     <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Punti di Fornitura</p>
                     <div className="space-y-2">
                       {viewingDetail.supply_points.map((sp) => (
-                        <div key={sp.id} className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-300 light:text-slate-600 flex items-center justify-between">
-                          <span>{sp.energy_type}</span>
-                          <span className="font-mono">{sp.pod_code ?? sp.pdr_code ?? "—"}</span>
+                        <div key={sp.id} className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-300 light:text-slate-600">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-white light:text-slate-900">{sp.label ?? sp.energy_type}</span>
+                            <span className="font-mono text-[10px] text-slate-500">{sp.pod_code ?? sp.pdr_code ?? "—"}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">{sp.energy_type}</div>
                         </div>
                       ))}
                     </div>

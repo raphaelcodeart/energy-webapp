@@ -42,6 +42,10 @@ ACTIVE → SUSPENDED → ACTIVE
 ACTIVE → CANCELLED
 ACTIVE → EXPIRED
 ACTIVE → RENEWED
+RENEWED → SUSPENDED / CANCELLED / EXPIRED / RENEWED   (a renewed contract is still
+                                                        in force -- it renews again
+                                                        every subsequent term, not once)
+EXPIRED → RENEWED / CANCELLED                          (a lapsed contract can be revived)
 any pre-ACTIVE state → REJECTED
 ```
 
@@ -54,6 +58,15 @@ emits a domain event (`ContractSubmitted`, `ContractApproved`, `PaymentConfirmed
 **Rule**: creating a contract (`DRAFT`/`SUBMITTED`) never generates a commission.
 Commissions are generated exactly once, when a contract transitions into `ACTIVE`
 (see `commission-engine-specification.md §Trigger`).
+
+**Term / expiry**: entering `ACTIVE` or `RENEWED` sets `contracts.activated_at` to
+that moment and computes `contracts.expires_at` as `activated_at +
+product_versions.contract_duration_months` (12 by default for an energy contract;
+`NULL` for a one-off `DIGITAL`/`PHYSICAL` product with no renewal concept). Every
+renewal restarts both fields from the renewal's own timestamp — `expires_at` is never
+retroactively recomputed if the product version's duration later changes, matching the
+"frozen at the moment it happens" pattern used for network snapshots and commission
+calculations elsewhere in this document.
 
 ## Commercial network rules
 
@@ -113,7 +126,10 @@ formula is implemented yet — only the extension point.
 
 ## Renewals & reversals
 
-- A renewal is a new `contract_events` row of type `RENEWED` plus a new commission
+- A renewal is a status transition on the **same** contract row (`ACTIVE`/`EXPIRED` →
+  `RENEWED`, or `RENEWED` → `RENEWED` for the year after that), not a new contract --
+  see "Term / expiry" above for how `activated_at`/`expires_at` are recomputed each
+  time. It is also a new `contract_events` row of type `RENEWED` plus a new commission
   calculation; it does not mutate the original calculation or its movements.
 - A reversal ("storno") never deletes or edits a prior `commission_movements` row. It
   creates a new movement with `movement_type = REVERSAL`, linked via
@@ -121,6 +137,25 @@ formula is implemented yet — only the extension point.
   explanation, and the recovered period. Formula for partial-period recovery
   (PLACEHOLDER — see open-questions.md #4):
   `refund_cents = original_amount_cents * remaining_months / total_contract_months`.
+
+## Support tickets
+
+- Anyone opening a ticket (a `CUSTOMER` or `PROMOTER`) can only ever see and reply to
+  their **own** tickets -- there is no shared inbox between a customer and the
+  promoter who referred them. Staff (any admin-tier role with `tickets.respond`) sees
+  every ticket in the organization and can reply to any of them.
+- `Ticket.opened_by_role` and `TicketMessage.author_role` are snapshots taken at
+  creation time, not derived from the user's current roles at read time -- the same
+  "frozen at the moment it happens" rule used for network snapshots and commission
+  calculations. A later role change never rewrites who a past ticket/message
+  "belongs to".
+- A staff reply on an `OPEN` ticket automatically moves it to `IN_PROGRESS` -- the
+  ticket owner should see "someone is looking at this" without the admin having to
+  remember a separate status update. Only staff (`tickets.respond`) can set
+  `RESOLVED`/`CLOSED`; the ticket owner can only imply it's solved via a message.
+- A ticket can optionally reference a `contract_id`, letting a customer or promoter
+  open a ticket directly "about this contract" instead of the admin having to guess
+  which one they mean from free text.
 
 ## GDPR notes
 

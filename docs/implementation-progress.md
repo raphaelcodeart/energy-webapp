@@ -4,6 +4,86 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 12 — 2026-07-26 (same day, continued) — Contract expiry/renewal, supply point labels, support tickets, network stats + drill-down, admin-to-promoter notes, font + section banners
+
+Continuation of another large multi-part request. All items below were built,
+tested, and verified live (not deferred):
+
+- **Contract renewal bug fix**: `RENEWED` was a dead-end state in
+  `contracts/state_machine.py` (empty `ALLOWED_TRANSITIONS` set) -- a renewed
+  contract could never be renewed again the following year, suspended,
+  cancelled, or left to expire. Since energy contracts renew every year of
+  their life, not once, this was a real defect, found by reading
+  `business-rules.md §Renewals` before writing any code. Fixed: `RENEWED` now
+  has the same onward transitions as `ACTIVE`; `EXPIRED → RENEWED` also added
+  (reviving a lapsed contract).
+- **Contract term/expiry**: `product_versions.contract_duration_months`
+  (nullable, no ORM-level default -- see the "real bug found by a test" note
+  below), `contracts.activated_at`/`expires_at` (migration `0005`). Set/reset by
+  `transition_contract()` on every entry into `ACTIVE`/`RENEWED`, computed via a
+  stdlib `_add_months()` helper (no dateutil dependency). Existing live
+  ACTIVE contracts backfilled from their real `contract_status_history`
+  timestamp, not an approximation.
+  - **Real bug found while writing the test for "product with no duration
+    leaves expires_at null"**: the model had `mapped_column(..., default=12)`.
+    SQLAlchemy's Python-side column default fires even when the ORM
+    constructor is given an *explicit* `None` -- it can't distinguish "field
+    omitted" from "field explicitly nulled" once the value reaches Core's
+    insert-defaults processing. This would have silently turned every
+    DIGITAL/PHYSICAL product's "no renewal" `None` into `12`. Fixed by
+    removing the model-level default entirely; "12 unless told otherwise"
+    now lives only in `ProductCreate`/`ProductVersionCreate` (the Pydantic
+    layer, where omitted vs. explicit-null are still distinguishable).
+- **Supply point labels**: `supply_points.label`, auto-computed from
+  energy_type + address when not given explicitly (e.g. "Energia elettrica -
+  Via Roma 12, Milano"), always editable after. Generalizes the "name
+  prominent, id small below" rule that already applied to customers/products/
+  network agents to the one remaining raw-ID display the user pointed out
+  (POD/PDR codes shown bare).
+- **Contract list enrichment**: `ContractRead` gained `product_name` and
+  `supply_point_label` (denormalized, populated by a new
+  `contracts/service.py::to_read_dicts()` bulk join) so every contract list in
+  the app shows names, not raw UUIDs, without each caller re-deriving it.
+- **Admin contract list**: expiry/renewal column with urgency color-coding
+  (red if past due, amber if <30 days), year filter dropdown for "storico
+  separato per anni".
+- **New `support` domain**: `Ticket`/`TicketMessage` models (migration `0006`,
+  which also seeds the new `tickets.create`/`tickets.respond` permissions and
+  grants them to existing roles in the live DB -- a genuine data migration,
+  not just schema). Customer/promoter open tickets and see only their own
+  (`tickets.create`); staff see and reply to every ticket in the org
+  (`tickets.respond`), and a staff reply on an `OPEN` ticket auto-transitions
+  it to `IN_PROGRESS`. Replaced the previous fake "Supporto & Assistenza" form
+  in the customer page (generated a random ticket number client-side, did
+  nothing real) with the real thing.
+- **Promoter/admin network + contract statistics**: `get_branch_summary()`'s
+  `totals` gained `contracts_closed`/`contracts_rejected`/`contracts_pending`/
+  `contracts_in_progress`/`levels_below`/`people_total`/`contracts_by_status`.
+  New `get_organization_network_levels()` (whole-org headcount per depth-from-
+  own-root -- no single root_agent_id exists for a whole org, unlike a
+  promoter's branch) powers a new admin-only `GET /network/organization/levels`
+  endpoint. Promoter "La mia Azienda" panel got a recharts bar chart + clickable
+  per-level drill-down; admin overview got an analogous whole-company widget.
+- **Admin notes surfaced to promoters**: `get_branch_contracts()` now also
+  returns the latest non-null `contract_status_history.notes` per contract
+  (`admin_note`) -- what an admin wrote when moving a contract to e.g.
+  `DOCUMENTS_PENDING` now shows directly under that contract in the promoter's
+  network-contracts table, folded into the "Contatta" mailto body too.
+- **Font**: replaced Outfit with Inter (`next/font/google`) across the whole
+  dashboard -- a more standard, professional admin/dashboard typeface.
+- **Section header banners**: new reusable `SectionBanner` component, one
+  small (h-20/h-24) themed decorative image per major tab across
+  admin/promoter/customer dashboards (energy, customers, network, products,
+  commissions, support), sourced from Wikimedia Commons (same method used
+  earlier for product photos) with a dark gradient overlay for contrast.
+  Purely decorative -- degrades silently if the image is slow/unreachable.
+- Backend: 46 tests passing (was 14 at the start of this session -- 5 new test
+  files/additions covering the renewal chain, expiry computation, supply point
+  label defaults, the support ticket domain, and the network stats). Frontend:
+  clean `tsc --noEmit`, clean `eslint`, clean `next build`. Verified live over
+  HTTPS with real authenticated sessions (admin/promoter/customer demo logins)
+  for every new endpoint.
+
 ## Session 11 — 2026-07-26 (same day, continued) — Promoter "azienda" view, referral sharing + invite-only registration, real contract creation form, product types
 
 Large, multi-part user request. Scoped deliberately: built the concrete,

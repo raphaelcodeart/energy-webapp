@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict eW1v4F01vtyqwQRgaRYSd7JmkJ6QXZe8KiRb4IGHquI95duFH87fVDivJBCWhxn
+\restrict xx9DNkDMCnWrrOklPOARp3vUpt06o2HEJyVUmHni1k76TMzc6a1xKwpHPw7xGP2
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -368,7 +368,9 @@ CREATE TABLE public.contracts (
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    notes character varying(2000)
+    notes character varying(2000),
+    activated_at timestamp with time zone,
+    expires_at timestamp with time zone
 );
 
 
@@ -591,7 +593,8 @@ CREATE TABLE public.product_versions (
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    image_url character varying(1000)
+    image_url character varying(1000),
+    contract_duration_months integer DEFAULT 12
 );
 
 
@@ -753,11 +756,47 @@ CREATE TABLE public.supply_points (
     actual_consumption bigint,
     provider_reference character varying(128),
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    label character varying(255)
 );
 
 
 ALTER TABLE public.supply_points OWNER TO lial;
+
+--
+-- Name: ticket_messages; Type: TABLE; Schema: public; Owner: lial
+--
+
+CREATE TABLE public.ticket_messages (
+    ticket_id uuid NOT NULL,
+    author_user_id uuid NOT NULL,
+    author_role character varying(32) NOT NULL,
+    body text NOT NULL,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.ticket_messages OWNER TO lial;
+
+--
+-- Name: tickets; Type: TABLE; Schema: public; Owner: lial
+--
+
+CREATE TABLE public.tickets (
+    organization_id uuid NOT NULL,
+    opened_by_user_id uuid NOT NULL,
+    opened_by_role character varying(32) NOT NULL,
+    subject character varying(255) NOT NULL,
+    category character varying(32) NOT NULL,
+    status character varying(16) NOT NULL,
+    contract_id uuid,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.tickets OWNER TO lial;
 
 --
 -- Name: user_roles; Type: TABLE; Schema: public; Owner: lial
@@ -1122,6 +1161,22 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
+-- Name: ticket_messages pk_ticket_messages; Type: CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.ticket_messages
+    ADD CONSTRAINT pk_ticket_messages PRIMARY KEY (id);
+
+
+--
+-- Name: tickets pk_tickets; Type: CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.tickets
+    ADD CONSTRAINT pk_tickets PRIMARY KEY (id);
+
+
+--
 -- Name: user_roles pk_user_roles; Type: CONSTRAINT; Schema: public; Owner: lial
 --
 
@@ -1378,6 +1433,13 @@ CREATE INDEX ix_contracts_customer_id ON public.contracts USING btree (customer_
 
 
 --
+-- Name: ix_contracts_expires_at; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_contracts_expires_at ON public.contracts USING btree (expires_at);
+
+
+--
 -- Name: ix_contracts_organization_id; Type: INDEX; Schema: public; Owner: lial
 --
 
@@ -1620,6 +1682,34 @@ CREATE INDEX ix_supply_points_customer_id ON public.supply_points USING btree (c
 --
 
 CREATE INDEX ix_supply_points_organization_id ON public.supply_points USING btree (organization_id);
+
+
+--
+-- Name: ix_ticket_messages_ticket_id; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_ticket_messages_ticket_id ON public.ticket_messages USING btree (ticket_id);
+
+
+--
+-- Name: ix_tickets_opened_by_user_id; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_tickets_opened_by_user_id ON public.tickets USING btree (opened_by_user_id);
+
+
+--
+-- Name: ix_tickets_organization_id; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_tickets_organization_id ON public.tickets USING btree (organization_id);
+
+
+--
+-- Name: ix_tickets_status; Type: INDEX; Schema: public; Owner: lial
+--
+
+CREATE INDEX ix_tickets_status ON public.tickets USING btree (status);
 
 
 --
@@ -2458,6 +2548,46 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
+-- Name: ticket_messages fk_ticket_messages_author_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.ticket_messages
+    ADD CONSTRAINT fk_ticket_messages_author_user_id_users FOREIGN KEY (author_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: ticket_messages fk_ticket_messages_ticket_id_tickets; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.ticket_messages
+    ADD CONSTRAINT fk_ticket_messages_ticket_id_tickets FOREIGN KEY (ticket_id) REFERENCES public.tickets(id);
+
+
+--
+-- Name: tickets fk_tickets_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.tickets
+    ADD CONSTRAINT fk_tickets_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: tickets fk_tickets_opened_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.tickets
+    ADD CONSTRAINT fk_tickets_opened_by_user_id_users FOREIGN KEY (opened_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: tickets fk_tickets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+--
+
+ALTER TABLE ONLY public.tickets
+    ADD CONSTRAINT fk_tickets_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: user_roles fk_user_roles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
 --
 
@@ -2493,5 +2623,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict eW1v4F01vtyqwQRgaRYSd7JmkJ6QXZe8KiRb4IGHquI95duFH87fVDivJBCWhxn
+\unrestrict xx9DNkDMCnWrrOklPOARp3vUpt06o2HEJyVUmHni1k76TMzc6a1xKwpHPw7xGP2
 

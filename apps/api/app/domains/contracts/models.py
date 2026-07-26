@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -30,6 +31,14 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     # arrivato dalla promozione Luce Green, preferisce essere ricontattato la
     # sera". Distinct from ContractStatusHistory.notes, which is per-transition.
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Set (and reset, on every renewal) by transition_contract() whenever the
+    # contract enters ACTIVE or RENEWED. expires_at is computed from the
+    # product version's contract_duration_months at that same moment -- never
+    # recomputed retroactively if the product version's duration changes later,
+    # matching the "frozen at the moment it happens" pattern used everywhere
+    # else in this codebase (network snapshots, commission calculations).
+    activated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
 
 
 class ContractStatusHistory(UUIDPKMixin, TimestampMixin, Base):

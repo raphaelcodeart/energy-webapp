@@ -5,10 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Address, Company, Customer, CustomerProfile, SupplyPoint
-from app.domains.customers.schemas import CustomerCreate, CustomerUpdate, SupplyPointCreate
+from app.domains.customers.schemas import CustomerCreate, CustomerUpdate, SupplyPointCreate, SupplyPointUpdate
 
 PRIVATE_LIKE_KINDS = {"PRIVATE", "SOLE_PROPRIETOR"}
 COMPANY_LIKE_KINDS = {"COMPANY", "CONDOMINIUM"}
+ENERGY_TYPE_LABELS = {"ELECTRICITY": "Energia elettrica", "GAS": "Gas", "DUAL_FUEL": "Luce e gas"}
 
 
 class CustomerValidationError(Exception):
@@ -198,9 +199,13 @@ async def add_supply_point(
     db.add(address)
     await db.flush()
 
+    label = payload.label or (
+        f"{ENERGY_TYPE_LABELS.get(payload.energy_type, payload.energy_type)} - {payload.street}, {payload.city}"
+    )
     supply_point = SupplyPoint(
         organization_id=organization_id,
         customer_id=customer_id,
+        label=label,
         energy_type=payload.energy_type,
         pod_code=payload.pod_code,
         pdr_code=payload.pdr_code,
@@ -212,7 +217,33 @@ async def add_supply_point(
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="customer.supply_point_added", entity_type="customer", entity_id=str(customer_id),
-        new_value={"energy_type": payload.energy_type},
+        new_value={"energy_type": payload.energy_type, "label": label},
+    )
+    await db.commit()
+    await db.refresh(supply_point)
+    return supply_point
+
+
+async def update_supply_point(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    supply_point_id: uuid.UUID,
+    payload: SupplyPointUpdate,
+    actor_user_id: uuid.UUID,
+) -> SupplyPoint | None:
+    supply_point = await db.get(SupplyPoint, supply_point_id)
+    if supply_point is None or supply_point.organization_id != organization_id:
+        return None
+
+    previous = {"label": supply_point.label}
+    if payload.label is not None:
+        supply_point.label = payload.label
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="customer.supply_point_updated", entity_type="supply_point", entity_id=str(supply_point_id),
+        previous_value=previous, new_value={"label": supply_point.label},
     )
     await db.commit()
     await db.refresh(supply_point)

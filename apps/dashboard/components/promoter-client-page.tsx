@@ -11,6 +11,8 @@ import { CommissionSimulator } from "@/components/commission-simulator";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
+import { SectionBanner } from "@/components/section-banner";
+import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import type { AgentProfileRead, BranchMemberRead, PromoterCodeRead } from "@/lib/types";
 
 interface PromoterClientPageProps {
@@ -72,10 +74,19 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "support",
+    label: "Supporto",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+  },
 ];
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support">("azienda");
   const router = useRouter();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
 
@@ -154,10 +165,16 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
         </div>
       ) : (
         <div>
-          {activeTab === "azienda" && <PromoterAziendaPanel agentId={me.id} />}
+          {activeTab === "azienda" && (
+            <div className="space-y-6">
+              <SectionBanner image="energy" alt="La mia Azienda" />
+              <PromoterAziendaPanel agentId={me.id} />
+            </div>
+          )}
 
           {activeTab === "network" && (
             <div className="space-y-6">
+              <SectionBanner image="network" alt="Rete Commerciale" />
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3 text-xs">
                   <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
@@ -188,22 +205,39 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
           )}
 
           {activeTab === "products" && (
-            <CustomerProductsPanel referralCode={referralCode?.code} organizationId={organizationId} />
+            <div className="space-y-6">
+              <SectionBanner image="products" alt="Prodotti da Condividere" />
+              <CustomerProductsPanel referralCode={referralCode?.code} organizationId={organizationId} />
+            </div>
           )}
 
           {activeTab === "commissions" && (
-            <div className="max-w-4xl mx-auto glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-              <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Estratto Conto Provvigioni</h3>
-              <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
-                Storico dei gettoni personali e delle differenze imprenditoriali maturate sui contratti attivi.
-              </p>
-              <MyCommissions />
+            <div className="max-w-4xl mx-auto space-y-6">
+              <SectionBanner image="commissions" alt="Movimenti Provvigioni" />
+              <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+                <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Estratto Conto Provvigioni</h3>
+                <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
+                  Storico dei gettoni personali e delle differenze imprenditoriali maturate sui contratti attivi.
+                </p>
+                <MyCommissions />
+              </div>
             </div>
           )}
 
           {activeTab === "simulator" && (
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-5xl mx-auto space-y-6">
+              <SectionBanner image="commissions" alt="Simulatore Provvigioni" />
               <CommissionSimulator />
+            </div>
+          )}
+
+          {activeTab === "support" && (
+            <div className="space-y-6">
+              <SectionBanner image="support" alt="Supporto" />
+              <SupportTicketsPanel
+                title="Supporto"
+                subtitle="Hai bisogno di aiuto dall'amministrazione? Apri un ticket: lo vedrai qui appena ricevi risposta."
+              />
             </div>
           )}
         </div>

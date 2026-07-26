@@ -26,6 +26,8 @@ from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.referral.router import authenticated_router as referral_authenticated_router
 from app.domains.referral.router import router as referral_router
 from app.domains.reports.router import router as reports_router
+from app.domains.support import models as _support_models  # noqa: F401
+from app.domains.support.router import router as support_router
 from app.domains.users import models as _users_models  # noqa: F401
 
 settings = get_settings()
@@ -53,6 +55,7 @@ app.include_router(commissions_router, prefix="/api")
 app.include_router(customers_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
+app.include_router(support_router, prefix="/api")
 
 
 @app.get("/health")

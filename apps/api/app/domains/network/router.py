@@ -17,6 +17,7 @@ from app.domains.network.schemas import (
     BranchMemberRead,
     BranchSummaryRead,
     MoveAgentRequest,
+    OrganizationNetworkLevelsRead,
     RecruitRequest,
 )
 
@@ -115,6 +116,18 @@ async def get_branch_contracts(
         db, organization_id=current_user.organization_id, root_agent_id=agent_id
     )
     return [BranchContractRead(**row) for row in rows]
+
+
+@router.get("/organization/levels", response_model=OrganizationNetworkLevelsRead)
+async def get_organization_network_levels(
+    current_user: CurrentUser = Depends(require_permission("network.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationNetworkLevelsRead:
+    """Whole-company network depth/headcount -- admin-only (network.manage),
+    unlike /agents/{id}/branch-summary which every promoter can call for their
+    own restricted downline."""
+    result = await network_service.get_organization_network_levels(db, organization_id=current_user.organization_id)
+    return OrganizationNetworkLevelsRead(**result)
 
 
 @router.get("/agents", response_model=list[AgentListItemRead])

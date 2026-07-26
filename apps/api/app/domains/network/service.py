@@ -468,7 +468,14 @@ async def get_branch_summary(
 
     branch = await get_branch(db, organization_id=organization_id, root_agent_id=root_agent_id)
     if not branch:
-        return {"agents": [], "totals": {"contracts": 0, "commission_cents": 0}}
+        return {
+            "agents": [],
+            "totals": {
+                "contracts": 0, "commission_cents": 0, "contracts_by_status": {},
+                "contracts_closed": 0, "contracts_rejected": 0, "contracts_pending": 0,
+                "contracts_in_progress": 0, "levels_below": 0, "people_total": 0,
+            },
+        }
     agent_ids = [row["agent_id"] for row in branch]
 
     contract_stmt = (
@@ -497,6 +504,8 @@ async def get_branch_summary(
     agents = []
     total_contracts = 0
     total_commission_cents = 0
+    total_by_status: dict[str, int] = {}
+    max_depth = 0
     for row in branch:
         by_status = contracts_by_agent.get(row["agent_id"], {})
         agent_contract_total = sum(by_status.values())
@@ -516,10 +525,62 @@ async def get_branch_summary(
         })
         total_contracts += agent_contract_total
         total_commission_cents += agent_commission
+        max_depth = max(max_depth, row["depth"])
+        for status, count in by_status.items():
+            total_by_status[status] = total_by_status.get(status, 0) + count
+
+    # "Chiusi/rifiutati/pending/in lavorazione" -- the four buckets a promoter
+    # or admin needs at a glance (docs/business-rules.md#contract-state-machine
+    # has the full status list; these are the coarse groupings people think in).
+    total_closed = sum(total_by_status.get(s, 0) for s in PROCESSED_CONTRACT_STATUSES)
+    total_rejected = total_by_status.get("REJECTED", 0)
+    total_pending = sum(total_by_status.get(s, 0) for s in PROBLEM_CONTRACT_STATUSES) - total_rejected
+    total_in_progress = sum(total_by_status.get(s, 0) for s in IN_PROGRESS_CONTRACT_STATUSES)
 
     return {
         "agents": agents,
-        "totals": {"contracts": total_contracts, "commission_cents": total_commission_cents},
+        "totals": {
+            "contracts": total_contracts,
+            "commission_cents": total_commission_cents,
+            "contracts_by_status": total_by_status,
+            "contracts_closed": total_closed,
+            "contracts_rejected": total_rejected,
+            "contracts_pending": total_pending,
+            "contracts_in_progress": total_in_progress,
+            "levels_below": max_depth,
+            "people_total": len(branch) - 1,  # exclude self (depth 0)
+        },
+    }
+
+
+async def get_organization_network_levels(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:
+    """Whole-organization view of the network tree: how many people sit at each
+    depth from their own top-level sponsor, and how many levels deep the
+    network goes in total. Unlike get_branch_summary (rooted at one promoter,
+    for that promoter's own restricted view -- "un promoter puo solo vedere
+    sotto di lui"), this has no root and is admin-only: it's the whole
+    company's org chart, not one branch of it."""
+    # An agent's own depth is the largest depth at which it appears as a
+    # descendant -- the closure row from its topmost ancestor (a root, with no
+    # parent) down to it. Multiple independent root agents can coexist, so
+    # there's no single "root_agent_id" to pass to get_branch()/get_branch_summary().
+    stmt = (
+        select(NetworkClosure.descendant_agent_id, func.max(NetworkClosure.depth))
+        .where(NetworkClosure.organization_id == organization_id)
+        .group_by(NetworkClosure.descendant_agent_id)
+    )
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return {"people_total": 0, "levels_total": 0, "people_by_level": {}}
+
+    people_by_level: dict[int, int] = {}
+    for _agent_id, depth in rows:
+        people_by_level[depth] = people_by_level.get(depth, 0) + 1
+
+    return {
+        "people_total": len(rows),
+        "levels_total": max(people_by_level.keys()) + 1,
+        "people_by_level": people_by_level,
     }
 
 
@@ -532,8 +593,8 @@ async def get_branch_contracts(
     customer to call". One row per contract, not per agent."""
     from app.domains.catalog.models import ProductVersion
     from app.domains.commissions.models import CommissionMovement
-    from app.domains.contracts.models import Contract, ContractAttribution
-    from app.domains.customers.models import Company, Customer, CustomerProfile
+    from app.domains.contracts.models import Contract, ContractAttribution, ContractStatusHistory
+    from app.domains.customers.models import Company, Customer, CustomerProfile, SupplyPoint
     from app.domains.customers.service import display_name_for
 
     branch = await get_branch(db, organization_id=organization_id, root_agent_id=root_agent_id)
@@ -547,6 +608,8 @@ async def get_branch_contracts(
             Contract.id,
             Contract.status,
             Contract.customer_id,
+            Contract.supply_point_id,
+            Contract.expires_at,
             ContractAttribution.producer_agent_id,
             ProductVersion.name,
         )
@@ -562,6 +625,7 @@ async def get_branch_contracts(
 
     contract_ids = [r[0] for r in rows]
     customer_ids = list({r[2] for r in rows})
+    supply_point_ids = list({r[3] for r in rows})
 
     customers = {c.id: c for c in (await db.execute(select(Customer).where(Customer.id.in_(customer_ids)))).scalars()}
     profiles = {
@@ -572,6 +636,11 @@ async def get_branch_contracts(
         c.customer_id: c
         for c in (await db.execute(select(Company).where(Company.customer_id.in_(customer_ids)))).scalars()
     }
+    supply_point_labels = dict(
+        (
+            await db.execute(select(SupplyPoint.id, SupplyPoint.label).where(SupplyPoint.id.in_(supply_point_ids)))
+        ).all()
+    )
 
     commission_stmt = (
         select(CommissionMovement.contract_id, func.coalesce(func.sum(CommissionMovement.amount_cents), 0))
@@ -583,8 +652,21 @@ async def get_branch_contracts(
     )
     commission_by_contract = {cid: int(total) for cid, total in (await db.execute(commission_stmt)).all()}
 
+    # Most recent admin note per contract -- what an admin wrote when moving a
+    # contract to e.g. DOCUMENTS_PENDING ("manca il documento X") is exactly
+    # what the promoter needs to see to know what to chase with the customer.
+    note_history_stmt = (
+        select(ContractStatusHistory.contract_id, ContractStatusHistory.notes, ContractStatusHistory.created_at)
+        .where(ContractStatusHistory.contract_id.in_(contract_ids), ContractStatusHistory.notes.isnot(None))
+        .order_by(ContractStatusHistory.contract_id, ContractStatusHistory.created_at.desc())
+    )
+    latest_note_by_contract: dict[uuid.UUID, str] = {}
+    for cid, notes, _created_at in (await db.execute(note_history_stmt)).all():
+        if cid not in latest_note_by_contract:
+            latest_note_by_contract[cid] = notes
+
     result = []
-    for contract_id, status, customer_id, producer_agent_id, product_name in rows:
+    for contract_id, status, customer_id, supply_point_id, expires_at, producer_agent_id, product_name in rows:
         customer = customers.get(customer_id)
         result.append({
             "contract_id": contract_id,
@@ -595,10 +677,13 @@ async def get_branch_contracts(
             "customer_email": customer.email if customer else None,
             "customer_phone": customer.phone if customer else None,
             "product_name": product_name,
+            "supply_point_label": supply_point_labels.get(supply_point_id),
+            "expires_at": expires_at,
             "producer_agent_id": producer_agent_id,
             "producer_name": agent_name_by_id.get(producer_agent_id, "—"),
             "commission_cents": commission_by_contract.get(contract_id, 0),
             "is_problem": status in PROBLEM_CONTRACT_STATUSES,
+            "admin_note": latest_note_by_contract.get(contract_id),
         })
     return result
 

@@ -21,6 +21,7 @@ from app.domains.organizations.models import Organization
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
+from app.domains.support import models as _support_models  # noqa: F401
 from app.domains.users import models as _users_models  # noqa: F401
 
 TEST_DATABASE_URL = os.environ.get(

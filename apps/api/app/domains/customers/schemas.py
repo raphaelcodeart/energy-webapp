@@ -68,6 +68,7 @@ class SupplyPointRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    label: str | None
     energy_type: str
     pod_code: str | None
     pdr_code: str | None
@@ -76,6 +77,7 @@ class SupplyPointRead(BaseModel):
 
 
 class SupplyPointCreate(BaseModel):
+    label: str | None = None  # auto-computed from energy_type + address if omitted
     energy_type: str  # ELECTRICITY / GAS
     pod_code: str | None = None
     pdr_code: str | None = None
@@ -85,6 +87,10 @@ class SupplyPointCreate(BaseModel):
     province: str
     postal_code: str
     country: str = "IT"
+
+
+class SupplyPointUpdate(BaseModel):
+    label: str | None = None
 
 
 class CustomerDetailRead(CustomerRead):

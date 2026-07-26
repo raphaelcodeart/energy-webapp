@@ -214,7 +214,7 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
                   className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
                   <option value="">— Seleziona punto di fornitura —</option>
                   {(selectedCustomerDetail?.supply_points ?? []).map((sp) => (
-                    <option key={sp.id} value={sp.id}>{sp.energy_type} — {sp.pod_code ?? sp.pdr_code ?? sp.id}</option>
+                    <option key={sp.id} value={sp.id}>{sp.label ?? sp.energy_type} ({sp.pod_code ?? sp.pdr_code ?? "—"})</option>
                   ))}
                 </select>
                 {selectedCustomerDetail && selectedCustomerDetail.supply_points.length === 0 && (

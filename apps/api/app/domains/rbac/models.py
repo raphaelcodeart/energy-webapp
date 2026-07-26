@@ -32,6 +32,7 @@ PERMISSIONS = [
     "payments.manage", "documents.download", "reports.export", "reports.read",
     "audit.read", "settings.manage",
     "products.read", "products.manage",
+    "tickets.create", "tickets.respond",
 ]
 
 # Default role -> permission grants for the demo/seed environment. Real deployments
@@ -48,12 +49,12 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "commissions.read_branch", "commissions.simulate", "commissions.approve",
         "commission_adjustments.create", "payments.manage", "documents.download",
         "reports.export", "reports.read", "audit.read", "settings.manage",
-        "products.read", "products.manage",
+        "products.read", "products.manage", "tickets.respond",
     ],
     "BACK_OFFICE_OPERATOR": [
         "customers.read", "customers.create", "customers.update",
         "contracts.read", "contracts.create", "contracts.submit", "contracts.review",
-        "documents.download", "products.read",
+        "documents.download", "products.read", "tickets.respond",
     ],
     "ACCOUNTING_OPERATOR": [
         "contracts.read", "payments.manage", "commissions.read_branch",
@@ -76,9 +77,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "network.read_branch", "network.recruit", "commissions.read_own",
         # Read-only preview of their own potential earnings -- never writes to
         # the ledger (see commissions/simulations/simulate.py), so safe to grant.
-        "commissions.simulate", "products.read",
+        "commissions.simulate", "products.read", "tickets.create",
     ],
-    "CUSTOMER": ["contracts.read", "documents.download", "products.read"],
+    "CUSTOMER": ["contracts.read", "documents.download", "products.read", "tickets.create"],
     "AUDITOR": ["audit.read", "reports.export", "reports.read"],
 }
 

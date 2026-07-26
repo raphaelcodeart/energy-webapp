@@ -53,6 +53,7 @@ interface ProductFormState {
   recurringFeeEuro: string;
   billingPeriod: string;
   vatPercentage: string;
+  contractDurationMonths: string;
 }
 
 const EMPTY_FORM: ProductFormState = {
@@ -64,6 +65,7 @@ const EMPTY_FORM: ProductFormState = {
   recurringFeeEuro: "0",
   billingPeriod: "MONTHLY",
   vatPercentage: "10",
+  contractDurationMonths: "12",
 };
 
 function ProductFormFields({
@@ -123,14 +125,24 @@ function ProductFormFields({
         </div>
       </div>
 
-      <div className="space-y-1">
-        <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Periodicità fatturazione</label>
-        <select value={form.billingPeriod} onChange={(e) => onChange({ billingPeriod: e.target.value })}
-          className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
-          <option value="MONTHLY">Mensile</option>
-          <option value="QUARTERLY">Trimestrale</option>
-          <option value="ANNUAL">Annuale</option>
-        </select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Periodicità fatturazione</label>
+          <select value={form.billingPeriod} onChange={(e) => onChange({ billingPeriod: e.target.value })}
+            className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
+            <option value="MONTHLY">Mensile</option>
+            <option value="QUARTERLY">Trimestrale</option>
+            <option value="ANNUAL">Annuale</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Durata contratto (mesi)</label>
+          <input inputMode="numeric" value={form.contractDurationMonths}
+            onChange={(e) => onChange({ contractDurationMonths: e.target.value })}
+            placeholder="Vuoto = nessun rinnovo"
+            className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+          <p className="text-[10px] text-slate-500">Lascia vuoto per prodotti senza rinnovo (digitali, fisici, acquisti una tantum).</p>
+        </div>
       </div>
     </>
   );
@@ -178,6 +190,9 @@ export function AdminProductsPanel() {
           recurring_fee_cents: euroToCents(createForm.recurringFeeEuro),
           billing_period: createForm.billingPeriod,
           vat_percentage: createForm.vatPercentage.trim() ? parseFloat(createForm.vatPercentage) : null,
+          contract_duration_months: createForm.contractDurationMonths.trim()
+            ? parseInt(createForm.contractDurationMonths, 10)
+            : null,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -203,6 +218,7 @@ export function AdminProductsPanel() {
       recurringFeeEuro: v ? centsToEuroInput(v.recurring_fee_cents) : "0",
       billingPeriod: v?.billing_period ?? "MONTHLY",
       vatPercentage: v?.vat_percentage != null ? String(v.vat_percentage) : "",
+      contractDurationMonths: v?.contract_duration_months != null ? String(v.contract_duration_months) : "",
     });
     setEditError(null);
     setEditingProduct(product);
@@ -225,6 +241,9 @@ export function AdminProductsPanel() {
           initial_fee_cents: euroToCents(editForm.initialFeeEuro),
           recurring_fee_cents: euroToCents(editForm.recurringFeeEuro),
           vat_percentage: editForm.vatPercentage.trim() ? parseFloat(editForm.vatPercentage) : null,
+          contract_duration_months: editForm.contractDurationMonths.trim()
+            ? parseInt(editForm.contractDurationMonths, 10)
+            : null,
         }),
       });
       if (!res.ok) throw new Error(await res.text());

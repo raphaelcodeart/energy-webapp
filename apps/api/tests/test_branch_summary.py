@@ -35,7 +35,8 @@ async def _make_contract_ready_to_activate(db, organization_id, actor_user_id, p
     db.add(product)
     await db.flush()
     product_version = ProductVersion(
-        product_id=product.id, version_label="1.0", name="Test product", base_price_cents=1000, valid_from=NOW,
+        product_id=product.id, version_label="1.0", name="Test product", base_price_cents=1000,
+        contract_duration_months=12, valid_from=NOW,
     )
     db.add(product_version)
     await db.flush()
@@ -114,8 +115,52 @@ async def test_branch_summary_counts_contracts_and_commissions_per_agent(db, org
     assert producer_row["contracts_problem"] == 1  # DOCUMENTS_PENDING
     assert producer_row["commission_cents"] == 4000  # PERSONAL_TOKEN for the active contract
 
+    totals = summary["totals"]
+    assert totals["contracts_closed"] == 1  # ACTIVE
+    assert totals["contracts_rejected"] == 0
+    assert totals["contracts_pending"] == 1  # DOCUMENTS_PENDING, not REJECTED
+    assert totals["contracts_in_progress"] == 0
+    assert totals["levels_below"] == 1  # producer is one level below sponsor
+    assert totals["people_total"] == 1  # producer only, sponsor (self) excluded
+
     assert summary["totals"]["contracts"] == 2
     assert summary["totals"]["commission_cents"] == 4000
+
+
+@pytest.mark.asyncio
+async def test_branch_summary_totals_distinguish_rejected_from_other_pending(db, organization_id):
+    """contracts_rejected and contracts_pending must not double count -- a
+    REJECTED contract belongs in "rifiutati", not also in "pending"."""
+    s1 = Rank(organization_id=organization_id, code="S1", name="Seller 1", level=1, personal_token_cents=4000, valid_from=NOW, rule_version="test")
+    db.add(s1)
+    await db.flush()
+
+    producer = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="Rejector", promoter_code=f"REJ-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None, current_rank_id=s1.id,
+    )
+    actor_user_id = await _make_actor(db, organization_id)
+
+    rejected_contract = await _make_contract_ready_to_activate(db, organization_id, actor_user_id, producer.id)
+    rejected_contract = await contract_service.transition_contract(
+        db, organization_id=organization_id, contract=rejected_contract, to_status="SUBMITTED",
+        actor_user_id=actor_user_id, reason=None, notes=None, correlation_id=str(uuid.uuid4()),
+    )
+    rejected_contract = await contract_service.transition_contract(
+        db, organization_id=organization_id, contract=rejected_contract, to_status="REJECTED",
+        actor_user_id=actor_user_id, reason="Non idoneo", notes=None, correlation_id=str(uuid.uuid4()),
+    )
+
+    draft_contract = await _make_contract_ready_to_activate(db, organization_id, actor_user_id, producer.id)
+
+    summary = await network_service.get_branch_summary(db, organization_id=organization_id, root_agent_id=producer.id)
+    totals = summary["totals"]
+    assert totals["contracts_rejected"] == 1
+    assert totals["contracts_pending"] == 0
+    assert totals["contracts_in_progress"] == 1  # the still-DRAFT contract
+    assert totals["contracts_closed"] == 0
+    assert totals["levels_below"] == 0  # producer is root, no downline
+    assert totals["people_total"] == 0
 
 
 @pytest.mark.asyncio
@@ -143,3 +188,67 @@ async def test_branch_contracts_links_customer_product_status_and_commission(db,
     assert row["is_problem"] is False
     assert row["producer_agent_id"] == producer.id
     assert "@example.com" in row["customer_email"]
+    assert row["expires_at"] is not None  # ACTIVE contracts get a term via transition_contract()
+    assert row["admin_note"] is None  # no status transition carried a note
+
+
+@pytest.mark.asyncio
+async def test_branch_contracts_surfaces_latest_admin_note_for_problem_contracts(db, organization_id):
+    """A promoter viewing their downline needs to know exactly what's missing --
+    the admin note left when moving a contract to DOCUMENTS_PENDING (e.g.
+    "manca il documento di identità") -- not just that something is wrong."""
+    s1 = Rank(organization_id=organization_id, code="S1", name="Seller 1", level=1, personal_token_cents=4000, valid_from=NOW, rule_version="test")
+    db.add(s1)
+    await db.flush()
+
+    producer = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="Note Producer", promoter_code=f"NOTE-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None, current_rank_id=s1.id,
+    )
+    actor_user_id = await _make_actor(db, organization_id)
+
+    contract = await _make_contract_ready_to_activate(db, organization_id, actor_user_id, producer.id)
+    contract = await contract_service.transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
+        actor_user_id=actor_user_id, reason=None, notes=None, correlation_id=str(uuid.uuid4()),
+    )
+    contract = await contract_service.transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="DOCUMENTS_PENDING",
+        actor_user_id=actor_user_id, reason="Missing ID", notes="Manca il documento di identita'",
+        correlation_id=str(uuid.uuid4()),
+    )
+
+    rows = await network_service.get_branch_contracts(db, organization_id=organization_id, root_agent_id=producer.id)
+    assert len(rows) == 1
+    assert rows[0]["is_problem"] is True
+    assert rows[0]["admin_note"] == "Manca il documento di identita'"
+
+
+@pytest.mark.asyncio
+async def test_organization_network_levels_counts_people_per_depth_from_their_own_root(db, organization_id):
+    """Two independent trees in the same org: root A has one child, root B has
+    none. Each agent's level is measured from ITS OWN top ancestor, not a
+    single shared root -- there is no single root_agent_id for a whole org."""
+    root_a = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="Root A", promoter_code=f"RA-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None,
+    )
+    child_a = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="Child A", promoter_code=f"CA-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=root_a.id,
+    )
+    root_b = await network_service.create_agent(
+        db, organization_id=organization_id, display_name="Root B", promoter_code=f"RB-{uuid.uuid4().hex[:8]}",
+        parent_agent_id=None,
+    )
+
+    result = await network_service.get_organization_network_levels(db, organization_id=organization_id)
+    assert result["people_total"] == 3
+    assert result["levels_total"] == 2  # depth 0 (both roots) and depth 1 (child_a)
+    assert result["people_by_level"] == {0: 2, 1: 1}
+
+
+@pytest.mark.asyncio
+async def test_organization_network_levels_empty_org_returns_zeroes(db, organization_id):
+    result = await network_service.get_organization_network_levels(db, organization_id=organization_id)
+    assert result == {"people_total": 0, "levels_total": 0, "people_by_level": {}}

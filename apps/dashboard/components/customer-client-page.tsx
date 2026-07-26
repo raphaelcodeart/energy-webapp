@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
+import { SectionBanner } from "@/components/section-banner";
+import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
 
 async function fetchProductsForLookup(): Promise<ProductCatalogRead[]> {
@@ -70,6 +72,9 @@ const NAV_ITEMS: NavItem[] = [
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
   const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support">("products");
+  // Lazy initializer: Date.now() runs once at mount, not on every render --
+  // the sanctioned way to capture an impure value for use during render.
+  const [nowMs] = useState(() => Date.now());
   const { data: productsForLookup } = useQuery({
     queryKey: ["customer", "products", "lookup"],
     queryFn: fetchProductsForLookup,
@@ -79,30 +84,6 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
       .filter((p) => p.current_version)
       .map((p) => [p.current_version!.id, p.current_version!.name])
   );
-
-  // Support ticket state
-  const [ticketSubject, setTicketSubject] = useState("");
-  const [ticketMessage, setTicketMessage] = useState("");
-  const [ticketType, setTicketType] = useState("ASSISTENZA_TECNICA");
-  const [ticketSubmitted, setTicketSubmitted] = useState(false);
-  const [submittingTicket, setSubmittingTicket] = useState(false);
-  const [ticketNumber, setTicketNumber] = useState<number | null>(null);
-
-  const handleSupportSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmittingTicket(true);
-    // Generated here (an event handler), not during render, so it stays stable
-    // across re-renders instead of changing every time the component re-paints.
-    const newTicketNumber = Math.floor(Math.random() * 90000) + 10000;
-    setTimeout(() => {
-      setSubmittingTicket(false);
-      setTicketSubmitted(true);
-      setTicketNumber(newTicketNumber);
-      setTicketSubject("");
-      setTicketMessage("");
-      setTimeout(() => setTicketSubmitted(false), 5000);
-    }, 1200);
-  };
 
   // Determine current step index in the contract pipeline
   const getStepIndex = (status: string) => {
@@ -141,6 +122,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
     >
       {activeTab === "contracts" && (
         <div className="space-y-6">
+          <SectionBanner image="energy" alt="I miei Contratti" />
           {contracts.length === 0 ? (
             <div className="glass-card rounded-2xl p-12 text-center border-white/5 light:border-slate-200">
               <svg className="w-12 h-12 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -177,7 +159,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                       <div>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Offerta</p>
                         <h4 className="text-base text-white light:text-slate-900 font-semibold">
-                          {productNameByVersionId.get(c.product_version_id) ?? "Contratto"}
+                          {c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "Contratto"}
                         </h4>
                         <p className="font-mono text-[10px] text-slate-500 mt-0.5">{c.id}</p>
                       </div>
@@ -193,17 +175,29 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                       <div>
                         <span className="text-xs text-slate-500">Prodotto</span>
                         <p className="text-xs text-slate-300 light:text-slate-600 mt-0.5">
-                          {productNameByVersionId.get(c.product_version_id) ?? "—"}
+                          {c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "—"}
                         </p>
-                        <p className="font-mono text-[10px] text-slate-500">{c.product_version_id}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-slate-500">Punto di Fornitura (POD/PDR)</span>
-                        <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.supply_point_id}</p>
+                        <span className="text-xs text-slate-500">Punto di Fornitura</span>
+                        <p className="text-xs text-slate-300 light:text-slate-600 mt-0.5">
+                          {c.supply_point_label ?? "Punto di fornitura"}
+                        </p>
+                        <p className="font-mono text-[10px] text-slate-500">{c.supply_point_id}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-slate-500">Codice Contratto</span>
-                        <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.id}</p>
+                        <span className="text-xs text-slate-500">Scadenza / Rinnovo</span>
+                        {c.expires_at ? (
+                          <p className={`text-xs mt-0.5 font-semibold ${
+                            new Date(c.expires_at).getTime() - nowMs < 30 * 24 * 60 * 60 * 1000
+                              ? "text-amber-400"
+                              : "text-slate-300 light:text-slate-600"
+                          }`}>
+                            {new Date(c.expires_at).toLocaleDateString("it-IT")}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-500 mt-0.5">—</p>
+                        )}
                       </div>
                     </div>
 
@@ -285,89 +279,20 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
         </div>
       )}
 
-      {activeTab === "products" && <CustomerProductsPanel />}
+      {activeTab === "products" && (
+        <div className="space-y-6">
+          <SectionBanner image="products" alt="Shop" />
+          <CustomerProductsPanel />
+        </div>
+      )}
 
       {activeTab === "support" && (
-        <div className="max-w-2xl mx-auto glass-card rounded-2xl p-8 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-orange-500/10 rounded-xl border border-orange-500/20 text-orange-400">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white light:text-slate-900">Invia Segnalazione / Richiesta</h3>
-              <p className="text-xs text-slate-400 light:text-slate-500">Il nostro team di supporto ti ricontatterà entro 24 ore</p>
-            </div>
-          </div>
-
-          {ticketSubmitted ? (
-            <div className="p-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-center animate-scale-up space-y-2">
-              <svg className="w-10 h-10 mx-auto text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h4 className="font-semibold text-white light:text-slate-900">Richiesta Ricevuta!</h4>
-              <p className="text-xs text-slate-300 light:text-slate-600">La segnalazione è stata presa in carico dagli operatori con il ticket #LIAL-{ticketNumber}.</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSupportSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider" htmlFor="ticketType">
-                    Tipo di richiesta
-                  </label>
-                  <select
-                    id="ticketType"
-                    value={ticketType}
-                    onChange={(e) => setTicketType(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
-                  >
-                    <option value="ASSISTENZA_TECNICA" className="bg-slate-950 light:bg-white">Problema Tecnico</option>
-                    <option value="FATTURAZIONE" className="bg-slate-950 light:bg-white">Fatture e Consumi</option>
-                    <option value="SUBENTRO_VOLTURA" className="bg-slate-950 light:bg-white">Subentri e Volture</option>
-                    <option value="INFORMAZIONI" className="bg-slate-950 light:bg-white">Richiesta Informazioni</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider" htmlFor="subject">
-                    Oggetto
-                  </label>
-                  <input
-                    id="subject"
-                    type="text"
-                    required
-                    placeholder="Breve descrizione..."
-                    value={ticketSubject}
-                    onChange={(e) => setTicketSubject(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider" htmlFor="message">
-                  Messaggio dettagliato
-                  </label>
-                <textarea
-                  id="message"
-                  required
-                  rows={5}
-                  placeholder="Descrivi qui la tua richiesta o il problema riscontrato..."
-                  value={ticketMessage}
-                  onChange={(e) => setTicketMessage(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 resize-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingTicket}
-                className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-50 cursor-pointer mt-2"
-              >
-                {submittingTicket ? "Invio in corso..." : "Invia Messaggio"}
-              </button>
-            </form>
-          )}
+        <div className="space-y-6">
+          <SectionBanner image="support" alt="Supporto & Assistenza" />
+          <SupportTicketsPanel
+            title="Supporto & Assistenza"
+            subtitle="Apri un ticket per problemi tecnici, fatturazione o domande sul tuo contratto: un operatore ti risponderà qui."
+          />
         </div>
       )}
     </AppShell>

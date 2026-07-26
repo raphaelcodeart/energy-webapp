@@ -50,6 +50,13 @@ class BranchAgentSummaryRead(BaseModel):
 class BranchSummaryTotals(BaseModel):
     contracts: int
     commission_cents: int
+    contracts_by_status: dict[str, int] = {}
+    contracts_closed: int = 0
+    contracts_rejected: int = 0
+    contracts_pending: int = 0
+    contracts_in_progress: int = 0
+    levels_below: int = 0
+    people_total: int = 0
 
 
 class BranchSummaryRead(BaseModel):
@@ -65,10 +72,13 @@ class BranchContractRead(BaseModel):
     customer_email: str | None
     customer_phone: str | None
     product_name: str
+    supply_point_label: str | None = None
+    expires_at: datetime | None = None
     producer_agent_id: uuid.UUID
     producer_name: str
     commission_cents: int
     is_problem: bool
+    admin_note: str | None = None
 
 
 class MoveAgentRequest(BaseModel):
@@ -105,3 +115,9 @@ class AgentUpdateRequest(BaseModel):
     display_name: str | None = None
     status: str | None = None
     current_rank_id: uuid.UUID | None = None
+
+
+class OrganizationNetworkLevelsRead(BaseModel):
+    people_total: int
+    levels_total: int
+    people_by_level: dict[int, int]

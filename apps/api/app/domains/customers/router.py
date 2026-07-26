@@ -13,6 +13,7 @@ from app.domains.customers.schemas import (
     CustomerUpdate,
     SupplyPointCreate,
     SupplyPointRead,
+    SupplyPointUpdate,
 )
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -98,4 +99,23 @@ async def add_supply_point(
     )
     if supply_point is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found")
+    return SupplyPointRead.model_validate(supply_point)
+
+
+@router.patch("/supply-points/{supply_point_id}", response_model=SupplyPointRead)
+async def update_supply_point(
+    supply_point_id: uuid.UUID,
+    payload: SupplyPointUpdate,
+    current_user: CurrentUser = Depends(require_permission("customers.update")),
+    db: AsyncSession = Depends(get_db),
+) -> SupplyPointRead:
+    supply_point = await customer_service.update_supply_point(
+        db,
+        organization_id=current_user.organization_id,
+        supply_point_id=supply_point_id,
+        payload=payload,
+        actor_user_id=current_user.user_id,
+    )
+    if supply_point is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Supply point not found")
     return SupplyPointRead.model_validate(supply_point)

@@ -19,6 +19,7 @@ class ProductVersionRead(BaseModel):
     recurring_fee_cents: int
     billing_period: str
     vat_percentage: float | None
+    contract_duration_months: int | None
     valid_from: datetime
     valid_to: datetime | None
     status: str
@@ -41,6 +42,7 @@ class ProductVersionRead(BaseModel):
             recurring_fee_cents=version.recurring_fee_cents,
             billing_period=version.billing_period,
             vat_percentage=tax_configuration.get("vat_percentage"),
+            contract_duration_months=version.contract_duration_months,
             valid_from=version.valid_from,
             valid_to=version.valid_to,
             status=version.status,
@@ -87,6 +89,7 @@ class ProductCreate(BaseModel):
     recurring_fee_cents: int = 0
     billing_period: str = "MONTHLY"
     vat_percentage: float | None = None
+    contract_duration_months: int | None = 12
 
     @field_validator("product_type")
     @classmethod
@@ -106,6 +109,7 @@ class ProductVersionCreate(BaseModel):
     recurring_fee_cents: int = 0
     billing_period: str = "MONTHLY"
     vat_percentage: float | None = None
+    contract_duration_months: int | None = 12
 
 
 class ProductVersionUpdate(BaseModel):
@@ -116,6 +120,7 @@ class ProductVersionUpdate(BaseModel):
     initial_fee_cents: int | None = None
     recurring_fee_cents: int | None = None
     vat_percentage: float | None = None
+    contract_duration_months: int | None = None
     status: str | None = None
 
 

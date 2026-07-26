@@ -227,14 +227,15 @@ GET  /api/reports/export/commissions.csv              Fase 9
 |---|---|---|
 | 1 | Layout amministrativo (AppShell, sidebar, top bar, tema) | ✅ Fatto (sessioni precedenti) |
 | 2 | Dashboard riepilogativa (KPI, grafici, filtri temporali, attività recenti) | ✅ Fatto (Sessione 6) |
-| 3 | Gestione contratti enterprise (tabella avanzata, dettaglio a tab, azioni) | Parziale (Sessione 11): form di creazione reale con cliente inline, `notes`. Mancano ancora: dettaglio a tab, duplicate/reassign/recalculate |
-| 4 | Scheda promoter estesa (dati fiscali, coordinate pagamento, tab contratti/provvigioni) | Parziale (Sessione 11): la vista "La mia Azienda" copre contratti/provvigioni per persona e per livello. Mancano ancora: dati fiscali/pagamento del promoter stesso |
-| 5 | Vista rete enterprise (ricerca globale, navigazione bidirezionale, aggregati per nodo) | Parziale: vista admin org-wide con ricerca esiste (Sessione 10); aggregati per nodo esistono lato promoter (`branch-summary`, Sessione 11) ma non ancora esposti nella vista admin |
+| 3 | Gestione contratti enterprise (tabella avanzata, dettaglio a tab, azioni) | Parziale (Sessione 11-12): form di creazione reale con cliente inline, `notes`; colonna scadenza/rinnovo con urgenza colorata, filtro per anno, nomi prodotto/punto di fornitura invece di ID grezzi. Mancano ancora: dettaglio a tab, duplicate/reassign/recalculate |
+| 4 | Scheda promoter estesa (dati fiscali, coordinate pagamento, tab contratti/provvigioni) | Parziale (Sessione 11-12): la vista "La mia Azienda" copre contratti/provvigioni per persona e per livello, con grafico e drill-down per livello. Mancano ancora: dati fiscali/pagamento del promoter stesso |
+| 5 | Vista rete enterprise (ricerca globale, navigazione bidirezionale, aggregati per nodo) | Parziale: vista admin org-wide con ricerca esiste (Sessione 10); aggregati per nodo esistono lato promoter (`branch-summary`, Sessione 11) ed **esposti anche lato admin** come widget "livelli e persone" whole-company (Sessione 12, `GET /network/organization/levels`) |
 | 6 | Rettifiche/storni provvigionali (service+router su tabelle già a schema) | Pianificata |
 | 7 | Liquidazioni e pagamenti (nuove tabelle, flusso completo) | Pianificata |
 | 8 | UI audit log | Pianificata |
 | 9 | Report ed esportazioni CSV | Pianificata |
 | 10 | Area pubblica marketplace + registrazione vincolata a referral | Parziale (Sessione 11): link di condivisione promoter, pagina pubblica `/r/[code]`, registrazione invite-only reale (email+password, un solo passaggio). Mancano ancora: verifica PIN via email, completamento profilo obbligatorio al primo accesso, memoria della promozione tra login, attivazione multipla con scelta sede -- richiedono un servizio di invio email che il progetto non ha ancora |
+| 11 | Sistema di ticket di supporto (cliente/promoter apre, staff risponde) | ✅ Fatto (Sessione 12) -- non era nel piano originale a 10 fasi, aggiunto su richiesta esplicita. Vedi `database-model.md §6` e `business-rules.md §Support tickets` |
 
 Ogni fase: implementazione -> verifica reale (build, typecheck, test, curl
 contro il database live) -> commit -> deploy -> smoke test sull'ambiente

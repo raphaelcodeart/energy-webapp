@@ -8,6 +8,12 @@ export type ContractRead = {
   supply_point_id: string;
   product_version_id: string;
   status: string;
+  notes: string | null;
+  created_at: string;
+  activated_at: string | null;
+  expires_at: string | null;
+  product_name: string | null;
+  supply_point_label: string | null;
 };
 
 export type CommissionMovementRead = {
@@ -79,6 +85,7 @@ export type AddressRead = {
 
 export type SupplyPointRead = {
   id: string;
+  label: string | null;
   energy_type: string;
   pod_code: string | null;
   pdr_code: string | null;
@@ -113,6 +120,7 @@ export type ProductVersionRead = {
   recurring_fee_cents: number;
   billing_period: string;
   vat_percentage: number | null;
+  contract_duration_months: number | null;
   valid_from: string;
   valid_to: string | null;
   status: string;
@@ -207,9 +215,27 @@ export type BranchAgentSummaryRead = {
   commission_cents: number;
 };
 
+export type BranchSummaryTotals = {
+  contracts: number;
+  commission_cents: number;
+  contracts_by_status: Record<string, number>;
+  contracts_closed: number;
+  contracts_rejected: number;
+  contracts_pending: number;
+  contracts_in_progress: number;
+  levels_below: number;
+  people_total: number;
+};
+
 export type BranchSummaryRead = {
   agents: BranchAgentSummaryRead[];
-  totals: { contracts: number; commission_cents: number };
+  totals: BranchSummaryTotals;
+};
+
+export type OrganizationNetworkLevelsRead = {
+  people_total: number;
+  levels_total: number;
+  people_by_level: Record<string, number>;
 };
 
 export type BranchContractRead = {
@@ -220,9 +246,41 @@ export type BranchContractRead = {
   customer_email: string | null;
   customer_phone: string | null;
   product_name: string;
+  supply_point_label: string | null;
+  expires_at: string | null;
   producer_agent_id: string;
   producer_name: string;
   commission_cents: number;
   is_problem: boolean;
+  admin_note: string | null;
+};
+
+export type TicketMessageRead = {
+  id: string;
+  ticket_id: string;
+  author_user_id: string;
+  author_role: string;
+  author_name: string | null;
+  body: string;
+  created_at: string;
+};
+
+export type TicketRead = {
+  id: string;
+  organization_id: string;
+  opened_by_user_id: string;
+  opened_by_role: string;
+  opened_by_name: string | null;
+  subject: string;
+  category: string;
+  status: string;
+  contract_id: string | null;
+  created_at: string;
+  message_count: number;
+  last_message_at: string | null;
+};
+
+export type TicketDetailRead = TicketRead & {
+  messages: TicketMessageRead[];
 };
 

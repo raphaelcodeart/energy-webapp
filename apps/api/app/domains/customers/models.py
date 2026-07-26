@@ -70,6 +70,11 @@ class SupplyPoint(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
     )
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id"), index=True)
+    # Human-readable identifier (e.g. "Abitazione principale - Via Roma 12,
+    # Milano") -- POD/PDR codes are correct but meaningless to a person
+    # scanning a list. Auto-computed from energy_type + address at creation if
+    # not given explicitly (see service.py); always editable afterwards.
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     energy_type: Mapped[str] = mapped_column(String(16))
     pod_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pdr_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
