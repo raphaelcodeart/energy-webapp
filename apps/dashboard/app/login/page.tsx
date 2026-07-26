@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,6 +58,10 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
       {/* Background decorations */}
       <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-violet-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
       <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-cyan-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
@@ -69,10 +74,10 @@ export default function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-3xl font-bold tracking-tight text-white light:text-slate-900">
             LIAL <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">ENERGY</span>
           </h1>
-          <p className="text-slate-400 text-sm mt-2">Piattaforma di Gestione Commerciale & Rete</p>
+          <p className="text-slate-400 light:text-slate-500 text-sm mt-2">Piattaforma di Gestione Commerciale & Rete</p>
         </div>
 
         {/* Login Form Card */}
@@ -80,10 +85,10 @@ export default function LoginPage() {
           onSubmit={handleSubmit}
           className="glass-card rounded-2xl p-8 space-y-5"
         >
-          <h2 className="text-xl font-semibold text-white/90">Accedi alla tua area riservata</h2>
+          <h2 className="text-xl font-semibold text-white/90 light:text-slate-800">Accedi alla tua area riservata</h2>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="organizationId">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="organizationId">
               ID Organizzazione
             </label>
             <input
@@ -97,7 +102,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="email">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="email">
               Indirizzo Email
             </label>
             <input
@@ -112,7 +117,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider" htmlFor="password">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="password">
               Password
             </label>
             <input
@@ -142,7 +147,7 @@ export default function LoginPage() {
           >
             {submitting ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-5 w-5 text-white light:text-slate-900" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
@@ -162,28 +167,28 @@ export default function LoginPage() {
             </svg>
             Area Demo & Test
           </h3>
-          <p className="text-slate-400 text-xs mb-4">
-            Usa l'ID Organizzazione stampato dal seed backend. Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
+          <p className="text-slate-400 light:text-slate-500 text-xs mb-4">
+            Usa l&apos;ID Organizzazione stampato dal seed backend. Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
           </p>
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => fillTestCredentials("admin")}
-              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-violet-500/20 hover:border-violet-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-violet-500/20 hover:border-violet-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
             >
               Amministratore
             </button>
             <button
               type="button"
               onClick={() => fillTestCredentials("promoter")}
-              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-cyan-500/20 hover:border-cyan-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-cyan-500/20 hover:border-cyan-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
             >
               Promoter
             </button>
             <button
               type="button"
               onClick={() => fillTestCredentials("customer")}
-              className="py-2 px-3 text-xs bg-white/5 border border-white/10 hover:bg-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-slate-300 font-medium transition cursor-pointer"
+              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
             >
               Cliente
             </button>

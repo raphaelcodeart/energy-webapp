@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LogoutButton } from "@/components/logout-button";
+import { AppShell, type NavItem } from "@/components/app-shell";
 import type { ContractRead } from "@/lib/types";
 
 interface AdminClientPageProps {
@@ -27,13 +27,26 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: "Respinta",
 };
 
-// Seeded UUIDs for demo quick-fill
-const SEED_VALUES = {
-  customer: "e2000000-0000-0000-0000-000000000010", // Roberto Villa id or Laura Ferri id
-  supplyPoint: "e3000000-0000-0000-0000-000000000020",
-  productVersion: "e4000000-0000-0000-0000-000000000030",
-  promoter: "e5000000-0000-0000-0000-000000000040" // a5_producer or similar agent id
-};
+const NAV_ITEMS: NavItem[] = [
+  {
+    key: "list",
+    label: "Tutti i Contratti",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+      </svg>
+    ),
+  },
+  {
+    key: "create",
+    label: "Nuovo Contratto",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+      </svg>
+    ),
+  },
+];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
@@ -77,7 +90,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     setTransitionReason("");
     setTransitionNotes("");
     setTransitionError(null);
-    
+
     // Choose sensible default transition based on current status
     if (contract.status === "DRAFT") setTargetStatus("SUBMITTED");
     else if (contract.status === "SUBMITTED") setTargetStatus("UNDER_REVIEW");
@@ -110,7 +123,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       }
 
       const updatedContract = await res.json() as ContractRead;
-      
+
       // Update local state
       setContracts(prev => prev.map(c => c.id === updatedContract.id ? updatedContract : c));
       setSelectedContract(null);
@@ -145,7 +158,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       }
 
       const newContract = await res.json() as ContractRead;
-      
+
       // Update state and clear inputs
       setContracts(prev => [newContract, ...prev]);
       setCreateSuccess(true);
@@ -153,7 +166,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       setCreateSupplyPointId("");
       setCreateProductVersionId("");
       setCreateProducerAgentId("");
-      
+
       // Switch back to list after short delay
       setTimeout(() => {
         setActiveTab("list");
@@ -171,7 +184,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       case "ACTIVE":
         return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       case "DRAFT":
-        return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        return "bg-slate-500/10 light:bg-slate-200/50 text-slate-400 light:text-slate-500 border-slate-500/20 light:border-slate-300";
       case "REJECTED":
       case "CANCELLED":
         return "bg-rose-500/10 text-rose-400 border-rose-500/20";
@@ -181,85 +194,40 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
   };
 
   return (
-    <div className="min-h-screen pb-12">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-40 w-full border-b border-white/5 bg-slate-950/80 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-to-tr from-violet-600 to-cyan-500 shadow-md">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <span className="text-lg font-bold tracking-tight text-white">
-                LIAL <span className="text-violet-400">ENERGY</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs text-slate-400 font-medium">Area Amministratore</span>
-                <span className="text-xs text-slate-300 font-mono">{email}</span>
-              </div>
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-8 animate-slide-up">
-        {/* Welcome Section */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Pannello Amministrativo</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              Organizzazione: <span className="font-mono text-xs text-cyan-400">{organizationId}</span>
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setActiveTab("list")}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                activeTab === "list"
-                  ? "bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-500/20"
-                  : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              Tutti i Contratti
-            </button>
-            <button
-              onClick={() => setActiveTab("create")}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                activeTab === "create"
-                  ? "bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-500/20"
-                  : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
-              }`}
-            >
-              + Nuovo Contratto
-            </button>
-          </div>
-        </div>
-
+    <>
+      <AppShell
+        roleLabel="Area Amministratore"
+        email={email}
+        navItems={NAV_ITEMS}
+        activeKey={activeTab}
+        onNavigate={(key) => setActiveTab(key as typeof activeTab)}
+        headerTitle="Pannello Amministrativo"
+        headerSubtitle={
+          <>
+            Organizzazione: <span className="font-mono text-xs text-cyan-400">{organizationId}</span>
+          </>
+        }
+      >
         {activeTab === "list" && (
           <div className="space-y-6">
             {/* Quick Metrics Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="glass-card rounded-2xl p-4 border-white/5 bg-slate-950/20 text-center">
+              <div className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/20 light:bg-slate-50 text-center">
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Totali</span>
-                <span className="text-2xl font-bold text-white">{contracts.length}</span>
+                <span className="text-2xl font-bold text-white light:text-slate-900">{contracts.length}</span>
               </div>
               {["DRAFT", "SUBMITTED", "UNDER_REVIEW", "ACTIVE"].map((status) => (
-                <div key={status} className="glass-card rounded-2xl p-4 border-white/5 bg-slate-950/20 text-center">
+                <div key={status} className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/20 light:bg-slate-50 text-center">
                   <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">
                     {STATUS_LABELS[status] || status}
                   </span>
-                  <span className="text-2xl font-bold text-white">{byStatus[status] ?? 0}</span>
+                  <span className="text-2xl font-bold text-white light:text-slate-900">{byStatus[status] ?? 0}</span>
                 </div>
               ))}
             </div>
 
             {/* Filters Bar */}
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between p-4 rounded-2xl bg-slate-900/40 border border-white/5">
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between p-4 rounded-2xl bg-slate-900/40 light:bg-slate-50 border border-white/5 light:border-slate-200">
               <div className="w-full sm:max-w-xs relative">
                 <input
                   type="text"
@@ -274,11 +242,11 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </div>
 
               <div className="w-full sm:w-auto flex items-center gap-2">
-                <span className="text-xs text-slate-400 shrink-0 font-medium">Stato:</span>
+                <span className="text-xs text-slate-400 light:text-slate-500 shrink-0 font-medium">Stato:</span>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full sm:w-44 rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 focus:border-violet-500"
+                  className="w-full sm:w-44 rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 light:bg-white focus:border-violet-500"
                 >
                   <option value="ALL">Tutti</option>
                   {Object.entries(STATUS_LABELS).map(([code, label]) => (
@@ -289,24 +257,24 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
             </div>
 
             {/* Contract List Table */}
-            <div className="glass-card rounded-2xl border-white/5 bg-slate-950/40 overflow-hidden">
+            <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr className="border-b border-white/5 text-slate-400 font-semibold bg-white/2">
+                    <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold bg-white/2 light:bg-slate-900/[0.02]">
                       <th className="py-3 px-6">ID Contratto</th>
                       <th className="py-3 px-6">ID Cliente</th>
                       <th className="py-3 px-6">Stato</th>
                       <th className="py-3 px-6 text-right">Azioni</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-white/5 light:divide-slate-200">
                     {filteredContracts.map((c) => (
-                      <tr key={c.id} className="text-slate-300 hover:bg-white/5 transition-colors">
-                        <td className="py-4 px-6 font-mono text-xs text-white">
+                      <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
+                        <td className="py-4 px-6 font-mono text-xs text-white light:text-slate-900">
                           {c.id}
                         </td>
-                        <td className="py-4 px-6 font-mono text-xs text-slate-400">
+                        <td className="py-4 px-6 font-mono text-xs text-slate-400 light:text-slate-500">
                           {c.customer_id}
                         </td>
                         <td className="py-4 px-6">
@@ -339,21 +307,21 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         )}
 
         {activeTab === "create" && (
-          <div className="max-w-xl mx-auto glass-card rounded-2xl p-8 border-white/5 bg-slate-950/40">
-            <h3 className="text-lg font-semibold text-white mb-2">Crea un Nuovo Contratto</h3>
-            <p className="text-xs text-slate-400 mb-6">
+          <div className="max-w-xl mx-auto glass-card rounded-2xl p-8 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+            <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Crea un Nuovo Contratto</h3>
+            <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
               Compila gli UUID delle entità per generare una nuova proposta contrattuale.
             </p>
 
             {createSuccess && (
               <div className="p-4 mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-center animate-scale-up">
-                Contratto creato con successo! Verrai reindirizzato all'elenco...
+                Contratto creato con successo! Verrai reindirizzato all&apos;elenco...
               </div>
             )}
 
             <form onSubmit={handleCreateContract} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 uppercase block" htmlFor="customerId">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="customerId">
                   UUID Cliente
                 </label>
                 <input
@@ -368,7 +336,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 uppercase block" htmlFor="supplyPointId">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="supplyPointId">
                   UUID Punto Fornitura
                 </label>
                 <input
@@ -383,7 +351,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 uppercase block" htmlFor="productVersionId">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="productVersionId">
                   UUID Versione Prodotto
                 </label>
                 <input
@@ -398,7 +366,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 uppercase block" htmlFor="producerAgentId">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="producerAgentId">
                   UUID Promoter / Agente
                 </label>
                 <input
@@ -428,17 +396,17 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
             </form>
           </div>
         )}
-      </main>
+      </AppShell>
 
       {/* Transition Modal / Drawer Overlay */}
       {selectedContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 bg-slate-950 animate-scale-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Recensisci / Transiziona Stato</h3>
+              <h3 className="text-lg font-bold text-white light:text-slate-900">Recensisci / Transiziona Stato</h3>
               <button
                 onClick={() => setSelectedContract(null)}
-                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -446,27 +414,27 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </button>
             </div>
 
-            <div className="p-3 mb-4 rounded-xl bg-white/5 border border-white/5 text-xs text-slate-400 space-y-1">
-              <p>ID Contratto: <span className="font-mono text-white text-[10px]">{selectedContract.id}</span></p>
+            <div className="p-3 mb-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-400 light:text-slate-500 space-y-1">
+              <p>ID Contratto: <span className="font-mono text-white light:text-slate-900 text-[10px]">{selectedContract.id}</span></p>
               <p>Stato Attuale: <span className="font-bold text-violet-400">{STATUS_LABELS[selectedContract.status] || selectedContract.status}</span></p>
             </div>
 
             <form onSubmit={handleExecuteTransition} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 block">Seleziona Stato di Destinazione</label>
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 block">Seleziona Stato di Destinazione</label>
                 <select
                   value={targetStatus}
                   onChange={(e) => setTargetStatus(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 focus:border-violet-500"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
                 >
                   {Object.entries(STATUS_LABELS).map(([code, label]) => (
-                    <option key={code} value={code} className="bg-slate-950">{label} ({code})</option>
+                    <option key={code} value={code} className="bg-slate-950 light:bg-white">{label} ({code})</option>
                   ))}
                 </select>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 block">Motivazione</label>
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 block">Motivazione</label>
                 <input
                   type="text"
                   required
@@ -478,7 +446,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 block">Note aggiuntive (opzionale)</label>
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 block">Note aggiuntive (opzionale)</label>
                 <textarea
                   rows={3}
                   placeholder="Dettagli interni o appunti..."
@@ -498,7 +466,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                 <button
                   type="button"
                   onClick={() => setSelectedContract(null)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 border border-white/5 transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer"
                 >
                   Annulla
                 </button>
@@ -514,6 +482,6 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

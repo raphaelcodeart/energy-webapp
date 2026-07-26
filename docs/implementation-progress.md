@@ -4,6 +4,57 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 4 — 2026-07-26 — App shell, sidebar navigation, light/dark theme
+
+The user pulled a redesign from GitHub (glassmorphism UI, admin contract
+management, promoter network visualizer + commission simulator) and asked to
+run it, then asked for a further redesign: a persistent left sidebar
+("strumento di lavoro moderno") and a working light/dark toggle.
+
+- [x] `lib/theme.tsx` — `ThemeProvider` + `useTheme()`, persisted to
+  `localStorage`, defaults to system `prefers-color-scheme` on first visit. An
+  inline script (`themeInitScript`, injected in `app/layout.tsx`'s `<head>`
+  before hydration) sets `data-theme` on `<html>` pre-paint to avoid a flash of
+  the wrong theme.
+- [x] `app/globals.css`: added `@custom-variant light` (Tailwind v4) so `light:`
+  prefixed classes apply only under `[data-theme="light"]` — dark stays the
+  unprefixed default, matching the existing design's starting point. `.glass-card`
+  / `.glass-input` and all core CSS variables now flip via this attribute.
+- [x] `components/theme-toggle.tsx` — sun/moon switch, in the sidebar and on
+  the login page.
+- [x] `components/app-shell.tsx` — the actual "sidebar with everything": fixed
+  desktop sidebar / mobile drawer, logo, role-scoped nav items, user card +
+  theme toggle + logout at the bottom. Replaces each dashboard's old sticky
+  header + horizontal tab bar; the existing tab sections (promoter:
+  Rete/Provvigioni/Simulatore, admin: Contratti/Nuovo, customer:
+  Contratti/Supporto) became sidebar nav items 1:1 -- no new fake nav items
+  invented for sections that don't exist yet.
+- [x] Applied the light theme across every existing component (~2000 lines):
+  ran an automated pass (regex substitution with strict word-boundary
+  matching, not naive sed) to append `light:` variants to every hardcoded dark
+  Tailwind class, then manually reviewed and fixed ~9 false positives it
+  introduced -- cases like button text sitting on a *solid* colored badge
+  (e.g. `bg-violet-600`), which must stay white in both themes and should
+  never have gotten a `light:text-slate-900` override.
+- [x] Hoisted `QueryProvider` to the root layout (was being remounted, and its
+  cache lost, every time a dashboard's internal tab changed).
+- [x] Fixed a real, live RBAC bug surfaced by the new promoter-facing
+  simulator tab: `PROMOTER` had no `commissions.simulate` permission, so the
+  new UI 403'd. Added it (read-only, never touches the ledger) to
+  `rbac/models.py` and to the running database's `role_permissions` table
+  directly (seeded data, not a schema migration).
+- [x] Fixed 3 real lint/correctness issues surfaced by `eslint`'s
+  React Compiler rules while rebuilding: unescaped apostrophes/quotes in JSX
+  text (`react/no-unescaped-entities`), `Math.random()` called during render
+  in the customer support-ticket confirmation (moved into the submit handler
+  so the ticket number is stable instead of changing on every re-render), and
+  a justified (commented, suppressed) exception for syncing theme state from
+  a pre-hydration DOM attribute in a `useEffect`.
+- [x] Verified end-to-end over the live HTTPS URL after rebuilding both the
+  `dashboard` and `api`/`celery-*` images: login, sidebar navigation and theme
+  attribute present in all three dashboards, and the promoter's commission
+  simulator returning real 200 results post-fix.
+
 ## Session 1 — 2026-07-25
 
 ### Phase A — Analysis & documentation ✅

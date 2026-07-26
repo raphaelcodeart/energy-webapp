@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Manual theme toggle (not OS-preference-based): `light:` variant classes apply
+   only when <html data-theme="light">, set by ThemeProvider (lib/theme.tsx). */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 @theme {
   --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
@@ -9,6 +13,13 @@
   --foreground: #f8fafc;
   --card-bg: rgba(17, 24, 39, 0.7);
   --card-border: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(17, 24, 39, 0.6);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --input-fg: #ffffff;
+  --scrollbar-track: rgba(9, 13, 22, 0.5);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --grad-1: rgba(139, 92, 246, 0.07);
+  --grad-2: rgba(6, 182, 212, 0.07);
   --primary: #8b5cf6;
   --primary-hover: #7c3aed;
   --primary-glow: rgba(139, 92, 246, 0.15);
@@ -19,25 +30,47 @@
   --accent-rose: #f43f5e;
 }
 
+:root[data-theme="light"] {
+  --background: #f4f5f9;
+  --foreground: #0f172a;
+  --card-bg: rgba(255, 255, 255, 0.75);
+  --card-border: rgba(15, 23, 42, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.9);
+  --input-border: rgba(15, 23, 42, 0.12);
+  --input-fg: #0f172a;
+  --scrollbar-track: rgba(226, 232, 240, 0.5);
+  --scrollbar-thumb: rgba(15, 23, 42, 0.12);
+  --grad-1: rgba(139, 92, 246, 0.08);
+  --grad-2: rgba(6, 182, 212, 0.08);
+  --primary-glow: rgba(139, 92, 246, 0.12);
+  --accent-cyan-glow: rgba(6, 182, 212, 0.12);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.07) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.07) 0px, transparent 50%);
+  background-image:
+    radial-gradient(at 0% 0%, var(--grad-1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, var(--grad-2) 0px, transparent 50%);
   background-attachment: fixed;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Glassmorphism utility classes */
+/* Glassmorphism utility classes -- theme-aware via CSS variables, so every
+   component already using these classes re-themes automatically. */
 .glass-card {
   background: var(--card-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--card-border);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+:root[data-theme="light"] .glass-card {
+  box-shadow: 0 8px 32px 0 rgba(15, 23, 42, 0.06);
 }
 
 .glass-card:hover {
@@ -45,14 +78,18 @@ body {
   box-shadow: 0 8px 32px 0 var(--primary-glow);
 }
 
+:root[data-theme="light"] .glass-card:hover {
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
 .glass-card-cyan:hover {
   box-shadow: 0 8px 32px 0 var(--accent-cyan-glow);
 }
 
 .glass-input {
-  background: rgba(17, 24, 39, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--input-fg);
   transition: all 0.2s ease-in-out;
 }
 
@@ -60,6 +97,11 @@ body {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.glass-input option {
+  background: var(--background);
+  color: var(--foreground);
 }
 
 /* Animations */
@@ -90,6 +132,11 @@ body {
   }
 }
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
@@ -102,6 +149,11 @@ body {
   animation: scaleUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+
 /* Scrollbar styles */
 ::-webkit-scrollbar {
   width: 6px;
@@ -109,11 +161,11 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(9, 13, 22, 0.5);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 

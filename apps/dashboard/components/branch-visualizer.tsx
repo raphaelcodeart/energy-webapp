@@ -59,11 +59,11 @@ export function BranchVisualizer({ members }: { members: BranchMemberRead[] }) {
   }
 
   return (
-    <div className="glass-card rounded-2xl p-6 border-white/5 bg-slate-950/40">
+    <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-white">Visualizzazione Albero Rete</h3>
-          <p className="text-xs text-slate-400">Struttura gerarchica dei tuoi promoter affiliati</p>
+          <h3 className="text-lg font-semibold text-white light:text-slate-900">Visualizzazione Albero Rete</h3>
+          <p className="text-xs text-slate-400 light:text-slate-500">Struttura gerarchica dei tuoi promoter affiliati</p>
         </div>
         <span className="px-3 py-1 text-xs font-semibold rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
           {members.length} Agenti Totali
@@ -113,7 +113,7 @@ function TreeNodeRenderer({
         };
       default:
         return {
-          bg: "bg-slate-800 border-slate-700 text-slate-300",
+          bg: "bg-slate-800 light:bg-slate-100 border-slate-700 light:border-slate-300 text-slate-300 light:text-slate-600",
           label: `Livello ${depth}`,
         };
     }
@@ -124,34 +124,34 @@ function TreeNodeRenderer({
   return (
     <div className="flex flex-col relative pl-6">
       {/* Visual connection lines */}
-      <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-800" />
-      <div className="absolute left-0 top-5 w-5 h-px bg-slate-800" />
+      <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-800 light:bg-slate-100" />
+      <div className="absolute left-0 top-5 w-5 h-px bg-slate-800 light:bg-slate-100" />
 
       <div className="flex items-center gap-3 py-2">
         {/* Collapse / Expand toggle button */}
         {hasChildren ? (
           <button 
             onClick={() => setIsOpen(!isOpen)} 
-            className="w-5 h-5 flex items-center justify-center rounded bg-slate-800 hover:bg-slate-700 text-white text-xs border border-white/5 transition cursor-pointer"
+            className="w-5 h-5 flex items-center justify-center rounded bg-slate-800 light:bg-slate-100 hover:bg-slate-700 text-white light:text-slate-900 text-xs border border-white/5 light:border-slate-200 transition cursor-pointer"
           >
             {isOpen ? "−" : "+"}
           </button>
         ) : (
           <div className="w-5 h-5 flex items-center justify-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-600 light:bg-slate-300" />
           </div>
         )}
 
         {/* Node card */}
-        <div className="flex items-center gap-4 px-4 py-2.5 rounded-xl bg-slate-900/60 border border-white/5 hover:border-white/10 transition-all duration-200">
+        <div className="flex items-center gap-4 px-4 py-2.5 rounded-xl bg-slate-900/60 light:bg-slate-50 border border-white/5 light:border-slate-200 hover:border-white/10 transition-all duration-200">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-xs text-slate-300 tracking-tight">
+              <span className="font-mono text-xs text-slate-300 light:text-slate-600 tracking-tight">
                 {node.agent_id.substring(0, 8)}...{node.agent_id.substring(node.agent_id.length - 8)}
               </span>
               <button
                 onClick={() => onCopy(node.agent_id)}
-                className="p-1 hover:bg-white/5 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1 hover:bg-white/5 rounded text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer"
                 title="Copia UUID completo"
               >
                 {copiedId === node.agent_id ? (
@@ -176,7 +176,7 @@ function TreeNodeRenderer({
 
       {/* Children rendering */}
       {hasChildren && isOpen && (
-        <div className="flex flex-col ml-2 border-l border-dashed border-slate-800 pl-2">
+        <div className="flex flex-col ml-2 border-l border-dashed border-slate-800 light:border-slate-200 pl-2">
           {node.children.map((child, idx) => (
             <TreeNodeRenderer
               key={child.agent_id}

@@ -84,7 +84,7 @@ export function CommissionSimulator() {
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 border-white/5 bg-slate-950/40">
+    <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-400">
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,8 +92,8 @@ export function CommissionSimulator() {
           </svg>
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-white">Simulatore Provvigioni</h3>
-          <p className="text-xs text-slate-400">Calcola la distribuzione del piano provvigionale in tempo reale</p>
+          <h3 className="text-lg font-semibold text-white light:text-slate-900">Simulatore Provvigioni</h3>
+          <p className="text-xs text-slate-400 light:text-slate-500">Calcola la distribuzione del piano provvigionale in tempo reale</p>
         </div>
       </div>
 
@@ -101,12 +101,12 @@ export function CommissionSimulator() {
         {/* Left column: Configuration */}
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider block mb-2">
               Seleziona Contratto
             </label>
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-slate-300">
+                <label className="flex items-center gap-2 text-sm text-slate-300 light:text-slate-600">
                   <input
                     type="radio"
                     checked={!useCustom}
@@ -115,7 +115,7 @@ export function CommissionSimulator() {
                   />
                   Predefiniti Demo
                 </label>
-                <label className="flex items-center gap-2 text-sm text-slate-300">
+                <label className="flex items-center gap-2 text-sm text-slate-300 light:text-slate-600">
                   <input
                     type="radio"
                     checked={useCustom}
@@ -130,10 +130,10 @@ export function CommissionSimulator() {
                 <select
                   value={contractId}
                   onChange={(e) => setContractId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 focus:border-violet-500"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
                 >
                   {DEMO_CONTRACTS.map(c => (
-                    <option key={c.id} value={c.id} className="bg-slate-950">
+                    <option key={c.id} value={c.id} className="bg-slate-950 light:bg-white">
                       {c.label}
                     </option>
                   ))}
@@ -151,12 +151,12 @@ export function CommissionSimulator() {
           </div>
 
           {/* Rank Overrides Section */}
-          <div className="border-t border-white/5 pt-4">
-            <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+          <div className="border-t border-white/5 light:border-slate-200 pt-4">
+            <h4 className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider mb-2">
               Sovrascrittura Qualifiche (Overrides)
             </h4>
-            <p className="text-[11px] text-slate-400 mb-3">
-              Simula cosa succederebbe se un determinato agente avesse una qualifica diversa al momento dell'attivazione.
+            <p className="text-[11px] text-slate-400 light:text-slate-500 mb-3">
+              Simula cosa succederebbe se un determinato agente avesse una qualifica diversa al momento dell&apos;attivazione.
             </p>
 
             <div className="flex gap-2 mb-3">
@@ -170,10 +170,10 @@ export function CommissionSimulator() {
               <select
                 value={overrideRank}
                 onChange={(e) => setOverrideRank(e.target.value)}
-                className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 focus:border-violet-500"
+                className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 light:bg-white focus:border-violet-500"
               >
                 {["S1", "S2", "S3", "TL1", "TL2", "TL3", "TL4", "MD1", "MD2", "MD3", "MD4", "MD5"].map(r => (
-                  <option key={r} value={r} className="bg-slate-950">{r}</option>
+                  <option key={r} value={r} className="bg-slate-950 light:bg-white">{r}</option>
                 ))}
               </select>
               <button
@@ -187,13 +187,13 @@ export function CommissionSimulator() {
 
             {/* List of current overrides */}
             {Object.keys(overrides).length > 0 && (
-              <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-white/5 border border-white/5 max-h-32 overflow-y-auto">
+              <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 max-h-32 overflow-y-auto">
                 {Object.entries(overrides).map(([agent, rank]) => (
                   <span
                     key={agent}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-200"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 light:bg-slate-100 border border-slate-700 light:border-slate-300 text-xs text-slate-200 light:text-slate-700"
                   >
-                    <span className="font-mono text-[10px] text-slate-400">{agent.substring(0, 6)}...</span>:
+                    <span className="font-mono text-[10px] text-slate-400 light:text-slate-500">{agent.substring(0, 6)}...</span>:
                     <span className="font-bold text-violet-400">{rank}</span>
                     <button
                       type="button"
@@ -219,9 +219,9 @@ export function CommissionSimulator() {
         </div>
 
         {/* Right column: Results */}
-        <div className="rounded-xl bg-slate-950/60 border border-white/5 p-4 flex flex-col justify-between min-h-[300px]">
+        <div className="rounded-xl bg-slate-950/60 light:bg-white/60 border border-white/5 light:border-slate-200 p-4 flex flex-col justify-between min-h-[300px]">
           {loading && (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 light:text-slate-500">
               <svg className="animate-spin h-8 w-8 text-amber-500 mb-3" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -236,7 +236,7 @@ export function CommissionSimulator() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-sm font-semibold">Errore simulatore</p>
-              <p className="text-xs text-slate-400 mt-1">{error}</p>
+              <p className="text-xs text-slate-400 light:text-slate-500 mt-1">{error}</p>
             </div>
           )}
 
@@ -245,29 +245,29 @@ export function CommissionSimulator() {
               <svg className="w-12 h-12 text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              <p className="text-sm">Configura la simulazione e clicca su "Esegui"</p>
+              <p className="text-sm">Configura la simulazione e clicca su &quot;Esegui&quot;</p>
               <p className="text-[11px] text-slate-600 mt-1">Simula i gettoni e le differenze imprenditoriali generate.</p>
             </div>
           )}
 
           {!loading && !error && results && (
             <div className="flex-1 space-y-4">
-              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+              <h4 className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider">
                 Distribuzione Provvigioni Calcolata:
               </h4>
 
               {results.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Nessuna provvigione maturata da questa transizione contrattuale (es: contratto non attivabile o stornato).</p>
+                <p className="text-xs text-slate-400 light:text-slate-500 italic">Nessuna provvigione maturata da questa transizione contrattuale (es: contratto non attivabile o stornato).</p>
               ) : (
                 <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                   {results.map((step, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all"
+                      className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 hover:bg-white/10 transition-all"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-slate-300">
+                          <span className="font-mono text-xs text-slate-300 light:text-slate-600">
                             Agente: {step.beneficiary_agent_id.substring(0, 6)}...
                           </span>
                           <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded">
@@ -278,7 +278,7 @@ export function CommissionSimulator() {
                           +{(step.gross_amount_cents / 100).toFixed(2)} EUR
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                      <p className="text-[11px] text-slate-400 light:text-slate-500 mt-1 font-medium">
                         {MOVEMENT_LABELS[step.movement_type] || step.movement_type}
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5 italic">
@@ -290,8 +290,8 @@ export function CommissionSimulator() {
               )}
 
               {results.length > 0 && (
-                <div className="border-t border-white/5 pt-3 flex items-center justify-between text-sm">
-                  <span className="text-slate-400 font-medium">Totale Simulato:</span>
+                <div className="border-t border-white/5 light:border-slate-200 pt-3 flex items-center justify-between text-sm">
+                  <span className="text-slate-400 light:text-slate-500 font-medium">Totale Simulato:</span>
                   <span className="font-bold text-emerald-400 text-base">
                     {(results.reduce((sum, r) => sum + r.gross_amount_cents, 0) / 100).toFixed(2)} EUR
                   </span>

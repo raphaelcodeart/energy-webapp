@@ -70,6 +70,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "customers.read", "customers.create",
         "contracts.read", "contracts.create",
         "network.read_branch", "commissions.read_own",
+        # Read-only preview of their own potential earnings -- never writes to
+        # the ledger (see commissions/simulations/simulate.py), so safe to grant.
+        "commissions.simulate",
     ],
     "CUSTOMER": ["contracts.read", "documents.download"],
     "AUDITOR": ["audit.read", "reports.export"],
