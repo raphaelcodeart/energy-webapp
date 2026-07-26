@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import cast, Date, func, select
@@ -35,6 +36,15 @@ PENDING_APPROVAL_STATUSES = {
 # if older than ATTENTION_THRESHOLD_DAYS.
 REVIEW_QUEUE_STATUSES = {"SUBMITTED", "DOCUMENTS_PENDING", "UNDER_REVIEW"}
 ATTENTION_THRESHOLD_DAYS = 7
+
+# PAID/ACTIVATION_PENDING contracts have already collected money but will NOT
+# trigger commission calculation until they reach ACTIVE (two further manual
+# transitions -- see docs/paid-contract-commission-audit.md §3-4). Nothing else in
+# the system surfaces a contract stuck here, so without this it can sit
+# indefinitely with commissions silently never generated. Shorter threshold than
+# the review queue: money already changed hands, so staleness here is more urgent.
+PAYMENT_STUCK_STATUSES = {"PAID", "ACTIVATION_PENDING"}
+PAYMENT_STUCK_THRESHOLD_DAYS = 2
 
 
 async def get_dashboard_summary(
@@ -125,12 +135,14 @@ async def get_dashboard_summary(
     )
 
 
-async def get_attention_items(db: AsyncSession, organization_id: uuid.UUID) -> list[AttentionItem]:
-    """A contract "needs attention" once it has sat in a review-queue status longer
-    than ATTENTION_THRESHOLD_DAYS. Contracts have no updated_at column (append-only
-    history is the source of truth -- see contract_status_history), so "time in
-    current status" is derived from that contract's most recent status-history row,
-    not from the contract row itself."""
+async def _stale_status_items(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    statuses: set[str],
+    threshold_days: int,
+    reason_for: Callable[[str, int], str],
+) -> list[AttentionItem]:
     latest_transition = (
         select(
             ContractStatusHistory.contract_id,
@@ -144,13 +156,13 @@ async def get_attention_items(db: AsyncSession, organization_id: uuid.UUID) -> l
         )
         .subquery()
     )
-    threshold = datetime.now(timezone.utc) - timedelta(days=ATTENTION_THRESHOLD_DAYS)
+    threshold = datetime.now(timezone.utc) - timedelta(days=threshold_days)
     stmt = (
         select(Contract.id, Contract.customer_id, Contract.status, latest_transition.c.created_at)
         .join(latest_transition, latest_transition.c.contract_id == Contract.id)
         .where(
             Contract.organization_id == organization_id,
-            Contract.status.in_(REVIEW_QUEUE_STATUSES),
+            Contract.status.in_(statuses),
             latest_transition.c.rn == 1,
             latest_transition.c.created_at <= threshold,
         )
@@ -165,10 +177,40 @@ async def get_attention_items(db: AsyncSession, organization_id: uuid.UUID) -> l
             customer_id=customer_id,
             status=status,
             days_in_status=(now - since).days,
-            reason=f"Fermo in stato {status} da oltre {ATTENTION_THRESHOLD_DAYS} giorni",
+            reason=reason_for(status, (now - since).days),
         )
         for contract_id, customer_id, status, since in rows
     ]
+
+
+async def get_attention_items(db: AsyncSession, organization_id: uuid.UUID) -> list[AttentionItem]:
+    """A contract "needs attention" in one of two distinct ways: stuck in a
+    review-queue status too long (unresolved by back office), or PAID/
+    ACTIVATION_PENDING too long (money collected, but commissions not yet
+    triggered -- see docs/paid-contract-commission-audit.md, Problem #4).
+    Contracts have no updated_at column (append-only history is the source of
+    truth -- see contract_status_history), so "time in current status" is
+    derived from that contract's most recent status-history row."""
+    review_queue_items = await _stale_status_items(
+        db,
+        organization_id=organization_id,
+        statuses=REVIEW_QUEUE_STATUSES,
+        threshold_days=ATTENTION_THRESHOLD_DAYS,
+        reason_for=lambda status, days: f"Fermo in stato {status} da oltre {ATTENTION_THRESHOLD_DAYS} giorni",
+    )
+    payment_stuck_items = await _stale_status_items(
+        db,
+        organization_id=organization_id,
+        statuses=PAYMENT_STUCK_STATUSES,
+        threshold_days=PAYMENT_STUCK_THRESHOLD_DAYS,
+        reason_for=lambda status, days: (
+            f"Pagato ma non ancora attivato da {days} giorni -- le provvigioni non "
+            "sono ancora state generate"
+        ),
+    )
+    combined = review_queue_items + payment_stuck_items
+    combined.sort(key=lambda item: item.days_in_status, reverse=True)
+    return combined[:50]
 
 
 async def get_recent_activity(

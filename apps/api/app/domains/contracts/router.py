@@ -9,6 +9,7 @@ from app.core.deps import CurrentUser, require_permission
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.contracts.schemas import ContractCreate, ContractRead, ContractTransitionRequest
+from app.domains.contracts.service import InvalidProducerAgentError
 from app.domains.contracts.state_machine import InvalidTransitionError
 from app.domains.customers.models import Customer
 
@@ -30,16 +31,19 @@ async def create_contract(
     current_user: CurrentUser = Depends(require_permission("contracts.create")),
     db: AsyncSession = Depends(get_db),
 ) -> ContractRead:
-    contract = await contract_service.create_contract(
-        db,
-        organization_id=current_user.organization_id,
-        customer_id=payload.customer_id,
-        supply_point_id=payload.supply_point_id,
-        product_version_id=payload.product_version_id,
-        producer_agent_id=payload.producer_agent_id,
-        actor_user_id=current_user.user_id,
-        correlation_id=str(uuid.uuid4()),
-    )
+    try:
+        contract = await contract_service.create_contract(
+            db,
+            organization_id=current_user.organization_id,
+            customer_id=payload.customer_id,
+            supply_point_id=payload.supply_point_id,
+            product_version_id=payload.product_version_id,
+            producer_agent_id=payload.producer_agent_id,
+            actor_user_id=current_user.user_id,
+            correlation_id=str(uuid.uuid4()),
+        )
+    except InvalidProducerAgentError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return ContractRead.model_validate(contract)
 
 

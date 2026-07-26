@@ -73,6 +73,16 @@ class CommissionRuleVersion(UUIDPKMixin, TimestampMixin, Base):
 
 class CommissionCalculation(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "commission_calculations"
+    __table_args__ = (
+        # DB-level backstop for the (contract_id, trigger_event_id) idempotency
+        # check in run_calculation_for_contract(): that check is SELECT-then-INSERT
+        # at the application level, which has a race window if the same event is
+        # ever dispatched concurrently (e.g. overlapping Celery beat runs). See
+        # docs/paid-contract-commission-audit.md, Problem #3.
+        UniqueConstraint(
+            "contract_id", "trigger_event_id", name="uq_commission_calculations_contract_trigger"
+        ),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True

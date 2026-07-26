@@ -122,9 +122,20 @@ Implemented now (`apps/api/app/domains/commissions/tests/`):
 - one ascendant with equal/lower rank → zero-amount step, explanation present
 - chain of 3 ascendants, monotonically increasing rank → no duplicate differential
 - same trigger event replayed twice → second run produces no new movements (idempotency)
-- two branches, one over the 33% cap → excess excluded, explained
 - org isolation: calculation for org A never reads org B's ranks/snapshots
 
+**Correction (`docs/paid-contract-commission-audit.md`, Problem #5):** the 33% branch
+cap policy (`policies/branch_cap.py::apply_branch_cap`) is implemented and unit-tested
+**in isolation** (`test_branch_cap.py`), but is **not** wired into `calculate_chain()` /
+`run_calculation_for_contract()` — steps 9 and 12 of the algorithm above
+(`eligible_amount = apply_branch_cap(...)`, `diff = min(diff, eligible_amount)`) do not
+run in the live engine today. This line previously (incorrectly) claimed it was
+"Implemented now" as part of the full engine; it is not. Wiring it in requires a
+business decision on the "qualifying group production" denominator first (see
+`docs/open-questions.md` #6) — implementing it on a guessed definition would just
+replace an honest gap with a silently wrong one.
+
 Deferred to Phase E hardening pass (tracked in `implementation-progress.md`):
-Energia Circolare bonus formulas, renewal/reversal calculators, Hypothesis
+33% branch cap integration (see correction above), Energia Circolare bonus formulas,
+renewal/reversal calculators, Hypothesis
 property-based invariants, multi-plan-version diffing in the simulator UI.

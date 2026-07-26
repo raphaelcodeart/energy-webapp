@@ -4,8 +4,10 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.audit import service as audit_service
 from app.domains.commissions.calculators.entrepreneurial_difference import (
     ChainMember,
     calculate_chain,
@@ -53,13 +55,10 @@ async def _build_chain(
     ]
 
 
-async def run_calculation_for_contract(
-    db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, trigger_event_id: uuid.UUID
+async def _get_existing(
+    db: AsyncSession, *, contract_id: uuid.UUID, trigger_event_id: uuid.UUID
 ) -> CommissionCalculation | None:
-    """Idempotent: re-invoking with the same (contract_id, trigger_event_id) is a
-    no-op if a calculation already exists for that pair. Single transaction: either
-    everything (calculation + steps + movements) is persisted, or nothing is."""
-    existing = (
+    return (
         await db.execute(
             select(CommissionCalculation).where(
                 CommissionCalculation.contract_id == contract_id,
@@ -67,6 +66,21 @@ async def run_calculation_for_contract(
             )
         )
     ).scalar_one_or_none()
+
+
+async def run_calculation_for_contract(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, trigger_event_id: uuid.UUID
+) -> CommissionCalculation | None:
+    """Idempotent: re-invoking with the same (contract_id, trigger_event_id) is a
+    no-op if a calculation already exists for that pair. Single transaction: either
+    everything (calculation + steps + movements) is persisted, or nothing is.
+
+    The (contract_id, trigger_event_id) check below is the fast path, but it is
+    only an application-level SELECT-then-INSERT -- see
+    uq_commission_calculations_contract_trigger on the model for the DB-level
+    backstop this function falls back to if two dispatches race (docs/
+    paid-contract-commission-audit.md, Problem #3)."""
+    existing = await _get_existing(db, contract_id=contract_id, trigger_event_id=trigger_event_id)
     if existing is not None:
         return existing
 
@@ -76,7 +90,40 @@ async def run_calculation_for_contract(
 
     chain = await _build_chain(db, network_snapshot_id=contract.network_snapshot_id)
     if not chain:
-        return None
+        # Producer (or its whole ancestor chain) resolved to nothing -- most
+        # likely an agent that no longer exists or was removed from the
+        # network between contract creation and activation. Recording this as
+        # a FAILED calculation (instead of silently returning None) is what
+        # makes this visible to accounting/ops instead of the contract just
+        # quietly paying nobody forever. See docs/paid-contract-commission-audit.md,
+        # Problem #1.
+        calculation = CommissionCalculation(
+            organization_id=organization_id,
+            contract_id=contract_id,
+            network_snapshot_id=contract.network_snapshot_id,
+            trigger_event_id=trigger_event_id,
+            input_snapshot={"contract_id": str(contract_id), "network_snapshot_id": str(contract.network_snapshot_id), "chain": []},
+            output_snapshot={"steps": [], "error": "empty_ancestor_chain"},
+            checksum=hashlib.sha256(b"empty_ancestor_chain").hexdigest(),
+            status="FAILED",
+        )
+        db.add(calculation)
+        await audit_service.record(
+            db, organization_id=organization_id, actor_user_id=None,
+            action="commission.calculation_failed", entity_type="contract", entity_id=str(contract_id),
+            new_value={"reason": "empty_ancestor_chain", "network_snapshot_id": str(contract.network_snapshot_id)},
+            reason="Network snapshot has no ancestor nodes -- producer agent could not be resolved",
+        )
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            existing = await _get_existing(db, contract_id=contract_id, trigger_event_id=trigger_event_id)
+            if existing is not None:
+                return existing
+            raise
+        await db.refresh(calculation)
+        return calculation
 
     steps = calculate_chain(chain)
 
@@ -114,7 +161,19 @@ async def run_calculation_for_contract(
         status="COMPLETED",
     )
     db.add(calculation)
-    await db.flush()
+    try:
+        # The INSERT (and therefore the earliest point a concurrent dispatch of
+        # the same trigger event can be caught by
+        # uq_commission_calculations_contract_trigger) happens here, at flush --
+        # not at the later db.commit(). calculation.id is needed immediately
+        # below for the steps/movements, so this flush cannot be deferred.
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existing = await _get_existing(db, contract_id=contract_id, trigger_event_id=trigger_event_id)
+        if existing is not None:
+            return existing
+        raise
 
     today = datetime.now(UTC).date()
     for order, step in enumerate(steps):
@@ -154,6 +213,19 @@ async def run_calculation_for_contract(
                 )
             )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Lost a race against a concurrent dispatch of the same trigger event
+        # (see uq_commission_calculations_contract_trigger). The other side
+        # already committed the real calculation + movements -- return that one
+        # instead of raising, so the caller sees a normal idempotent result
+        # rather than an error for what is, from the caller's perspective, a
+        # successfully-processed event.
+        await db.rollback()
+        existing = await _get_existing(db, contract_id=contract_id, trigger_event_id=trigger_event_id)
+        if existing is not None:
+            return existing
+        raise
     await db.refresh(calculation)
     return calculation

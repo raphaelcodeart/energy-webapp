@@ -4,6 +4,98 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 8 — 2026-07-26 (same day, continued) — Commission-trigger audit + fixes, admin quick-links, orange brand pass
+
+Two independent pieces of work, done back to back.
+
+**1. Full audit of "paid contract → commission distribution", per explicit user
+request.** Report: `docs/paid-contract-commission-audit.md`. Method: read the
+actual running code first, then compared against `docs/business-rules.md` and
+`docs/commission-engine-specification.md` to find real gaps rather than assuming
+the docs were accurate.
+
+Confirmed correct (no changes needed): the producer's ancestor chain is built
+from real `network_snapshot_nodes` data frozen at activation (no placeholders);
+all N levels are walked (no hardcoded cap -- the finite 12-rank ladder makes any
+cap moot); the entrepreneurial-difference algorithm is incremental and correctly
+tested (7 unit tests, all green); `PaymentConfirmed` (the `PAID` transition) does
+**not** trigger commission calculation, only `ContractActivated`/`ContractRenewed`
+do -- this matches `business-rules.md` line 55-56 exactly and is intentional, not
+a bug.
+
+Five real problems found and fixed:
+- [x] **Problem #1 (critical)**: `create_contract()` accepted `producer_agent_id`
+  from the client with zero validation. An invalid/nonexistent id produced an
+  empty network snapshot, which made `run_calculation_for_contract()` silently
+  `return None` -- no error, no record, no audit entry, event marked processed
+  as if nothing was wrong. A contract could activate and pay nobody, forever,
+  with no trace. Fixed: `create_contract()` now verifies the agent exists,
+  belongs to the organization, and is `ACTIVE`, raising `InvalidProducerAgentError`
+  (→ HTTP 400) otherwise. Defense in depth: an empty ancestor chain at
+  calculation time (any other cause) now writes a `CommissionCalculation` with
+  `status="FAILED"` plus an audit log entry instead of silently skipping.
+- [x] **Problem #2 (serious)**: `process_pending_outbox_events()` had no
+  try/except around the calculation call -- one failing event (a "poison pill")
+  aborted the whole batch, blocking every *other* unrelated contract's
+  commissions too, retried (and re-blocking) every minute forever. Fixed: each
+  event is now processed in isolation (event data extracted to plain values up
+  front, since a rollback after a failure expires the whole session's identity
+  map and a later bare attribute read on another event's ORM object would itself
+  crash with `MissingGreenlet` -- hit this for real while writing the isolation
+  test, see below); a failure is logged, audited, and the loop continues.
+- [x] **Problem #3 (medium)**: the `(contract_id, trigger_event_id)` idempotency
+  check in `run_calculation_for_contract()` was application-level only
+  (SELECT-then-INSERT), with a real race window on overlapping dispatches.
+  Fixed: DB-level `UniqueConstraint` (migration `0003`) plus explicit
+  `IntegrityError` handling at the actual insert point (the `db.flush()` right
+  after `db.add(calculation)`, not just the later `db.commit()` -- the first
+  attempt at this fix only wrapped the commit and missed the real conflict
+  point, caught by the concurrency test below).
+- [x] **Problem #4 (medium)**: nothing surfaced a contract stuck at `PAID` or
+  `ACTIVATION_PENDING` -- money collected, commissions not yet triggered, and
+  two more manual clicks required with no prompt. Fixed: the admin "Richiede
+  attenzione" widget now also flags these, with a 2-day threshold (shorter than
+  the 7-day review-queue threshold, since money already changed hands) and a
+  distinct reason message.
+- [x] **Problem #5 (low)**: `commission-engine-specification.md`'s test matrix
+  claimed the 33% branch-cap rule was "Implemented now" -- verified false:
+  `apply_branch_cap()` exists and is unit-tested in isolation but is never
+  called from `calculate_chain()`/`run_calculation_for_contract()`. Corrected the
+  doc. Not wired in this session: `business-rules.md` marks the cap percentage
+  as PLACEHOLDER and `open-questions.md` #6 leaves the "qualifying group
+  production" denominator undefined -- implementing against a guessed
+  definition would trade an honest gap for a silently wrong one.
+
+Tests added (all against a real Postgres, not mocks):
+`apps/api/tests/test_contract_producer_validation.py` (4 tests: unknown agent,
+cross-org agent, non-active agent, valid agent happy path) and 3 new tests in
+`test_commission_engine_integration.py` (empty-chain → FAILED record, not
+silent skip; dispatcher isolates a poisoned event from a healthy one in the
+same batch; a **real** concurrency test using two independent DB connections
+racing via `asyncio.gather` -- not the shared savepoint-rollback fixture, which
+cannot exercise genuine concurrency -- confirmed the DB constraint actually
+fires under a real race and is handled gracefully). Fixed one pre-existing
+regression from Session 7 along the way: `test_network_isolation.py` still
+unpacked `network_service.get_branch()`'s old tuple return shape. Full suite:
+**33/33 passing.**
+
+Also fixed live, not just in tests: reused the Session 7 nginx fix to verify
+`create_contract` now rejects a bogus producer with a real HTTP 400, then ran a
+full contract through every transition to `ACTIVE` against the live API and
+confirmed real `PERSONAL_TOKEN`/`ENTREPRENEURIAL_DIFFERENCE` movements landed
+in the ledger for the right agents.
+
+**2. Admin quick-links + orange brand pass (user-requested, same session).**
+- [x] `AdminOverviewPanel` gained a row of large "pulsantoni" (Contratti, Nuovo
+  Contratto, Clienti, Promoter, Prodotti) above the KPI cards, wired to the same
+  tab-switching the sidebar uses -- the most common destinations are now one
+  click away without hunting in the sidebar, per explicit user request.
+  Also caught two leftover violet/cyan spots in this file (the time-filter
+  active state, the chart line/bar colors) that Session 7's brand pass had
+  skipped, and remapped the two former-cyan KPI card accents to sky (not amber)
+  to avoid colliding with the "In attesa di approvazione" card, which was
+  already amber.
+
 ## Session 7 — 2026-07-26 (same day, continued) — Network tree readability, customer marketplace, nginx root-cause fix
 
 Three user-driven fixes, done live between Fase 2 and Fase 3 of the admin

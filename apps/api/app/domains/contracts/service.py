@@ -6,7 +6,19 @@ from app.domains.audit import service as audit_service
 from app.domains.contracts.models import Contract, ContractAttribution, ContractStatusHistory
 from app.domains.contracts.state_machine import assert_transition_allowed, event_name_for
 from app.domains.network import service as network_service
+from app.domains.network.models import AgentProfile
 from app.domains.outbox import service as outbox_service
+
+
+class InvalidProducerAgentError(Exception):
+    """Raised when a contract is created with a producer_agent_id that does not
+    resolve to a real, active agent in this organization. Left unchecked, this
+    silently breaks commission calculation later: create_snapshot_for_contract()
+    would freeze an empty ancestor chain for a nonexistent agent, and
+    run_calculation_for_contract() would then find an empty chain and skip
+    calculation entirely -- see docs/paid-contract-commission-audit.md, Problem #1.
+    Failing fast here, at creation time, is far cheaper than discovering it after
+    activation with no commissions paid and nothing to point to why."""
 
 
 async def create_contract(
@@ -22,6 +34,17 @@ async def create_contract(
 ) -> Contract:
     """Creates a DRAFT contract. Deliberately does NOT touch commissions -- creating
     or submitting a contract never generates a commission (business-rules.md)."""
+    producer = await db.get(AgentProfile, producer_agent_id)
+    if producer is None or producer.organization_id != organization_id:
+        raise InvalidProducerAgentError(
+            f"producer_agent_id {producer_agent_id} is not a known agent in this organization"
+        )
+    if producer.status != "ACTIVE":
+        raise InvalidProducerAgentError(
+            f"producer_agent_id {producer_agent_id} is {producer.status}, not ACTIVE -- "
+            "cannot attribute a new contract to a non-active agent"
+        )
+
     attribution = ContractAttribution(
         organization_id=organization_id,
         producer_agent_id=producer_agent_id,

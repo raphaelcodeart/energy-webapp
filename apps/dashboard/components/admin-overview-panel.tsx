@@ -110,7 +110,65 @@ function KpiCard({
   );
 }
 
-export function AdminOverviewPanel() {
+const QUICK_LINKS: {
+  key: string;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    key: "list",
+    label: "Contratti",
+    description: "Gestisci tutti i contratti",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+      </svg>
+    ),
+  },
+  {
+    key: "create",
+    label: "Nuovo Contratto",
+    description: "Crea una nuova proposta",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
+      </svg>
+    ),
+  },
+  {
+    key: "customers",
+    label: "Clienti",
+    description: "Anagrafiche clienti",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  },
+  {
+    key: "promoters",
+    label: "Promoter",
+    description: "Rete e collaboratori",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: "products",
+    label: "Prodotti",
+    description: "Marketplace & catalogo",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+];
+
+export function AdminOverviewPanel({ onNavigate }: { onNavigate?: (key: string) => void }) {
   const [period, setPeriod] = useState<PeriodKey>("month");
   const activeDays = PERIODS.find((p) => p.key === period)!.days;
 
@@ -144,6 +202,29 @@ export function AdminOverviewPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Quick-access section shortcuts -- large, unmissable buttons so the most
+          common admin destinations are one click away without hunting in the
+          sidebar. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {QUICK_LINKS.map((link) => (
+          <button
+            key={link.key}
+            onClick={() => onNavigate?.(link.key)}
+            className="group flex flex-col items-start gap-3 p-4 rounded-2xl border border-white/5 light:border-slate-200 bg-gradient-to-br from-slate-900/60 to-slate-900/20 light:from-white light:to-slate-50 hover:border-orange-500/40 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-200 cursor-pointer text-left"
+          >
+            <span className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+              {link.icon}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-white light:text-slate-900 truncate">
+                {link.label}
+              </span>
+              <span className="block text-[11px] text-slate-500 truncate">{link.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Time filter */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {PERIODS.map((p) => (
@@ -152,7 +233,7 @@ export function AdminOverviewPanel() {
             onClick={() => setPeriod(p.key)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer border ${
               period === p.key
-                ? "bg-gradient-to-r from-violet-600 to-cyan-500 text-white border-transparent shadow-lg shadow-violet-500/20"
+                ? "bg-gradient-to-r from-orange-600 to-amber-500 text-white border-transparent shadow-lg shadow-orange-500/20"
                 : "bg-white/5 light:bg-slate-900/5 text-slate-400 light:text-slate-500 border-white/5 light:border-slate-200 hover:bg-white/10"
             }`}
           >
@@ -170,7 +251,7 @@ export function AdminOverviewPanel() {
         <KpiCard
           label="Contratti totali"
           value={summaryLoading ? "…" : String(summary?.contracts.total ?? 0)}
-          accent="bg-violet-500/10 text-violet-400"
+          accent="bg-orange-500/10 text-orange-400"
           icon={
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
@@ -214,7 +295,7 @@ export function AdminOverviewPanel() {
         <KpiCard
           label="Provvigioni maturate"
           value={summaryLoading ? "…" : euro(summary?.commissions.accrued_cents ?? 0)}
-          accent="bg-cyan-500/10 text-cyan-400"
+          accent="bg-sky-500/10 text-sky-400"
           icon={
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2" />
@@ -234,7 +315,7 @@ export function AdminOverviewPanel() {
         <KpiCard
           label="Promoter attivi"
           value={summaryLoading ? "…" : String(summary?.active_promoters ?? 0)}
-          accent="bg-violet-500/10 text-violet-400"
+          accent="bg-orange-500/10 text-orange-400"
           icon={
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
@@ -244,7 +325,7 @@ export function AdminOverviewPanel() {
         <KpiCard
           label="Clienti attivi"
           value={summaryLoading ? "…" : String(summary?.active_customers ?? 0)}
-          accent="bg-cyan-500/10 text-cyan-400"
+          accent="bg-sky-500/10 text-sky-400"
           icon={
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -261,8 +342,8 @@ export function AdminOverviewPanel() {
             <AreaChart data={contractsChartData}>
               <defs>
                 <linearGradient id="contractsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#64748b" strokeOpacity={0.15} vertical={false} />
@@ -273,7 +354,7 @@ export function AdminOverviewPanel() {
                 labelStyle={{ color: "#e2e8f0" }}
                 formatter={(value) => [String(value), "Contratti"]}
               />
-              <Area type="monotone" dataKey="value" stroke="#8b5cf6" strokeWidth={2} fill="url(#contractsGradient)" />
+              <Area type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} fill="url(#contractsGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -290,7 +371,7 @@ export function AdminOverviewPanel() {
                 labelStyle={{ color: "#e2e8f0" }}
                 formatter={(value) => [euro(Math.round(Number(value) * 100)), "Provvigioni"]}
               />
-              <Bar dataKey="euro" fill="#06b6d4" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="euro" fill="#0ea5e9" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

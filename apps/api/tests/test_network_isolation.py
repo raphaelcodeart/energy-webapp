@@ -56,7 +56,7 @@ async def test_closure_table_reflects_full_chain_depth(db, organization_id):
     )
 
     branch = await network_service.get_branch(db, organization_id=organization_id, root_agent_id=a.id)
-    depths = {agent_id: depth for agent_id, depth in branch}
+    depths = {row["agent_id"]: row["depth"] for row in branch}
     assert depths[a.id] == 0
     assert depths[b.id] == 1
     assert depths[c.id] == 2

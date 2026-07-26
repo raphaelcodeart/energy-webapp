@@ -248,7 +248,9 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           </>
         }
       >
-        {activeTab === "overview" && <AdminOverviewPanel />}
+        {activeTab === "overview" && (
+          <AdminOverviewPanel onNavigate={(key) => setActiveTab(key as typeof activeTab)} />
+        )}
 
         {activeTab === "list" && (
           <div className="space-y-6">
