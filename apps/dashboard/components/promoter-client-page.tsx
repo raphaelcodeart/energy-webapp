@@ -114,7 +114,7 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
       activeKey={activeTab}
       onNavigate={(key) => setActiveTab(key as typeof activeTab)}
       headerTitle={`Benvenuto, ${me?.display_name || "Promoter"}`}
-      headerSubtitle="Gestisci la tua rete come una vera azienda: contratti, provvigioni e clienti diretti e indiretti."
+      centerHeaderActions
       headerActions={
         me ? (
           <div className="flex flex-wrap items-center gap-4 bg-slate-900/60 light:bg-slate-50 border border-white/5 light:border-slate-200 rounded-2xl px-5 py-3 glass-card">

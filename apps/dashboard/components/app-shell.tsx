@@ -22,6 +22,12 @@ interface AppShellProps {
   headerTitle?: string;
   headerSubtitle?: ReactNode;
   headerActions?: ReactNode;
+  /** Center headerActions as a group instead of pushing it to the right with
+      justify-between -- for pages with no headerSubtitle, justify-between
+      would leave it looking stuck to the right against empty space rather
+      than deliberately centered. Default false preserves the existing
+      title/subtitle-on-left, actions-on-right layout. */
+  centerHeaderActions?: boolean;
 }
 
 function LogoMark({ compact = false }: { compact?: boolean }) {
@@ -107,6 +113,7 @@ export function AppShell({
   headerTitle,
   headerSubtitle,
   headerActions,
+  centerHeaderActions = false,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -209,7 +216,7 @@ export function AppShell({
       <div className="lg:pl-64">
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
           {(headerTitle || headerSubtitle || headerActions) && (
-            <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className={`mb-8 flex flex-col md:flex-row md:items-center gap-4 ${centerHeaderActions ? "md:justify-center" : "md:justify-between"}`}>
               <div>
                 <h1 className="lg:hidden text-2xl font-bold tracking-tight text-white light:text-slate-900 sm:text-3xl">
                   {headerTitle}
