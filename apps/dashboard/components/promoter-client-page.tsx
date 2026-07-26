@@ -13,7 +13,7 @@ import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
-import type { AgentProfileRead, BranchMemberRead, PromoterCodeRead } from "@/lib/types";
+import type { AgentProfileRead, BranchMemberRead, PromoterCodeRead, RankRead } from "@/lib/types";
 
 interface PromoterClientPageProps {
   me: AgentProfileRead | null;
@@ -25,6 +25,12 @@ interface PromoterClientPageProps {
 async function fetchMyReferralCode(): Promise<PromoterCodeRead | null> {
   const res = await fetch("/api/proxy/referral/mine");
   if (!res.ok) throw new Error("Impossibile caricare il link referral.");
+  return res.json();
+}
+
+async function fetchRanks(): Promise<RankRead[]> {
+  const res = await fetch("/api/proxy/commissions/ranks");
+  if (!res.ok) throw new Error("Impossibile caricare le qualifiche.");
   return res.json();
 }
 
@@ -95,6 +101,12 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
     queryFn: fetchMyReferralCode,
     enabled: !!me,
   });
+  const { data: ranks } = useQuery({
+    queryKey: ["promoter", "ranks"],
+    queryFn: fetchRanks,
+    enabled: !!me,
+  });
+  const rankName = ranks?.find((r) => r.code === me?.rank_code)?.name;
   const [linkCopied, setLinkCopied] = useState(false);
 
   function copyPersonalLink() {
@@ -117,17 +129,19 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
       centerHeaderActions
       headerActions={
         me ? (
-          <div className="flex flex-wrap items-center gap-4 bg-slate-900/60 light:bg-slate-50 border border-white/5 light:border-slate-200 rounded-2xl px-5 py-3 glass-card">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Codice Promoter</p>
-              <p className="font-mono text-base text-amber-400 font-semibold">{me.promoter_code}</p>
+          <div className="w-full flex flex-wrap items-center justify-between gap-4 bg-slate-900/60 light:bg-slate-50 border border-white/5 light:border-slate-200 rounded-2xl px-5 py-3 glass-card">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Codice Promoter</p>
+                <p className="font-mono text-base text-amber-400 font-semibold">{me.promoter_code}</p>
+              </div>
+              <div className="h-8 w-px bg-white/10 light:bg-slate-200" />
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Qualifica Attuale</p>
+                <p className="text-2xl text-orange-400 font-bold leading-tight">{me.rank_code || "Nessuna"}</p>
+                {rankName && <p className="text-[10px] text-slate-500 mt-0.5">{rankName}</p>}
+              </div>
             </div>
-            <div className="h-8 w-px bg-white/10 light:bg-slate-200" />
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Qualifica Attuale</p>
-              <p className="text-base text-orange-400 font-semibold">{me.current_rank_id || "Nessuna"}</p>
-            </div>
-            <div className="h-8 w-px bg-white/10 light:bg-slate-200" />
             <button
               onClick={copyPersonalLink}
               disabled={!referralCode}

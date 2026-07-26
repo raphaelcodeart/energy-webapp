@@ -46,6 +46,7 @@ export type AgentProfileRead = {
   status: string;
   photo_url: string | null;
   current_rank_id: string | null;
+  rank_code: string | null;
 };
 
 export type SimulationStepRead = {

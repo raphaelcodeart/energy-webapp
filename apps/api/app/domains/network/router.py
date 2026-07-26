@@ -81,12 +81,30 @@ async def get_my_agent_profile(
 ) -> AgentProfileRead | None:
     """Lets a promoter's own login discover its agent_id without needing to know it
     in advance -- the dashboard calls this first, then /agents/{id}/branch."""
-    stmt = select(AgentProfile).where(
-        AgentProfile.organization_id == current_user.organization_id,
-        AgentProfile.user_id == current_user.user_id,
+    from app.domains.commissions.models import Rank
+
+    stmt = (
+        select(AgentProfile, Rank.code)
+        .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
+        .where(
+            AgentProfile.organization_id == current_user.organization_id,
+            AgentProfile.user_id == current_user.user_id,
+        )
     )
-    agent = (await db.execute(stmt)).scalar_one_or_none()
-    return AgentProfileRead.model_validate(agent) if agent else None
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return None
+    agent, rank_code = row
+    return AgentProfileRead(
+        id=agent.id,
+        organization_id=agent.organization_id,
+        display_name=agent.display_name,
+        promoter_code=agent.promoter_code,
+        status=agent.status,
+        photo_url=agent.photo_url,
+        current_rank_id=agent.current_rank_id,
+        rank_code=rank_code,
+    )
 
 
 @router.get("/agents/{agent_id}/branch", response_model=list[BranchMemberRead])

@@ -14,6 +14,7 @@ class AgentProfileRead(BaseModel):
     status: str
     photo_url: str | None = None
     current_rank_id: uuid.UUID | None
+    rank_code: str | None = None
 
 
 class NetworkNodeRead(BaseModel):

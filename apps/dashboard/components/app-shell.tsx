@@ -216,14 +216,18 @@ export function AppShell({
       <div className="lg:pl-64">
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
           {(headerTitle || headerSubtitle || headerActions) && (
-            <div className={`mb-8 flex flex-col md:flex-row md:items-center gap-4 ${centerHeaderActions ? "md:justify-center" : "md:justify-between"}`}>
+            <div
+              className={`mb-8 flex flex-col gap-4 ${
+                centerHeaderActions ? "" : "md:flex-row md:items-center md:justify-between"
+              }`}
+            >
               <div>
                 <h1 className="lg:hidden text-2xl font-bold tracking-tight text-white light:text-slate-900 sm:text-3xl">
                   {headerTitle}
                 </h1>
                 {headerSubtitle && <div className="text-sm text-slate-400 light:text-slate-500 mt-1">{headerSubtitle}</div>}
               </div>
-              {headerActions && <div className="flex gap-3">{headerActions}</div>}
+              {headerActions && <div className={centerHeaderActions ? "w-full" : "flex gap-3"}>{headerActions}</div>}
             </div>
           )}
           {children}
