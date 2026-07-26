@@ -98,6 +98,9 @@ export function CustomerProductsPanel() {
                   <div className="flex items-baseline gap-1 pt-3 border-t border-white/5 light:border-slate-200">
                     <span className="text-xl font-bold text-orange-400">{euro(v.base_price_cents)}</span>
                     <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
+                    {v.vat_percentage != null && (
+                      <span className="text-[10px] text-slate-500">(IVA {v.vat_percentage}% escl.)</span>
+                    )}
                   </div>
                   {v.initial_fee_cents > 0 && (
                     <p className="text-[10px] text-slate-500 mt-1">

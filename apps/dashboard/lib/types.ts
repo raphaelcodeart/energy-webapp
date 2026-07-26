@@ -111,6 +111,7 @@ export type ProductVersionRead = {
   initial_fee_cents: number;
   recurring_fee_cents: number;
   billing_period: string;
+  vat_percentage: number | null;
   valid_from: string;
   valid_to: string | null;
   status: string;

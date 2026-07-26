@@ -35,7 +35,7 @@ async def list_products(
     return [
         ProductCatalogRead(
             **ProductRead.model_validate(product).model_dump(),
-            current_version=ProductVersionRead.model_validate(version) if version else None,
+            current_version=ProductVersionRead.from_version(version) if version else None,
         )
         for product, version in pairs
     ]
@@ -55,7 +55,7 @@ async def get_product(
     product, versions = result
     return ProductWithVersionsRead(
         **ProductRead.model_validate(product).model_dump(),
-        versions=[ProductVersionRead.model_validate(v) for v in versions],
+        versions=[ProductVersionRead.from_version(v) for v in versions],
     )
 
 
@@ -108,7 +108,7 @@ async def add_product_version(
     )
     if version is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
-    return ProductVersionRead.model_validate(version)
+    return ProductVersionRead.from_version(version)
 
 
 @router.patch("/versions/{version_id}", response_model=ProductVersionRead)
@@ -127,4 +127,4 @@ async def update_product_version(
     )
     if version is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product version not found")
-    return ProductVersionRead.model_validate(version)
+    return ProductVersionRead.from_version(version)

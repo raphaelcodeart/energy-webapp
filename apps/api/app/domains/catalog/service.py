@@ -90,6 +90,7 @@ async def create_product(
         initial_fee_cents=payload.initial_fee_cents,
         recurring_fee_cents=payload.recurring_fee_cents,
         billing_period=payload.billing_period,
+        tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -130,6 +131,7 @@ async def add_product_version(
         initial_fee_cents=payload.initial_fee_cents,
         recurring_fee_cents=payload.recurring_fee_cents,
         billing_period=payload.billing_period,
+        tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -177,6 +179,8 @@ async def update_product_version(
         version.initial_fee_cents = payload.initial_fee_cents
     if payload.recurring_fee_cents is not None:
         version.recurring_fee_cents = payload.recurring_fee_cents
+    if payload.vat_percentage is not None:
+        version.tax_configuration = {**(version.tax_configuration or {}), "vat_percentage": payload.vat_percentage}
     if payload.status is not None:
         version.status = payload.status
 

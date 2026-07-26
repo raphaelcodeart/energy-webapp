@@ -1,9 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
-import type { ContractRead } from "@/lib/types";
+import type { ContractRead, ProductCatalogRead } from "@/lib/types";
+
+async function fetchProductsForLookup(): Promise<ProductCatalogRead[]> {
+  const res = await fetch("/api/proxy/products");
+  if (!res.ok) throw new Error("Impossibile caricare i prodotti.");
+  return res.json();
+}
 
 interface CustomerClientPageProps {
   contracts: ContractRead[];
@@ -32,20 +39,20 @@ const STEPS = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"];
 
 const NAV_ITEMS: NavItem[] = [
   {
+    key: "products",
+    label: "Shop",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
     key: "contracts",
     label: "I miei Contratti",
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    key: "products",
-    label: "Prodotti & Servizi",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
       </svg>
     ),
   },
@@ -61,7 +68,17 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support">("contracts");
+  // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support">("products");
+  const { data: productsForLookup } = useQuery({
+    queryKey: ["customer", "products", "lookup"],
+    queryFn: fetchProductsForLookup,
+  });
+  const productNameByVersionId = new Map(
+    (productsForLookup ?? [])
+      .filter((p) => p.current_version)
+      .map((p) => [p.current_version!.id, p.current_version!.name])
+  );
 
   // Support ticket state
   const [ticketSubject, setTicketSubject] = useState("");
@@ -158,8 +175,11 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                     {/* Header details */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                       <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Codice Contratto</p>
-                        <h4 className="font-mono text-sm text-white light:text-slate-900 font-semibold">{c.id}</h4>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Offerta</p>
+                        <h4 className="text-base text-white light:text-slate-900 font-semibold">
+                          {productNameByVersionId.get(c.product_version_id) ?? "Contratto"}
+                        </h4>
+                        <p className="font-mono text-[10px] text-slate-500 mt-0.5">{c.id}</p>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(c.status)}`}>
@@ -171,16 +191,19 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                     {/* Info grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 mb-6 text-sm">
                       <div>
-                        <span className="text-xs text-slate-500">ID Cliente</span>
-                        <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.customer_id}</p>
+                        <span className="text-xs text-slate-500">Prodotto</span>
+                        <p className="text-xs text-slate-300 light:text-slate-600 mt-0.5">
+                          {productNameByVersionId.get(c.product_version_id) ?? "—"}
+                        </p>
+                        <p className="font-mono text-[10px] text-slate-500">{c.product_version_id}</p>
                       </div>
                       <div>
                         <span className="text-xs text-slate-500">Punto di Fornitura (POD/PDR)</span>
                         <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.supply_point_id}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-slate-500">Codice Prodotto</span>
-                        <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.product_version_id}</p>
+                        <span className="text-xs text-slate-500">Codice Contratto</span>
+                        <p className="font-mono text-xs text-slate-300 light:text-slate-600 mt-0.5">{c.id}</p>
                       </div>
                     </div>
 

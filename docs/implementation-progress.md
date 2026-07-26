@@ -4,6 +4,47 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 9 — 2026-07-26 (same day, continued) — Names above IDs, product edit + VAT, shop as customer home
+
+User-driven: lists showing raw UUIDs must show the real associated name above
+the (still-present, small) id; the shop needs real electricity examples and a
+proper create/edit flow with photo/price/VAT; the customer's home should be
+the shop, not the contract list.
+
+- [x] Admin contract list and the transition modal now show the customer's
+  real name (fetched via a `customers` lookup, same pattern as
+  `AdminPromotersPanel`'s sponsor lookup) with the UUID kept small underneath,
+  instead of two raw UUID columns.
+- [x] Customer's own contract cards now show the product's real name (from a
+  `product_version_id -> name` lookup built off `GET /products`) as the
+  heading, with the contract UUID demoted to small mono text below it.
+  `AdminCustomersPanel`/`AdminPromotersPanel` already led with real names
+  (verified, no change needed).
+- [x] Backend: `ProductVersion.tax_configuration` (existing, previously-unused
+  JSONB column) now carries a `vat_percentage`, exposed as a top-level field
+  via `ProductVersionRead.from_version()` (a `from_attributes=True` model
+  can't compute a field out of a JSONB blob, so this replaces `model_validate`
+  at all 4 call sites) and accepted on create/update. No migration needed --
+  the column already existed, unused.
+- [x] `AdminProductsPanel` gained a real Edit flow (`PATCH
+  /products/versions/{id}`, already existed backend-side but had no UI) --
+  same form fields as create, refactored into a shared `ProductFormFields`
+  component. VAT % field added to both create and edit.
+- [x] Shop now has 3 real, distinct electricity offers (`LUCE-STD`/"Luce
+  Semplice", plus two new ones created live via the API: `LUCE-FLEX`/"Luce
+  Flex" -- indexed/variable rate, and `LUCE-GREEN`/"Luce Green 100%" --
+  renewable, 12-month fixed price). The `TEST-SMOKE` product created as a
+  throwaway artifact during Session 8's live verification was retired
+  (`status="RETIRED"`) so it no longer appears in admin or customer views.
+- [x] Customer app: "Shop" (the products panel) is now the first nav item and
+  the default landing tab, per "l'home dei clienti deve mostrare lo shop" --
+  previously "I miei Contratti" was both first and default.
+
+Verified live: customer session shows exactly 3 ACTIVE electricity products
+with correct prices/VAT through the real BFF proxy path; admin session's
+`/customers` lookup returns real display names that the frontend map resolves
+correctly. `tsc`/`eslint`/`next build` clean, dashboard rebuilt and redeployed.
+
 ## Session 8 — 2026-07-26 (same day, continued) — Commission-trigger audit + fixes, admin quick-links, orange brand pass
 
 Two independent pieces of work, done back to back.

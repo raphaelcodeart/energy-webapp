@@ -16,9 +16,33 @@ class ProductVersionRead(BaseModel):
     initial_fee_cents: int
     recurring_fee_cents: int
     billing_period: str
+    vat_percentage: float | None
     valid_from: datetime
     valid_to: datetime | None
     status: str
+
+    @classmethod
+    def from_version(cls, version) -> "ProductVersionRead":
+        """ProductVersion has no vat_percentage column -- it lives inside the
+        tax_configuration JSONB blob (already present on the model, previously
+        unused). from_attributes=True can't compute that, so every call site
+        builds through here instead of model_validate()."""
+        tax_configuration = version.tax_configuration or {}
+        return cls(
+            id=version.id,
+            version_label=version.version_label,
+            name=version.name,
+            description=version.description,
+            image_url=version.image_url,
+            base_price_cents=version.base_price_cents,
+            initial_fee_cents=version.initial_fee_cents,
+            recurring_fee_cents=version.recurring_fee_cents,
+            billing_period=version.billing_period,
+            vat_percentage=tax_configuration.get("vat_percentage"),
+            valid_from=version.valid_from,
+            valid_to=version.valid_to,
+            status=version.status,
+        )
 
 
 class ProductRead(BaseModel):
@@ -58,6 +82,7 @@ class ProductCreate(BaseModel):
     initial_fee_cents: int = 0
     recurring_fee_cents: int = 0
     billing_period: str = "MONTHLY"
+    vat_percentage: float | None = None
 
 
 class ProductVersionCreate(BaseModel):
@@ -69,6 +94,7 @@ class ProductVersionCreate(BaseModel):
     initial_fee_cents: int = 0
     recurring_fee_cents: int = 0
     billing_period: str = "MONTHLY"
+    vat_percentage: float | None = None
 
 
 class ProductVersionUpdate(BaseModel):
@@ -78,6 +104,7 @@ class ProductVersionUpdate(BaseModel):
     base_price_cents: int | None = None
     initial_fee_cents: int | None = None
     recurring_fee_cents: int | None = None
+    vat_percentage: float | None = None
     status: str | None = None
 
 

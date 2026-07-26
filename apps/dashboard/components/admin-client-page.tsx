@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { AdminOverviewPanel } from "@/components/admin-overview-panel";
 import { AdminCustomersPanel } from "@/components/admin-customers-panel";
 import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
-import type { ContractRead } from "@/lib/types";
+import type { ContractRead, CustomerRead } from "@/lib/types";
+
+async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
+  const res = await fetch("/api/proxy/customers");
+  if (!res.ok) throw new Error("Impossibile caricare i clienti.");
+  return res.json();
+}
 
 interface AdminClientPageProps {
   initialContracts: ContractRead[];
@@ -90,6 +97,11 @@ const NAV_ITEMS: NavItem[] = [
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
+  const { data: customersForLookup } = useQuery({
+    queryKey: ["admin", "customers"],
+    queryFn: fetchCustomersForLookup,
+  });
+  const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
   const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -306,8 +318,8 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold bg-white/2 light:bg-slate-900/[0.02]">
-                      <th className="py-3 px-6">ID Contratto</th>
-                      <th className="py-3 px-6">ID Cliente</th>
+                      <th className="py-3 px-6">Cliente</th>
+                      <th className="py-3 px-6">Contratto</th>
                       <th className="py-3 px-6">Stato</th>
                       <th className="py-3 px-6 text-right">Azioni</th>
                     </tr>
@@ -315,11 +327,14 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                   <tbody className="divide-y divide-white/5 light:divide-slate-200">
                     {filteredContracts.map((c) => (
                       <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
-                        <td className="py-4 px-6 font-mono text-xs text-white light:text-slate-900">
-                          {c.id}
+                        <td className="py-4 px-6">
+                          <div className="text-sm font-semibold text-white light:text-slate-900">
+                            {customerNameById.get(c.customer_id) ?? "Cliente sconosciuto"}
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-500">{c.customer_id}</div>
                         </td>
                         <td className="py-4 px-6 font-mono text-xs text-slate-400 light:text-slate-500">
-                          {c.customer_id}
+                          {c.id}
                         </td>
                         <td className="py-4 px-6">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeColor(c.status)}`}>
@@ -463,6 +478,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
             </div>
 
             <div className="p-3 mb-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-400 light:text-slate-500 space-y-1">
+              <p>Cliente: <span className="font-semibold text-white light:text-slate-900">{customerNameById.get(selectedContract.customer_id) ?? "Cliente sconosciuto"}</span></p>
               <p>ID Contratto: <span className="font-mono text-white light:text-slate-900 text-[10px]">{selectedContract.id}</span></p>
               <p>Stato Attuale: <span className="font-bold text-orange-400">{STATUS_LABELS[selectedContract.status] || selectedContract.status}</span></p>
             </div>
