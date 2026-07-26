@@ -227,7 +227,7 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
           {activeTab === "simulator" && (
             <div className="max-w-5xl mx-auto space-y-6">
               <SectionBanner image="commissions" alt="Simulatore Provvigioni" />
-              <CommissionSimulator />
+              <CommissionSimulator agentId={me.id} />
             </div>
           )}
 

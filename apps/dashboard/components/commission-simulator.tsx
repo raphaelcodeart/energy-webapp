@@ -1,20 +1,60 @@
 "use client";
 
-import { useState } from "react";
-import type { SimulationStepRead } from "@/lib/types";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { BranchContractRead, BranchMemberRead, SimulationStepRead } from "@/lib/types";
 
-// Pre-seeded demo contract IDs from data.py for ease of testing
-const DEMO_CONTRACTS = [
-  { id: "e1000000-0000-0000-0000-000000000001", label: "Roberto Villa - Luce Semplice (Attivo, Produttore a5)" },
-  { id: "e2000000-0000-0000-0000-000000000002", label: "Laura Ferri - Gas Semplice (Attivo, Produttore b3)" },
-  { id: "e3000000-0000-0000-0000-000000000003", label: "Officine Bianchi - Energia Circolare (Bozza)" },
-];
+const RANKS = ["S1", "S2", "S3", "TL1", "TL2", "TL3", "TL4", "MD1", "MD2", "MD3", "MD4", "MD5"];
 
-export function CommissionSimulator() {
-  const [contractId, setContractId] = useState(DEMO_CONTRACTS[0]?.id || "");
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Bozza",
+  SUBMITTED: "Inviata",
+  DOCUMENTS_PENDING: "Documenti mancanti",
+  UNDER_REVIEW: "In revisione",
+  APPROVED: "Approvata",
+  PAYMENT_PENDING: "In attesa di pagamento",
+  PAID: "Pagata",
+  ACTIVATION_PENDING: "In attivazione",
+  ACTIVE: "Attiva",
+  SUSPENDED: "Sospesa",
+  CANCELLED: "Cessata",
+  EXPIRED: "Scaduta",
+  RENEWED: "Rinnovata",
+  REJECTED: "Respinta",
+};
+
+async function fetchBranchContracts(agentId: string): Promise<BranchContractRead[]> {
+  const res = await fetch(`/api/proxy/network/agents/${agentId}/branch-contracts`);
+  if (!res.ok) throw new Error("Impossibile caricare i contratti della tua rete.");
+  return res.json();
+}
+
+async function fetchBranch(agentId: string): Promise<BranchMemberRead[]> {
+  const res = await fetch(`/api/proxy/network/agents/${agentId}/branch`);
+  if (!res.ok) throw new Error("Impossibile caricare la tua rete.");
+  return res.json();
+}
+
+export function CommissionSimulator({ agentId }: { agentId: string }) {
+  const { data: branchContracts } = useQuery({
+    queryKey: ["promoter", "simulator", "branch-contracts", agentId],
+    queryFn: () => fetchBranchContracts(agentId),
+  });
+  const { data: branch } = useQuery({
+    queryKey: ["promoter", "simulator", "branch", agentId],
+    queryFn: () => fetchBranch(agentId),
+  });
+
+  const nameByAgentId = useMemo(() => {
+    const map = new Map<string, string>();
+    (branch ?? []).forEach((m) => map.set(m.agent_id, `${m.display_name} (${m.promoter_code})`));
+    return map;
+  }, [branch]);
+
+  const [contractId, setContractId] = useState("");
   const [customContractId, setCustomContractId] = useState("");
   const [useCustom, setUseCustom] = useState(false);
-  
+
   // Rank override state: key = agent_id, value = rank_code
   const [overrideAgentId, setOverrideAgentId] = useState("");
   const [overrideRank, setOverrideRank] = useState("MD5");
@@ -25,16 +65,13 @@ export function CommissionSimulator() {
   const [results, setResults] = useState<SimulationStepRead[] | null>(null);
 
   const addOverride = () => {
-    if (!overrideAgentId.trim()) return;
-    setOverrides(prev => ({
-      ...prev,
-      [overrideAgentId.trim()]: overrideRank
-    }));
+    if (!overrideAgentId) return;
+    setOverrides((prev) => ({ ...prev, [overrideAgentId]: overrideRank }));
     setOverrideAgentId("");
   };
 
   const removeOverride = (agentId: string) => {
-    setOverrides(prev => {
+    setOverrides((prev) => {
       const copy = { ...prev };
       delete copy[agentId];
       return copy;
@@ -48,7 +85,7 @@ export function CommissionSimulator() {
 
     const targetId = useCustom ? customContractId.trim() : contractId;
     if (!targetId) {
-      setError("Inserisci un UUID contratto valido.");
+      setError(useCustom ? "Inserisci un ID contratto." : "Seleziona un contratto dalla tua rete.");
       setLoading(false);
       return;
     }
@@ -58,8 +95,8 @@ export function CommissionSimulator() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rank_overrides: Object.keys(overrides).length > 0 ? overrides : null
-        })
+          rank_overrides: Object.keys(overrides).length > 0 ? overrides : null,
+        }),
       });
 
       if (!res.ok) {
@@ -67,7 +104,7 @@ export function CommissionSimulator() {
         throw new Error(text || "Errore durante la simulazione");
       }
 
-      const data = await res.json() as SimulationStepRead[];
+      const data = (await res.json()) as SimulationStepRead[];
       setResults(data);
     } catch (err: any) {
       setError(err.message || "Impossibile caricare i dati della simulazione.");
@@ -93,7 +130,9 @@ export function CommissionSimulator() {
         </div>
         <div>
           <h3 className="text-lg font-semibold text-white light:text-slate-900">Simulatore Provvigioni</h3>
-          <p className="text-xs text-slate-400 light:text-slate-500">Calcola la distribuzione del piano provvigionale in tempo reale</p>
+          <p className="text-xs text-slate-400 light:text-slate-500">
+            Scegli un contratto della tua rete e scopri come si dividerebbe la provvigione tra te e la tua filiera.
+          </p>
         </div>
       </div>
 
@@ -102,87 +141,86 @@ export function CommissionSimulator() {
         <div className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider block mb-2">
-              Seleziona Contratto
+              1. Scegli un contratto
             </label>
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-slate-300 light:text-slate-600">
-                  <input
-                    type="radio"
-                    checked={!useCustom}
-                    onChange={() => setUseCustom(false)}
-                    className="accent-orange-500 cursor-pointer"
-                  />
-                  Predefiniti Demo
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-300 light:text-slate-600">
-                  <input
-                    type="radio"
-                    checked={useCustom}
-                    onChange={() => setUseCustom(true)}
-                    className="accent-orange-500 cursor-pointer"
-                  />
-                  ID Personalizzato
-                </label>
-              </div>
-
               {!useCustom ? (
                 <select
                   value={contractId}
                   onChange={(e) => setContractId(e.target.value)}
                   className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
                 >
-                  {DEMO_CONTRACTS.map(c => (
-                    <option key={c.id} value={c.id} className="bg-slate-950 light:bg-white">
-                      {c.label}
+                  <option value="">— Seleziona un contratto della tua rete —</option>
+                  {(branchContracts ?? []).map((c) => (
+                    <option key={c.contract_id} value={c.contract_id} className="bg-slate-950 light:bg-white">
+                      {c.customer_name} · {c.product_name} ({STATUS_LABELS[c.status] ?? c.status}) · venduto da {c.producer_name}
                     </option>
                   ))}
                 </select>
               ) : (
                 <input
                   type="text"
-                  placeholder="Inserisci UUID contratto (es: e1000000-...)"
+                  placeholder="Incolla l'ID del contratto"
                   value={customContractId}
                   onChange={(e) => setCustomContractId(e.target.value)}
                   className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500"
                 />
               )}
+              <button
+                type="button"
+                onClick={() => setUseCustom((v) => !v)}
+                className="self-start text-[11px] text-orange-400 hover:text-orange-300 transition cursor-pointer"
+              >
+                {useCustom ? "← Torna alla lista dei tuoi contratti" : "Ho già l'ID di un altro contratto →"}
+              </button>
             </div>
           </div>
 
           {/* Rank Overrides Section */}
           <div className="border-t border-white/5 light:border-slate-200 pt-4">
             <h4 className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider mb-2">
-              Sovrascrittura Qualifiche (Overrides)
+              2. Ipotesi (opzionale): cosa succederebbe se...
             </h4>
             <p className="text-[11px] text-slate-400 light:text-slate-500 mb-3">
-              Simula cosa succederebbe se un determinato agente avesse una qualifica diversa al momento dell&apos;attivazione.
+              Es: &quot;e se Mario fosse già Team Leader invece di Seller quando questo contratto si attiva?&quot;. Scegli
+              una persona della tua rete e la qualifica ipotetica, poi premi Aggiungi. Puoi aggiungerne più di una. Se non
+              aggiungi nulla, la simulazione usa la qualifica reale e attuale di ciascuno.
             </p>
 
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                placeholder="UUID Agente (es: a0, a1...)"
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+              <select
                 value={overrideAgentId}
                 onChange={(e) => setOverrideAgentId(e.target.value)}
-                className="flex-1 rounded-xl glass-input px-3 py-2 text-xs focus:border-orange-500"
-              />
-              <select
-                value={overrideRank}
-                onChange={(e) => setOverrideRank(e.target.value)}
-                className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
+                className="flex-1 rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
               >
-                {["S1", "S2", "S3", "TL1", "TL2", "TL3", "TL4", "MD1", "MD2", "MD3", "MD4", "MD5"].map(r => (
-                  <option key={r} value={r} className="bg-slate-950 light:bg-white">{r}</option>
-                ))}
+                <option value="">— Scegli una persona della tua rete —</option>
+                {(branch ?? [])
+                  .filter((m) => m.depth > 0)
+                  .map((m) => (
+                    <option key={m.agent_id} value={m.agent_id} className="bg-slate-950 light:bg-white">
+                      {m.display_name} ({m.promoter_code}) — oggi {m.rank_code ?? "—"}
+                    </option>
+                  ))}
               </select>
-              <button
-                type="button"
-                onClick={addOverride}
-                className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer"
-              >
-                Aggiungi
-              </button>
+              <div className="flex gap-2">
+                <select
+                  value={overrideRank}
+                  onChange={(e) => setOverrideRank(e.target.value)}
+                  className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  {RANKS.map((r) => (
+                    <option key={r} value={r} className="bg-slate-950 light:bg-white">{r}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={addOverride}
+                  disabled={!overrideAgentId}
+                  className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
+                >
+                  Aggiungi
+                </button>
+              </div>
             </div>
 
             {/* List of current overrides */}
@@ -193,7 +231,8 @@ export function CommissionSimulator() {
                     key={agent}
                     className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 light:bg-slate-100 border border-slate-700 light:border-slate-300 text-xs text-slate-200 light:text-slate-700"
                   >
-                    <span className="font-mono text-[10px] text-slate-400 light:text-slate-500">{agent.substring(0, 6)}...</span>:
+                    <span className="text-slate-300 light:text-slate-600">{nameByAgentId.get(agent) ?? agent}</span>
+                    <span className="text-slate-500">→</span>
                     <span className="font-bold text-orange-400">{rank}</span>
                     <button
                       type="button"
@@ -267,8 +306,8 @@ export function CommissionSimulator() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-slate-300 light:text-slate-600">
-                            Agente: {step.beneficiary_agent_id.substring(0, 6)}...
+                          <span className="text-xs text-slate-300 light:text-slate-600">
+                            {nameByAgentId.get(step.beneficiary_agent_id) ?? `Agente ${step.beneficiary_agent_id.substring(0, 6)}...`}
                           </span>
                           <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded">
                             {step.rank_code}
