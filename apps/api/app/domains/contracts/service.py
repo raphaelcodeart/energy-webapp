@@ -31,6 +31,7 @@ async def create_contract(
     producer_agent_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     correlation_id: str,
+    notes: str | None = None,
 ) -> Contract:
     """Creates a DRAFT contract. Deliberately does NOT touch commissions -- creating
     or submitting a contract never generates a commission (business-rules.md)."""
@@ -60,6 +61,7 @@ async def create_contract(
         product_version_id=product_version_id,
         contract_attribution_id=attribution.id,
         status="DRAFT",
+        notes=notes,
     )
     db.add(contract)
     await db.flush()

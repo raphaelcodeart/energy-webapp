@@ -41,6 +41,7 @@ async def create_contract(
             producer_agent_id=payload.producer_agent_id,
             actor_user_id=current_user.user_id,
             correlation_id=str(uuid.uuid4()),
+            notes=payload.notes,
         )
     except InvalidProducerAgentError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

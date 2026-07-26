@@ -48,6 +48,7 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
             "vat_number": c.vat_number,
             "email": c.email,
             "phone": c.phone,
+            "pec": c.pec,
             "display_name": display_name_for(c.kind, profiles.get(c.id), companies.get(c.id)),
         }
         for c in customers
@@ -76,6 +77,7 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
         "vat_number": customer.vat_number,
         "email": customer.email,
         "phone": customer.phone,
+        "pec": customer.pec,
         "display_name": display_name_for(customer.kind, profile, company),
         "addresses": list(addresses),
         "supply_points": list(supply_points),
@@ -95,6 +97,7 @@ async def create_customer(
         kind=payload.kind,
         email=payload.email,
         phone=payload.phone,
+        pec=payload.pec,
         fiscal_code=payload.fiscal_code,
         vat_number=payload.vat_number,
     )
@@ -140,6 +143,8 @@ async def update_customer(
         customer.email = payload.email
     if payload.phone is not None:
         customer.phone = payload.phone
+    if payload.pec is not None:
+        customer.pec = payload.pec
     if payload.fiscal_code is not None:
         customer.fiscal_code = payload.fiscal_code
     if payload.vat_number is not None:

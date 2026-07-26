@@ -113,6 +113,12 @@ referral_sessions
 customer_attributions
   id, organization_id, customer_id, promoter_code_id, referral_session_id nullable,
   attributed_at
+  -- These four tables existed since Session 1 but had no live write path other
+  -- than the public /r/{code} click-resolver until Session 10 added
+  -- POST /auth/register: invite-only self-registration, gated on a valid
+  -- promoter_codes.code, writes exactly one customer_attributions row per new
+  -- customer in the same transaction as the account itself. No schema change
+  -- was needed here -- the tables were simply unused until now.
 
 contract_attributions
   id, organization_id, contract_id, producer_agent_id, attributed_promoter_id,
@@ -127,18 +133,27 @@ attribution_corrections
 
 ```
 products
-  id, organization_id, code, energy_type (ELECTRICITY/GAS/DUAL), customer_type,
-  status
+  id, organization_id, code,
+  product_type (ENERGY_CONTRACT/DIGITAL/PHYSICAL/SUBSCRIPTION, default
+    ENERGY_CONTRACT -- added Session 10, see below),
+  energy_type nullable (ELECTRICITY/GAS/DUAL_FUEL -- only meaningful when
+    product_type=ENERGY_CONTRACT; was NOT NULL before Session 10, relaxed
+    because a DIGITAL/PHYSICAL/SUBSCRIPTION product has no energy type),
+  customer_type, status
 
 product_versions
   id, product_id, version_label, base_price_cents, initial_fee_cents,
-  recurring_fee_cents, billing_period, tax_configuration jsonb,
+  recurring_fee_cents, billing_period, tax_configuration jsonb (carries
+    vat_percentage as of Session 9 -- pre-existing column, previously unused),
   commission_plan_version_id, required_documents jsonb, terms_version,
   valid_from, valid_to nullable, status
 
 customers
   id, organization_id, kind (PRIVATE/SOLE_PROPRIETOR/COMPANY/CONDOMINIUM),
-  fiscal_code, vat_number nullable, email, phone, created_at
+  fiscal_code, vat_number nullable, email, phone,
+  pec nullable (added Session 10 -- Italian certified email, distinct from
+    the ordinary contact email),
+  created_at
 
 customer_profiles
   customer_id, first_name, last_name, date_of_birth
@@ -156,7 +171,11 @@ supply_points
 
 contracts
   id, organization_id, customer_id, supply_point_id, product_version_id,
-  contract_attribution_id, network_snapshot_id, status, created_at
+  contract_attribution_id, network_snapshot_id, status,
+  notes nullable (added Session 10 -- free-text context set at creation by
+    whoever originated the deal, promoter or admin; distinct from
+    contract_status_history.notes, which is per-transition, not per-contract),
+  created_at
 
 contract_status_history
   id, contract_id, from_status, to_status, actor_user_id, reason, notes,

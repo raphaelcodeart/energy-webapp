@@ -8,6 +8,7 @@ import { AdminCustomersPanel } from "@/components/admin-customers-panel";
 import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
+import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
@@ -124,15 +125,6 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
   const [transitionLoading, setTransitionLoading] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
-  // State for creating a contract
-  const [createCustomerId, setCreateCustomerId] = useState("");
-  const [createSupplyPointId, setCreateSupplyPointId] = useState("");
-  const [createProductVersionId, setCreateProductVersionId] = useState("");
-  const [createProducerAgentId, setCreateProducerAgentId] = useState("");
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccess, setCreateSuccess] = useState(false);
-
   // Calculate status statistics
   const byStatus = contracts.reduce<Record<string, number>>((acc, c) => {
     acc[c.status] = (acc[c.status] ?? 0) + 1;
@@ -196,49 +188,9 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     }
   };
 
-  const handleCreateContract = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreateLoading(true);
-    setCreateError(null);
-    setCreateSuccess(false);
-
-    try {
-      const res = await fetch("/api/proxy/contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: createCustomerId.trim(),
-          supply_point_id: createSupplyPointId.trim(),
-          product_version_id: createProductVersionId.trim(),
-          producer_agent_id: createProducerAgentId.trim(),
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Errore nella creazione");
-      }
-
-      const newContract = await res.json() as ContractRead;
-
-      // Update state and clear inputs
-      setContracts(prev => [newContract, ...prev]);
-      setCreateSuccess(true);
-      setCreateCustomerId("");
-      setCreateSupplyPointId("");
-      setCreateProductVersionId("");
-      setCreateProducerAgentId("");
-
-      // Switch back to list after short delay
-      setTimeout(() => {
-        setActiveTab("list");
-        setCreateSuccess(false);
-      }, 1500);
-    } catch (err: any) {
-      setCreateError(err.message || "Impossibile creare il contratto. Verifica la validità degli ID.");
-    } finally {
-      setCreateLoading(false);
-    }
+  const handleContractCreated = (newContract: ContractRead) => {
+    setContracts((prev) => [newContract, ...prev]);
+    setTimeout(() => setActiveTab("list"), 1500);
   };
 
   const getStatusBadgeColor = (status: string) => {
@@ -375,96 +327,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           </div>
         )}
 
-        {activeTab === "create" && (
-          <div className="max-w-xl mx-auto glass-card rounded-2xl p-8 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-            <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Crea un Nuovo Contratto</h3>
-            <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
-              Compila gli UUID delle entità per generare una nuova proposta contrattuale.
-            </p>
-
-            {createSuccess && (
-              <div className="p-4 mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-center animate-scale-up">
-                Contratto creato con successo! Verrai reindirizzato all&apos;elenco...
-              </div>
-            )}
-
-            <form onSubmit={handleCreateContract} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="customerId">
-                  UUID Cliente
-                </label>
-                <input
-                  id="customerId"
-                  type="text"
-                  required
-                  placeholder="Inserisci UUID Cliente..."
-                  value={createCustomerId}
-                  onChange={(e) => setCreateCustomerId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="supplyPointId">
-                  UUID Punto Fornitura
-                </label>
-                <input
-                  id="supplyPointId"
-                  type="text"
-                  required
-                  placeholder="Inserisci UUID Supply Point..."
-                  value={createSupplyPointId}
-                  onChange={(e) => setCreateSupplyPointId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="productVersionId">
-                  UUID Versione Prodotto
-                </label>
-                <input
-                  id="productVersionId"
-                  type="text"
-                  required
-                  placeholder="Inserisci UUID Product Version..."
-                  value={createProductVersionId}
-                  onChange={(e) => setCreateProductVersionId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block" htmlFor="producerAgentId">
-                  UUID Promoter / Agente
-                </label>
-                <input
-                  id="producerAgentId"
-                  type="text"
-                  required
-                  placeholder="Inserisci UUID Agente Produttore..."
-                  value={createProducerAgentId}
-                  onChange={(e) => setCreateProducerAgentId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
-                />
-              </div>
-
-              {createError && (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                  {createError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={createLoading || createSuccess}
-                className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer mt-2"
-              >
-                {createLoading ? "Creazione in corso..." : "Genera Contratto"}
-              </button>
-            </form>
-          </div>
-        )}
+        {activeTab === "create" && <AdminCreateContractPanel onCreated={handleContractCreated} />}
 
         {activeTab === "customers" && <AdminCustomersPanel />}
         {activeTab === "promoters" && <AdminPromotersPanel />}

@@ -24,6 +24,7 @@ class Customer(UUIDPKMixin, TimestampMixin, Base):
     vat_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pec: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class CustomerProfile(Base):

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
@@ -444,6 +444,163 @@ async def get_branch(
         }
         for row in rows
     ]
+
+
+# A contract in one of these statuses needs a human to unblock it (usually
+# missing/rejected documents) -- surfaced to promoters as "problemi" so they
+# know which of their own customers to chase, not just a raw status code.
+PROBLEM_CONTRACT_STATUSES = {"DOCUMENTS_PENDING", "REJECTED", "SUSPENDED"}
+# Still moving through the pipeline, nothing wrong yet.
+IN_PROGRESS_CONTRACT_STATUSES = {"DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PAYMENT_PENDING", "ACTIVATION_PENDING"}
+# Reached a state where the deal is done (paying or has paid).
+PROCESSED_CONTRACT_STATUSES = {"PAID", "ACTIVE", "RENEWED"}
+
+
+async def get_branch_summary(
+    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
+) -> dict:
+    """Per-agent and per-level rollup for a promoter's own "azienda" view: how many
+    contracts (by status bucket) each person in the branch has produced, and how
+    much commission each has earned -- the data a promoter needs to run their
+    downline like a real sales network, not just see names in a tree."""
+    from app.domains.commissions.models import CommissionMovement
+    from app.domains.contracts.models import Contract, ContractAttribution
+
+    branch = await get_branch(db, organization_id=organization_id, root_agent_id=root_agent_id)
+    if not branch:
+        return {"agents": [], "totals": {"contracts": 0, "commission_cents": 0}}
+    agent_ids = [row["agent_id"] for row in branch]
+
+    contract_stmt = (
+        select(ContractAttribution.producer_agent_id, Contract.status, func.count())
+        .select_from(Contract)
+        .join(ContractAttribution, ContractAttribution.id == Contract.contract_attribution_id)
+        .where(ContractAttribution.producer_agent_id.in_(agent_ids))
+        .group_by(ContractAttribution.producer_agent_id, Contract.status)
+    )
+    contract_rows = (await db.execute(contract_stmt)).all()
+    contracts_by_agent: dict[uuid.UUID, dict[str, int]] = {}
+    for producer_agent_id, status, count in contract_rows:
+        contracts_by_agent.setdefault(producer_agent_id, {})[status] = count
+
+    commission_stmt = (
+        select(CommissionMovement.agent_id, func.coalesce(func.sum(CommissionMovement.amount_cents), 0))
+        .where(
+            CommissionMovement.agent_id.in_(agent_ids),
+            CommissionMovement.status.notin_(["CANCELLED", "REVERSED"]),
+        )
+        .group_by(CommissionMovement.agent_id)
+    )
+    commission_rows = (await db.execute(commission_stmt)).all()
+    commission_by_agent = {agent_id: int(total) for agent_id, total in commission_rows}
+
+    agents = []
+    total_contracts = 0
+    total_commission_cents = 0
+    for row in branch:
+        by_status = contracts_by_agent.get(row["agent_id"], {})
+        agent_contract_total = sum(by_status.values())
+        problem_count = sum(by_status.get(s, 0) for s in PROBLEM_CONTRACT_STATUSES)
+        in_progress_count = sum(by_status.get(s, 0) for s in IN_PROGRESS_CONTRACT_STATUSES)
+        processed_count = sum(by_status.get(s, 0) for s in PROCESSED_CONTRACT_STATUSES)
+        agent_commission = commission_by_agent.get(row["agent_id"], 0)
+
+        agents.append({
+            **row,
+            "contracts_total": agent_contract_total,
+            "contracts_by_status": by_status,
+            "contracts_problem": problem_count,
+            "contracts_in_progress": in_progress_count,
+            "contracts_processed": processed_count,
+            "commission_cents": agent_commission,
+        })
+        total_contracts += agent_contract_total
+        total_commission_cents += agent_commission
+
+    return {
+        "agents": agents,
+        "totals": {"contracts": total_contracts, "commission_cents": total_commission_cents},
+    }
+
+
+async def get_branch_contracts(
+    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
+) -> list[dict]:
+    """Flat, contract-level detail for a promoter's whole downline: which
+    customer, which product, what status, how much commission it has generated
+    -- the link the promoter needs to go from "there's a problem" to "here's the
+    customer to call". One row per contract, not per agent."""
+    from app.domains.catalog.models import ProductVersion
+    from app.domains.commissions.models import CommissionMovement
+    from app.domains.contracts.models import Contract, ContractAttribution
+    from app.domains.customers.models import Company, Customer, CustomerProfile
+    from app.domains.customers.service import display_name_for
+
+    branch = await get_branch(db, organization_id=organization_id, root_agent_id=root_agent_id)
+    agent_ids = [row["agent_id"] for row in branch]
+    if not agent_ids:
+        return []
+    agent_name_by_id = {row["agent_id"]: row["display_name"] for row in branch}
+
+    stmt = (
+        select(
+            Contract.id,
+            Contract.status,
+            Contract.customer_id,
+            ContractAttribution.producer_agent_id,
+            ProductVersion.name,
+        )
+        .select_from(Contract)
+        .join(ContractAttribution, ContractAttribution.id == Contract.contract_attribution_id)
+        .join(ProductVersion, ProductVersion.id == Contract.product_version_id)
+        .where(ContractAttribution.producer_agent_id.in_(agent_ids))
+        .order_by(Contract.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+
+    contract_ids = [r[0] for r in rows]
+    customer_ids = list({r[2] for r in rows})
+
+    customers = {c.id: c for c in (await db.execute(select(Customer).where(Customer.id.in_(customer_ids)))).scalars()}
+    profiles = {
+        p.customer_id: p
+        for p in (await db.execute(select(CustomerProfile).where(CustomerProfile.customer_id.in_(customer_ids)))).scalars()
+    }
+    companies = {
+        c.customer_id: c
+        for c in (await db.execute(select(Company).where(Company.customer_id.in_(customer_ids)))).scalars()
+    }
+
+    commission_stmt = (
+        select(CommissionMovement.contract_id, func.coalesce(func.sum(CommissionMovement.amount_cents), 0))
+        .where(
+            CommissionMovement.contract_id.in_(contract_ids),
+            CommissionMovement.status.notin_(["CANCELLED", "REVERSED"]),
+        )
+        .group_by(CommissionMovement.contract_id)
+    )
+    commission_by_contract = {cid: int(total) for cid, total in (await db.execute(commission_stmt)).all()}
+
+    result = []
+    for contract_id, status, customer_id, producer_agent_id, product_name in rows:
+        customer = customers.get(customer_id)
+        result.append({
+            "contract_id": contract_id,
+            "status": status,
+            "customer_id": customer_id,
+            "customer_name": display_name_for(customer.kind, profiles.get(customer_id), companies.get(customer_id))
+            if customer else "—",
+            "customer_email": customer.email if customer else None,
+            "customer_phone": customer.phone if customer else None,
+            "product_name": product_name,
+            "producer_agent_id": producer_agent_id,
+            "producer_name": agent_name_by_id.get(producer_agent_id, "—"),
+            "commission_cents": commission_by_contract.get(contract_id, 0),
+            "is_problem": status in PROBLEM_CONTRACT_STATUSES,
+        })
+    return result
 
 
 async def create_snapshot_for_contract(

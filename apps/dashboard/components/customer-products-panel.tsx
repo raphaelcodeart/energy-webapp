@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ProductCatalogRead } from "@/lib/types";
 
@@ -7,6 +8,12 @@ const ENERGY_LABELS: Record<string, string> = {
   ELECTRICITY: "Luce",
   GAS: "Gas",
   DUAL_FUEL: "Dual Fuel",
+};
+
+const PRODUCT_TYPE_LABELS: Record<string, string> = {
+  DIGITAL: "Digitale",
+  PHYSICAL: "Fisico",
+  SUBSCRIPTION: "Abbonamento",
 };
 
 const BILLING_LABELS: Record<string, string> = {
@@ -25,15 +32,34 @@ async function fetchProducts(): Promise<ProductCatalogRead[]> {
   return res.json();
 }
 
-export function CustomerProductsPanel() {
+interface CustomerProductsPanelProps {
+  /** When set, each card gets a "Condividi" button that copies a referral link
+      pointing directly at that product -- promoter-only use case. */
+  referralCode?: string;
+  organizationId?: string;
+}
+
+export function CustomerProductsPanel({ referralCode, organizationId }: CustomerProductsPanelProps = {}) {
   const { data: products, isLoading, error } = useQuery({
     queryKey: ["customer", "products"],
     queryFn: fetchProducts,
   });
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const catalog = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
   );
+
+  function shareProduct(productId: string, productName: string) {
+    if (!referralCode || typeof window === "undefined") return;
+    const url = new URL(`/r/${referralCode}`, window.location.origin);
+    if (organizationId) url.searchParams.set("org", organizationId);
+    url.searchParams.set("product", productId);
+    url.searchParams.set("product_name", productName);
+    navigator.clipboard.writeText(url.toString());
+    setCopiedId(productId);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
 
   if (isLoading) {
     return (
@@ -60,7 +86,9 @@ export function CustomerProductsPanel() {
       <div>
         <h3 className="text-lg font-semibold text-white light:text-slate-900">Prodotti & Servizi</h3>
         <p className="text-xs text-slate-400 light:text-slate-500">
-          Le offerte luce, gas e dual fuel disponibili per il tuo profilo.
+          {referralCode
+            ? "Condividi un'offerta con un cliente: il link lo porta dritto alla registrazione, già associato a te."
+            : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
         </p>
       </div>
 
@@ -72,6 +100,9 @@ export function CustomerProductsPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {catalog.map((p) => {
             const v = p.current_version!;
+            const typeLabel = p.product_type === "ENERGY_CONTRACT"
+              ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
+              : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type;
             return (
               <div
                 key={p.id}
@@ -89,7 +120,7 @@ export function CustomerProductsPanel() {
                 </div>
                 <div className="p-5">
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                    {ENERGY_LABELS[p.energy_type] ?? p.energy_type}
+                    {typeLabel}
                   </span>
                   <h4 className="text-base font-semibold text-white light:text-slate-900 mt-3 mb-1">{v.name}</h4>
                   {v.description && (
@@ -106,6 +137,28 @@ export function CustomerProductsPanel() {
                     <p className="text-[10px] text-slate-500 mt-1">
                       + {euro(v.initial_fee_cents)} contributo di attivazione
                     </p>
+                  )}
+                  {referralCode && (
+                    <button
+                      onClick={() => shareProduct(p.id, v.name)}
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                    >
+                      {copiedId === p.id ? (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Link copiato!
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342a4 4 0 010-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a4 4 0 105.367-5.925 4 4 0 00-5.367 5.925zm0 8.658a4 4 0 105.367 5.925 4 4 0 00-5.367-5.925z" />
+                          </svg>
+                          Condividi
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
               </div>

@@ -10,6 +10,13 @@ const ENERGY_LABELS: Record<string, string> = {
   DUAL_FUEL: "Dual Fuel",
 };
 
+const PRODUCT_TYPE_LABELS: Record<string, string> = {
+  ENERGY_CONTRACT: "Contratto Energia",
+  DIGITAL: "Digitale",
+  PHYSICAL: "Fisico",
+  SUBSCRIPTION: "Abbonamento",
+};
+
 const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   PRIVATE: "Privati",
   SOLE_PROPRIETOR: "Partita IVA",
@@ -138,6 +145,7 @@ export function AdminProductsPanel() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [code, setCode] = useState("");
+  const [productType, setProductType] = useState("ENERGY_CONTRACT");
   const [energyType, setEnergyType] = useState("ELECTRICITY");
   const [customerType, setCustomerType] = useState("PRIVATE");
   const [createForm, setCreateForm] = useState<ProductFormState>(EMPTY_FORM);
@@ -159,7 +167,8 @@ export function AdminProductsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code,
-          energy_type: energyType,
+          product_type: productType,
+          energy_type: productType === "ENERGY_CONTRACT" ? energyType : null,
           customer_type: customerType,
           name: createForm.name,
           description: createForm.description,
@@ -275,7 +284,9 @@ export function AdminProductsPanel() {
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                    {ENERGY_LABELS[p.energy_type] ?? p.energy_type}
+                    {p.product_type === "ENERGY_CONTRACT"
+                      ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
+                      : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type}
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                     p.status === "ACTIVE"
@@ -329,21 +340,33 @@ export function AdminProductsPanel() {
             </div>
 
             <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice</label>
+                <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="Es: LUCE-PMI-01"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-orange-500" />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice</label>
-                  <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="Es: LUCE-PMI-01"
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-orange-500" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Tipo Energia</label>
-                  <select value={energyType} onChange={(e) => setEnergyType(e.target.value)}
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Tipo Prodotto</label>
+                  <select value={productType} onChange={(e) => setProductType(e.target.value)}
                     className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
-                    {Object.entries(ENERGY_LABELS).map(([code2, label]) => (
+                    {Object.entries(PRODUCT_TYPE_LABELS).map(([code2, label]) => (
                       <option key={code2} value={code2}>{label}</option>
                     ))}
                   </select>
                 </div>
+                {productType === "ENERGY_CONTRACT" && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Tipo Energia</label>
+                    <select value={energyType} onChange={(e) => setEnergyType(e.target.value)}
+                      className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
+                      {Object.entries(ENERGY_LABELS).map(([code2, label]) => (
+                        <option key={code2} value={code2}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">

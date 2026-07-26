@@ -63,6 +63,7 @@ export type CustomerRead = {
   vat_number: string | null;
   email: string;
   phone: string | null;
+  pec: string | null;
   display_name: string;
 };
 
@@ -121,7 +122,8 @@ export type ProductRead = {
   id: string;
   organization_id: string;
   code: string;
-  energy_type: string;
+  product_type: string;
+  energy_type: string | null;
   customer_type: string;
   status: string;
 };
@@ -181,5 +183,46 @@ export type RecentActivityItem = {
 export type TimeseriesPoint = {
   period: string;
   value: number;
+};
+
+export type PromoterCodeRead = {
+  id: string;
+  code: string;
+  personal_link: string;
+  status: string;
+};
+
+export type BranchAgentSummaryRead = {
+  agent_id: string;
+  depth: number;
+  display_name: string;
+  promoter_code: string;
+  status: string;
+  rank_code: string | null;
+  contracts_total: number;
+  contracts_by_status: Record<string, number>;
+  contracts_problem: number;
+  contracts_in_progress: number;
+  contracts_processed: number;
+  commission_cents: number;
+};
+
+export type BranchSummaryRead = {
+  agents: BranchAgentSummaryRead[];
+  totals: { contracts: number; commission_cents: number };
+};
+
+export type BranchContractRead = {
+  contract_id: string;
+  status: string;
+  customer_id: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string | null;
+  product_name: string;
+  producer_agent_id: string;
+  producer_name: string;
+  commission_cents: number;
+  is_problem: boolean;
 };
 

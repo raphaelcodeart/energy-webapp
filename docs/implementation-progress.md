@@ -4,6 +4,99 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 11 — 2026-07-26 (same day, continued) — Promoter "azienda" view, referral sharing + invite-only registration, real contract creation form, product types
+
+Large, multi-part user request. Scoped deliberately: built the concrete,
+safely-implementable pieces in full (tested, verified live); explicitly
+deferred the full PIN/email-verification registration refinement rather than
+fake it, since this project has no email-sending infrastructure at all yet.
+
+**Header/logo overlap bug (also user-reported).** Root cause: the top header
+was a full-width block using left *padding* to visually clear the sidebar, but
+its semi-transparent background still extended under the sidebar at `z-40`
+(above the sidebar's `z-30`), covering the logo. Fixed with `margin-left`
+instead of padding, so the header's box genuinely starts after the sidebar
+instead of merely indenting its content.
+
+**Promoter "azienda" dashboard (new default landing tab).** New backend
+aggregations in `network/service.py`: `get_branch_summary()` (per-agent and
+per-level contract-count/commission-total rollup across a promoter's whole
+downline, using the existing branch/closure data -- no new tables) and
+`get_branch_contracts()` (flat, contract-level rows linking customer name/
+email, product name, status, and commission earned -- the "collegamento tra
+cliente/prodotto/stato/guadagno" the request asked for). Both reuse the same
+branch-ownership ABAC check as the existing `/branch` endpoint (factored into
+a shared `_assert_branch_access()` helper). New `PromoterAziendaPanel`: KPI
+cards, per-level table, per-agent table (contracts total/processed/in-progress/
+problem, commission), and a contract list with a **Contatta** button
+(`mailto:`, pre-filled subject/body for problem contracts) so a promoter can
+act on "documenti mancanti" without leaving the page.
+
+**Referral link sharing.** `promoter_codes`/`referral_events`/
+`referral_sessions`/`customer_attributions` existed since Session 1 but had no
+live write path beyond the public click-resolver -- orphaned tables. Added
+`referral_service.get_or_create_promoter_code()` (reuses the agent's existing
+`promoter_code` as the referral code, created lazily on first request) and a
+new authenticated `GET /referral/mine` endpoint (on a **separate** router from
+the public `GET /r/{code}` -- `/r/mine` would otherwise collide with
+`/r/{code}` where `code="mine"`). `CustomerProductsPanel` gained an optional
+`referralCode`/`organizationId` prop: when set, each product card gets a
+**Condividi** button that copies a link straight to that product, pre-attributed
+to the sharing promoter. The promoter dashboard header also has a generic
+"Condividi il tuo link" button.
+
+**Invite-only public registration.** New `POST /auth/register`
+(`auth/service.py::register_with_referral()`): validates the referral code
+*first* (before creating anything, so an invalid/expired code never leaves a
+half-created account), then creates the User + role grant + Customer +
+profile/company + `CustomerAttribution` in one transaction, one commit --
+closed circuit enforced at the data layer, not just the UI ("nessuno può stare
+senza promoter che lo invita"). New public page `/r/[code]` (reads `org` +
+optional `product`/`product_name` query params) with a single-step
+email+password+profile form, and two public (no session) BFF proxy routes.
+**Explicitly not built**: PIN-via-email verification, forced profile
+completion on first login, promotion memory across logins, multi-activation
+with location choice -- this project has zero email-sending infrastructure
+today, and faking "email sent" or skipping verification silently would be
+dishonest; this is real, scoped follow-up work, not cut corners.
+
+**Real contract creation form.** Previously four raw UUID text inputs typed
+by hand. New `AdminCreateContractPanel`: toggle between an existing customer
+(dropdown, then a dropdown of *that* customer's supply points) or a new one
+(kind, fiscal code/VAT, first+last name or company name, email, mobile, PEC,
+plus inline supply-point address fields -- creates the customer and supply
+point via the existing endpoints, then the contract), a dropdown for the
+offer (not a UUID), a dropdown for the promoter/venditore, and an optional
+free-text note. `notes` added to `Contract` (new column, migration `0004`)
+and `pec` added to `Customer` (same migration) -- both exposed end-to-end
+(schemas, service, create form, edit form, detail popup).
+
+**Product types.** `Product.energy_type` was `NOT NULL`, meaning every
+product had to pretend to be an energy contract. Added `Product.product_type`
+(`ENERGY_CONTRACT`/`DIGITAL`/`PHYSICAL`/`SUBSCRIPTION`, default
+`ENERGY_CONTRACT` for every existing row) and relaxed `energy_type` to
+nullable (migration `0004`, same one as notes/pec). Admin create/edit forms
+show the energy-type field only when `product_type=ENERGY_CONTRACT`. Catalog
+badges (admin grid, customer/promoter shop) show the right label for either
+case.
+
+**Tests.** 7 new tests, all against real Postgres: 5 for registration
+(valid referral succeeds and attributes correctly, invalid code rejected with
+no half-created account, duplicate email rejected, expired code rejected,
+`get_or_create_promoter_code` is idempotent) and 2 for the branch aggregations
+(contract counts/commission totals correct per agent, contract-level detail
+correctly links customer/product/status/commission). Full suite: **40/40
+passing**.
+
+Verified live end-to-end over the real HTTPS deployment: full contract
+creation (new customer → supply point → contract with notes) through the BFF
+proxy; promoter `branch-summary`/`branch-contracts`/`referral/mine` through an
+authenticated promoter session; the public `/r/{code}` page resolving a real
+promoter code and a real registration completing (new user could log in
+immediately after); header/logo fix present in rendered HTML.
+`tsc`/`eslint`/`next build` clean, full backend test suite green, both images
+rebuilt and redeployed.
+
 ## Session 10 — 2026-07-26 (same day, continued) — Expired-session crash fix, admin network tree, deep seed, product photos, customer view/edit
 
 **Bug fix (user-reported: "se apro il sito mi dice rebuild pagina"):** `/admin`,

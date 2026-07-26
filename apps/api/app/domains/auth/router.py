@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.domains.auth import service as auth_service
-from app.domains.auth.schemas import LoginRequest, TokenResponse
+from app.domains.auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,6 +43,23 @@ async def login(
 
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(access_token=access_token)
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(
+    payload: RegisterRequest, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Public, invite-only self-registration -- a referral_code (from a promoter's
+    shared link) is required, no exceptions. Does not auto-login: the customer is
+    redirected to /login to authenticate normally, consistent with every other
+    account in this system."""
+    try:
+        await auth_service.register_with_referral(
+            db, organization_id=uuid.UUID(payload.organization_id), payload=payload
+        )
+    except auth_service.RegistrationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"ok": True}
 
 
 @router.post("/refresh", response_model=TokenResponse)

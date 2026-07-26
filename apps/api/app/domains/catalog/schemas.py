@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+PRODUCT_TYPES = {"ENERGY_CONTRACT", "DIGITAL", "PHYSICAL", "SUBSCRIPTION"}
 
 
 class ProductVersionRead(BaseModel):
@@ -51,7 +53,8 @@ class ProductRead(BaseModel):
     id: uuid.UUID
     organization_id: uuid.UUID
     code: str
-    energy_type: str
+    product_type: str
+    energy_type: str | None
     customer_type: str
     status: str
 
@@ -70,7 +73,8 @@ class ProductCatalogRead(ProductRead):
 
 class ProductCreate(BaseModel):
     code: str
-    energy_type: str  # ELECTRICITY / GAS / DUAL_FUEL
+    product_type: str = "ENERGY_CONTRACT"  # ENERGY_CONTRACT / DIGITAL / PHYSICAL / SUBSCRIPTION
+    energy_type: str | None = None  # ELECTRICITY / GAS / DUAL_FUEL -- only for ENERGY_CONTRACT
     customer_type: str  # PRIVATE / SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE
     # Initial version, created together with the product -- a product with zero
     # versions can't be sold, so the marketplace form always creates both at once.
@@ -83,6 +87,13 @@ class ProductCreate(BaseModel):
     recurring_fee_cents: int = 0
     billing_period: str = "MONTHLY"
     vat_percentage: float | None = None
+
+    @field_validator("product_type")
+    @classmethod
+    def validate_product_type(cls, v: str) -> str:
+        if v not in PRODUCT_TYPES:
+            raise ValueError(f"product_type must be one of {sorted(PRODUCT_TYPES)}")
+        return v
 
 
 class ProductVersionCreate(BaseModel):
@@ -110,3 +121,5 @@ class ProductVersionUpdate(BaseModel):
 
 class ProductUpdate(BaseModel):
     status: str | None = None
+    product_type: str | None = None
+    energy_type: str | None = None

@@ -25,6 +25,11 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("network_snapshots.id"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(32), default="DRAFT", index=True)
+    # Free-text context set at creation by whoever originated the deal (the
+    # inviting promoter or the admin creating it directly) -- e.g. "cliente
+    # arrivato dalla promozione Luce Green, preferisce essere ricontattato la
+    # sera". Distinct from ContractStatusHistory.notes, which is per-transition.
+    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
 
 class ContractStatusHistory(UUIDPKMixin, TimestampMixin, Base):

@@ -46,6 +46,7 @@ export function AdminCustomersPanel() {
   const [editingCustomer, setEditingCustomer] = useState<CustomerRead | null>(null);
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editPec, setEditPec] = useState("");
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [editCompanyName, setEditCompanyName] = useState("");
@@ -57,6 +58,7 @@ export function AdminCustomersPanel() {
   function openEdit(c: CustomerRead) {
     setEditEmail(c.email);
     setEditPhone(c.phone ?? "");
+    setEditPec(c.pec ?? "");
     setEditFiscalCode(c.fiscal_code ?? "");
     setEditVatNumber(c.vat_number ?? "");
     const parts = c.display_name.trim().split(/\s+/);
@@ -85,6 +87,7 @@ export function AdminCustomersPanel() {
         body: JSON.stringify({
           email: editEmail,
           phone: editPhone || null,
+          pec: editPec || null,
           fiscal_code: editFiscalCode || null,
           vat_number: editVatNumber || null,
           first_name: PRIVATE_LIKE.has(editingCustomer.kind) ? editFirstName : null,
@@ -106,6 +109,7 @@ export function AdminCustomersPanel() {
   const [kind, setKind] = useState("PRIVATE");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [pec, setPec] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -126,6 +130,7 @@ export function AdminCustomersPanel() {
           kind,
           email,
           phone: phone || null,
+          pec: pec || null,
           fiscal_code: fiscalCode || null,
           vat_number: vatNumber || null,
           first_name: PRIVATE_LIKE.has(kind) ? firstName : null,
@@ -137,6 +142,7 @@ export function AdminCustomersPanel() {
       setShowCreate(false);
       setEmail("");
       setPhone("");
+      setPec("");
       setFirstName("");
       setLastName("");
       setCompanyName("");
@@ -307,6 +313,13 @@ export function AdminCustomersPanel() {
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">PEC</label>
+                <input type="email" value={pec} onChange={(e) => setPec(e.target.value)}
+                  placeholder="nome@pec.it"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Fiscale</label>
@@ -372,6 +385,10 @@ export function AdminCustomersPanel() {
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Telefono</span>
                     <p className="text-slate-200 light:text-slate-700">{viewingDetail.phone ?? "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">PEC</span>
+                    <p className="text-slate-200 light:text-slate-700">{viewingDetail.pec ?? "—"}</p>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Codice Fiscale</span>
@@ -463,6 +480,13 @@ export function AdminCustomersPanel() {
                   <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
                     className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">PEC</label>
+                <input type="email" value={editPec} onChange={(e) => setEditPec(e.target.value)}
+                  placeholder="nome@pec.it"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

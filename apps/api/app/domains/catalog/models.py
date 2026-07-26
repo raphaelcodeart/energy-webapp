@@ -15,7 +15,11 @@ class Product(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
     )
     code: Mapped[str] = mapped_column(String(64))
-    energy_type: Mapped[str] = mapped_column(String(16))  # ELECTRICITY / GAS / DUAL_FUEL
+    # ENERGY_CONTRACT / DIGITAL / PHYSICAL / SUBSCRIPTION -- non-energy products
+    # (e.g. a digital add-on or a physical accessory sold alongside contracts)
+    # leave energy_type null, since it has no meaning for them.
+    product_type: Mapped[str] = mapped_column(String(32), default="ENERGY_CONTRACT")
+    energy_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ELECTRICITY / GAS / DUAL_FUEL
     customer_type: Mapped[str] = mapped_column(String(32))  # PRIVATE / SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
 

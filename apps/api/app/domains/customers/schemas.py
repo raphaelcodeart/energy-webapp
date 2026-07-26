@@ -13,6 +13,7 @@ class CustomerRead(BaseModel):
     vat_number: str | None
     email: str
     phone: str | None
+    pec: str | None
     display_name: str
 
 
@@ -20,6 +21,7 @@ class CustomerCreate(BaseModel):
     kind: str  # PRIVATE / SOLE_PROPRIETOR / COMPANY / CONDOMINIUM
     email: EmailStr
     phone: str | None = None
+    pec: str | None = None
     fiscal_code: str | None = None
     vat_number: str | None = None
     # Required for PRIVATE / SOLE_PROPRIETOR:
@@ -42,6 +44,7 @@ class CustomerCreate(BaseModel):
 class CustomerUpdate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
+    pec: str | None = None
     fiscal_code: str | None = None
     vat_number: str | None = None
     first_name: str | None = None

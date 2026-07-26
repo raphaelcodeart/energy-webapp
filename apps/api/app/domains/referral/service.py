@@ -27,6 +27,44 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+async def get_or_create_promoter_code(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID
+) -> PromoterCode:
+    """Every agent can share a referral link -- reuses the agent's existing
+    promoter_code (already unique per org, see agent_profiles) as the referral
+    code rather than generating a separate random one, so a promoter only ever
+    has to remember/quote one code. Created lazily on first request instead of
+    at agent-creation time, since most agents may never need to share a link."""
+    from app.domains.network.models import AgentProfile
+
+    stmt = select(PromoterCode).where(
+        PromoterCode.organization_id == organization_id,
+        PromoterCode.agent_id == agent_id,
+        PromoterCode.status == "ACTIVE",
+    )
+    existing = (await db.execute(stmt)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    agent = await db.get(AgentProfile, agent_id)
+    if agent is None or agent.organization_id != organization_id:
+        raise ValueError("Unknown agent")
+
+    now = utcnow()
+    promoter_code = PromoterCode(
+        organization_id=organization_id,
+        agent_id=agent_id,
+        code=agent.promoter_code,
+        personal_link=f"/r/{agent.promoter_code}",
+        status="ACTIVE",
+        valid_from=now,
+    )
+    db.add(promoter_code)
+    await db.commit()
+    await db.refresh(promoter_code)
+    return promoter_code
+
+
 async def get_active_promoter_code(
     db: AsyncSession, *, organization_id: uuid.UUID, code: str
 ) -> PromoterCode | None:

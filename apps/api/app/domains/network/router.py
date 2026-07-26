@@ -13,7 +13,9 @@ from app.domains.network.schemas import (
     AgentListItemRead,
     AgentProfileRead,
     AgentUpdateRequest,
+    BranchContractRead,
     BranchMemberRead,
+    BranchSummaryRead,
     MoveAgentRequest,
     RecruitRequest,
 )
@@ -28,6 +30,31 @@ async def _resolve_own_agent_id(
         AgentProfile.organization_id == organization_id, AgentProfile.user_id == user_id
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def _assert_branch_access(
+    db: AsyncSession, *, current_user: CurrentUser, agent_id: uuid.UUID
+) -> None:
+    """A promoter/team leader may only read a branch rooted at themselves or a
+    descendant of themselves -- not a parallel branch. This is an ABAC check layered
+    on top of the RBAC permission gate above. SUPER_ADMIN/ORGANIZATION_ADMIN bypass
+    the branch-ownership check (org-wide visibility is granted by role, not branch)."""
+    if "SUPER_ADMIN" in current_user.roles or "ORGANIZATION_ADMIN" in current_user.roles:
+        return
+    requesting_agent_id = await _resolve_own_agent_id(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
+    if requesting_agent_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No agent profile for this user")
+    if requesting_agent_id != agent_id:
+        authorized = await network_service.is_ancestor(
+            db,
+            organization_id=current_user.organization_id,
+            ancestor_agent_id=requesting_agent_id,
+            agent_id=agent_id,
+        )
+        if not authorized:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this branch")
 
 
 @router.get("/mine", response_model=AgentProfileRead | None)
@@ -51,30 +78,43 @@ async def get_branch(
     current_user: CurrentUser = Depends(require_permission("network.read_branch")),
     db: AsyncSession = Depends(get_db),
 ) -> list[BranchMemberRead]:
-    """A promoter/team leader may only read a branch rooted at themselves or a
-    descendant of themselves -- not a parallel branch. This is an ABAC check layered
-    on top of the RBAC permission gate above. SUPER_ADMIN/ORGANIZATION_ADMIN bypass
-    the branch-ownership check (org-wide visibility is granted by role, not branch)."""
-    if "SUPER_ADMIN" not in current_user.roles and "ORGANIZATION_ADMIN" not in current_user.roles:
-        requesting_agent_id = await _resolve_own_agent_id(
-            db, organization_id=current_user.organization_id, user_id=current_user.user_id
-        )
-        if requesting_agent_id is None:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "No agent profile for this user")
-        if requesting_agent_id != agent_id:
-            authorized = await network_service.is_ancestor(
-                db,
-                organization_id=current_user.organization_id,
-                ancestor_agent_id=requesting_agent_id,
-                agent_id=agent_id,
-            )
-            if not authorized:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this branch")
-
+    await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
     branch = await network_service.get_branch(
         db, organization_id=current_user.organization_id, root_agent_id=agent_id
     )
     return [BranchMemberRead(**row) for row in branch]
+
+
+@router.get("/agents/{agent_id}/branch-summary", response_model=BranchSummaryRead)
+async def get_branch_summary(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("network.read_branch")),
+    db: AsyncSession = Depends(get_db),
+) -> BranchSummaryRead:
+    """Per-agent contract/commission rollup for a promoter's own downline -- the
+    data behind the "azienda" view (contracts per person, per level, problems,
+    earnings), same branch-ownership rule as /branch."""
+    await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
+    summary = await network_service.get_branch_summary(
+        db, organization_id=current_user.organization_id, root_agent_id=agent_id
+    )
+    return BranchSummaryRead(**summary)
+
+
+@router.get("/agents/{agent_id}/branch-contracts", response_model=list[BranchContractRead])
+async def get_branch_contracts(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("network.read_branch")),
+    db: AsyncSession = Depends(get_db),
+) -> list[BranchContractRead]:
+    """Flat contract-level detail (customer, product, status, commission) for a
+    promoter's whole downline -- lets a promoter go from "there's a problem" to
+    "here's the customer to contact" without leaving the network view."""
+    await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
+    rows = await network_service.get_branch_contracts(
+        db, organization_id=current_user.organization_id, root_agent_id=agent_id
+    )
+    return [BranchContractRead(**row) for row in rows]
 
 
 @router.get("/agents", response_model=list[AgentListItemRead])

@@ -1,127 +1,186 @@
 # Guida Utente — Piattaforma Lial Energy
 
 Questa guida spiega come usare la piattaforma **oggi**, nello stato attuale dello
-sviluppo (vedi `docs/implementation-progress.md` per il dettaglio tecnico di cosa
-è completo e cosa arriverà nelle prossime fasi). Non promette funzionalità non
-ancora costruite.
+sviluppo (vedi `docs/implementation-progress.md` per il dettaglio tecnico
+sessione per sessione di cosa è completo e cosa arriverà nelle prossime fasi).
+Non promette funzionalità non ancora costruite.
 
 ## 1. Come accedere
 
 Apri il browser su:
 ```
-http://<indirizzo-del-server>/login
+https://<tuodominio>/login
 ```
-(oppure `https://<tuodominio>` una volta configurato un dominio con HTTPS — vedi
-`docs/server-migration-guide.md` sezione 4.6).
 
-Nella pagina di login servono **tre informazioni**:
+Nella pagina di login servono **tre informazioni**: Organization ID (te lo
+comunica chi amministra il sistema), Email, Password.
 
-| Campo | Cosa inserire |
-|---|---|
-| Organization ID | L'identificativo dell'organizzazione (un codice tipo `9e0a594e-7d7a-...`). Te lo comunica chi amministra il sistema, oppure — in ambiente demo — viene stampato quando si esegue `python -m app.seed`. |
-| Email | La tua email registrata nel sistema |
-| Password | La tua password |
+Se inserisci credenziali sbagliate, il messaggio è sempre lo stesso ("email o
+password non validi") sia che l'email non esista sia che la password sia
+sbagliata — è una scelta di sicurezza intenzionale (evita che un malintenzionato
+scopra quali email sono registrate). Dopo **5 tentativi falliti** l'account
+viene bloccato temporaneamente (15 minuti).
 
-Se inserisci credenziali sbagliate, il messaggio di errore è sempre lo stesso
-("email o password non validi") sia che l'email non esista sia che la password
-sia sbagliata — è una scelta di sicurezza intenzionale (evita che un malintenzionato
-scopra quali email sono registrate).
+Dopo il login resti connesso per un massimo di **15 minuti** di sessione (il
+rinnovo automatico non è ancora attivo). Da qui in poi, quando la sessione
+scade, vieni riportato automaticamente al login invece di vedere un errore —
+prima non era così, era un bug reale corretto.
 
-Dopo **5 tentativi falliti** l'account viene bloccato temporaneamente (15 minuti).
+Puoi passare tra **modalità giorno e notte** dall'icona in alto a destra —
+giorno è la modalità di partenza per chiunque apra il sito per la prima volta.
 
-Dopo il login resti connesso per un massimo di 15 minuti di sessione (poi va
-rifatto il login — il rinnovo automatico della sessione non è ancora attivo,
-vedi `docs/implementation-progress.md`).
+## 2. Registrazione: solo su invito
 
-## 2. Le tre aree della piattaforma
+**Non esiste un modulo di registrazione pubblico aperto a chiunque.** Ogni
+nuovo cliente entra nel sistema tramite il **link personale di un promoter**
+(`https://tuodominio/r/CODICE-PROMOTER?org=...`) — è un circuito chiuso per
+design: nessun cliente può esistere senza un promoter che lo ha invitato.
 
-In base al tuo ruolo, dopo il login vieni indirizzato a una di queste tre aree.
+Chi clicca un link di invito vede una pagina con: nome del promoter che lo ha
+invitato, l'eventuale offerta consigliata (se il promoter ha condiviso un
+prodotto specifico), e un modulo con: tipologia (privato/azienda), nome e
+cognome (o ragione sociale), telefono, email, password. Alla conferma, l'account
+viene creato **già collegato al promoter che lo ha invitato** — questo
+collegamento (in `customer_attributions`) è permanente e non richiede nessuna
+azione successiva.
+
+Non è ancora implementato in questa fase (pianificato come sviluppo successivo,
+richiede un servizio di invio email che il progetto non ha ancora):
+conferma email con PIN via email, primo accesso che obbliga a completare il
+profilo, memoria della promozione specifica scelta tra login successivi,
+attivazione di più promozioni contemporaneamente con scelta della sede.
+La versione attuale è più semplice ma **reale e funzionante**: email+password
+in un unico passaggio, attribuzione al promoter garantita e verificata.
+
+## 3. Le tre aree della piattaforma
+
+In base al tuo ruolo, dopo il login vieni indirizzato a una di queste aree.
 Ogni ruolo vede **solo i propri dati** — non è una limitazione dell'interfaccia,
-è imposta anche lato server, quindi non è aggirabile.
+è imposta anche lato server, quindi non è aggirabile modificando l'URL a mano.
 
-### 2.1 Area Cliente (`/customer`)
+### 3.1 Area Cliente (`/customer`)
 
-Per chi ha un account di tipo cliente. Mostra:
-- **I tuoi contratti**, con lo stato attuale tradotto in italiano (Bozza, Inviata,
-  In revisione, Approvata, Attiva, Cessata, Respinta, ecc.)
+La prima cosa che un cliente vede è lo **Shop** — il catalogo dei prodotti
+pubblicati dall'amministrazione (offerte luce, gas, dual fuel, ma anche
+eventuali prodotti digitali/fisici/abbonamenti), con foto, descrizione,
+prezzo e IVA. Le altre sezioni: **I miei Contratti** (stato tradotto in
+italiano, prodotto acquistato mostrato per nome non per codice tecnico) e
+**Supporto & Assistenza**.
 
-Cosa **non** è ancora disponibile in quest'area (arriverà in fasi successive):
-download documenti, storico pagamenti/fatture, gestione consumi, richieste di
-assistenza, notifiche.
+Cosa non è ancora disponibile: acquisto/checkout diretto dallo shop (oggi la
+vetrina è consultabile, l'attivazione di un contratto passa dall'amministrazione
+o dal promoter), download documenti, storico pagamenti/fatture.
 
-### 2.2 Area Promoter (`/promoter`)
+### 3.2 Area Promoter (`/promoter`)
 
-Per collaboratori/venditori/team leader/manager della rete commerciale. Mostra:
-- **Codice promoter** — il tuo identificativo nella rete
-- **La tua rete** (diretti e discendenti) — una tabella con ogni agente nel tuo
-  ramo e la relativa "profondità" (0 = tu stesso, 1 = i tuoi diretti, 2 = i loro
-  diretti, ecc.). Vedi **solo il tuo ramo**: un ramo parallelo (es. quello di un
-  collega allo stesso livello) non è visibile, nemmeno modificando l'URL a mano —
-  il controllo è fatto dal server, non dal browser.
-- **Le tue provvigioni** — l'elenco dei movimenti maturati (gettone personale,
-  differenza imprenditoriale, ecc.) con importo, stato e data, più il totale.
+Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 
-Cosa non è ancora disponibile: simulatore provvigioni nell'interfaccia (esiste
-lato backend ma non ha ancora una pagina dedicata), storico qualifiche, gestione
-richieste di spostamento di ramo, notifiche di cambio qualifica/rinnovo.
+- **La mia Azienda** (schermata di apertura) — quante persone hai in diretta,
+  quante in totale nella tua rete (fino a 12 livelli), contratti totali,
+  provvigioni totali. Sotto: una tabella per livello (persone, contratti,
+  provvigioni per ciascuno dei 12 livelli), una tabella per persona (contratti
+  totali/processati/in lavorazione/con problemi, provvigioni), e l'elenco
+  di **tutti i contratti della tua rete** con cliente, prodotto, venditore,
+  stato e provvigione generata — con un pulsante **Contatta** (apre l'email al
+  cliente) per i contratti con problemi (es. documenti mancanti), così puoi
+  intervenire prima che si blocchino.
+- **Rete Commerciale** — l'albero visivo della tua rete, colorato per livello
+  (fino a 12), con nomi reali (non solo codici), qualifiche ed espandi/comprimi.
+- **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
+  pulsante **Condividi** su ogni prodotto: copia negli appunti un link diretto
+  a quel prodotto con il tuo codice promoter già incorporato, pronto da inviare
+  a un cliente. C'è anche un pulsante **Condividi il tuo link** in alto (link
+  generico, senza prodotto specifico).
+- **Movimenti Provvigioni** — storico dei gettoni personali e delle differenze
+  imprenditoriali maturate.
+- **Simulatore Provvigioni** — anteprima di quanto genererebbe un contratto
+  ipotetico, senza toccare i dati reali.
 
-### 2.3 Area Amministratore (`/admin`)
+### 3.3 Area Amministratore (`/admin`)
 
-Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin —
-con permessi leggermente diversi tra loro, vedi `docs/security-model.md`). Mostra:
-- **Contratti per stato** — un riepilogo a riquadri di quanti contratti sono in
-  ciascuno stato (ACTIVE, DRAFT, REJECTED, CANCELLED, ecc.), su tutta
-  l'organizzazione
-- **Tutti i contratti** — elenco completo con cliente e stato
+Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
+— permessi leggermente diversi tra loro, vedi `docs/security-model.md`).
 
-Cosa non è ancora disponibile: creazione/approvazione contratti dall'interfaccia
-(oggi richiede di chiamare l'API direttamente, vedi `docs/architecture.md` e la
-documentazione OpenAPI su `/backend/docs`), gestione rete/qualifiche dall'interfaccia,
-report esportabili, gestione utenti, audit log visualizzabile, stato backup/worker.
+- **Panoramica** — pulsanti grandi verso le sezioni principali, KPI (contratti
+  per stato, provvigioni maturate/pagate, promoter e clienti attivi), grafici
+  di andamento a 12 mesi, elenco "Richiede attenzione" (contratti fermi in
+  revisione da troppo tempo, o **pagati ma non ancora attivati** — quindi con
+  provvigioni non ancora generate), attività recente.
+- **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), filtri per
+  stato, azione di transizione di stato con motivazione obbligatoria.
+- **Nuovo Contratto** — form completo: scegli se cliente nuovo o esistente; per
+  un cliente nuovo raccoglie tipologia (privato/azienda), codice fiscale o
+  partita IVA, nome e cognome (o ragione sociale), email, cellulare, PEC
+  (opzionale) e i dati del punto di fornitura; poi scegli l'offerta e il
+  promoter/venditore che ha portato la vendita, con una nota libera opzionale
+  (utile per l'amministrazione — chi lo ha invitato, con quale promozione,
+  preferenze di contatto).
+- **Anagrafiche Clienti** — tabella con nome vero in evidenza; ogni riga ha
+  un'icona **Mostra** (popup con tutti i dati: indirizzi, punti di fornitura,
+  dati fiscali) e **Modifica**. Non c'è ancora un'azione di eliminazione — un
+  cliente non può essere cancellato senza rischiare di orfanizzare i suoi
+  contratti, quindi non è stato aggiunto un pulsante che non farebbe nulla di
+  sicuro.
+- **Anagrafiche Promoter** — tabella agenti con qualifica e sponsor.
+- **Prodotti & Marketplace** — catalogo con foto, prezzo, IVA; pulsante
+  **Modifica** su ogni prodotto. Il tipo di prodotto non è più solo "contratto
+  energia": puoi scegliere anche Digitale, Fisico o Abbonamento.
+- **Rete Commerciale** — a differenza della vista del promoter (limitata al
+  proprio ramo), qui vedi **l'intera organizzazione**: tutti i rami, con
+  ricerca ed espandi/comprimi.
 
-## 3. Cosa succede "dietro le quinte" quando un contratto si attiva
-
-Anche se non ancora visibile in un'interfaccia dedicata, è utile sapere come
-funziona il sistema, perché spiega numeri che potresti vedere:
+## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 
 - Creare o inviare un contratto **non genera mai** una provvigione.
-- La provvigione viene calcolata **una sola volta**, nel momento esatto in cui un
-  contratto passa allo stato **Attivo**.
-- Il calcolo cristallizza la catena dei tuoi sponsor/superiori così com'era in
-  quel momento — se in seguito la rete cambia (uno spostamento di ramo, per
-  esempio), i calcoli già fatti **non cambiano mai retroattivamente**.
-- Ogni movimento di provvigione riporta una spiegazione testuale (es. "Differenza
-  tra gettone S2 di 45,00 EUR e quanto già riconosciuto ai livelli inferiori...").
+- La provvigione viene calcolata **una sola volta**, quando un contratto passa
+  allo stato **Attivo** — non quando viene solo pagato (quello è uno stato
+  intermedio, "Pagata", distinto da "Attiva"; se un contratto resta fermo lì
+  troppo a lungo, l'amministrazione lo vede nell'elenco "Richiede attenzione").
+- Il calcolo cristallizza la catena degli sponsor così com'era in quel momento
+  — spostamenti successivi nella rete non cambiano mai calcoli già fatti.
+- Ogni movimento di provvigione riporta una spiegazione testuale.
+- Se il venditore indicato in un contratto non esiste o non è attivo, il
+  sistema **rifiuta la creazione del contratto** con un errore chiaro — prima
+  poteva capitare che il contratto si attivasse comunque senza pagare
+  nessuno, senza nessun avviso; è stato corretto (vedi
+  `docs/paid-contract-commission-audit.md`).
 
-## 4. Domande frequenti
+## 5. Domande frequenti
 
 **"Ho dimenticato l'Organization ID."**
 Non è recuperabile dalla pagina di login — contatta chi amministra il sistema.
-(Il recupero via email non è ancora implementato.)
 
 **"Vedo 'Nessun profilo agente collegato a questo account' nell'area Promoter."**
-Il tuo account utente esiste ma non è ancora collegato a un profilo di agente
+Il tuo account utente esiste ma non è ancora collegato a un profilo agente
 nella rete commerciale — serve intervento di un amministratore.
 
 **"Il mio contratto non appare nell'area Cliente."**
-L'area Cliente mostra solo i contratti collegati al tuo account tramite il tuo
-profilo cliente. Se il profilo cliente non è ancora collegato al tuo login,
-contatta l'assistenza — è un collegamento che va fatto lato amministrazione.
+L'area Cliente mostra solo i contratti collegati al tuo profilo cliente. Se il
+profilo non è ancora collegato al tuo login, contatta l'assistenza.
 
 **"Dopo 15 minuti devo rifare il login ogni volta, è normale?"**
-Sì, per ora — il rinnovo automatico della sessione (silent refresh) non è ancora
-stato implementato nel frontend. È una limitazione nota, non un errore.
+Sì, per ora — il rinnovo automatico della sessione (silent refresh) non è
+ancora stato implementato nel frontend. Non crasha più però: ti riporta
+automaticamente al login.
+
+**"Posso registrarmi da solo senza un link di invito?"**
+No, per design. Il sistema è un circuito chiuso: ogni cliente deve arrivare
+tramite il link di un promoter.
 
 **"Posso usare il sito da smartphone?"**
 Le pagine sono responsive (si adattano allo schermo) ma non è stato fatto un
 test approfondito su dispositivi mobili in questa fase.
 
-## 5. Per chi amministra il sistema (non utenti finali)
+## 6. Per chi amministra il sistema (non utenti finali)
 
-Se hai bisogno di creare nuovi utenti, cambiare ruoli, collegare un profilo
-cliente o promoter a un login, gestire la rete commerciale o le qualifiche — in
-questa fase queste operazioni si fanno tramite l'API diretta (documentazione
-interattiva su `/backend/docs`) o intervenendo sul database, non ancora tramite
-un pannello di amministrazione dedicato. Vedi `docs/server-migration-guide.md` e
-`docs/architecture.md` per i dettagli tecnici, oppure richiedi supporto a chi ha
-sviluppato la piattaforma.
+Operazioni non ancora disponibili da interfaccia (richiedono l'API diretta,
+documentazione interattiva su `/backend/docs`, o intervento diretto sul
+database): creazione utenti staff, cambio ruoli, liquidazioni/pagamenti
+provvigioni, audit log visualizzabile, report esportabili in CSV, gestione
+qualifiche/piano carriera dall'interfaccia, applicazione della regola del 33%
+sul tetto di produzione per ramo (esiste come funzione pura testata ma non è
+collegata al motore live — richiede prima una decisione di business su cosa
+conta come "produzione qualificante", vedi `docs/open-questions.md` #6).
+
+Vedi `docs/server-migration-guide.md`, `docs/architecture.md` e
+`docs/admin-dashboard-plan.md` per i dettagli tecnici e la roadmap.

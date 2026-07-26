@@ -73,6 +73,7 @@ async def create_product(
     product = Product(
         organization_id=organization_id,
         code=payload.code,
+        product_type=payload.product_type,
         energy_type=payload.energy_type,
         customer_type=payload.customer_type,
         status="ACTIVE",
@@ -212,6 +213,10 @@ async def update_product(
     previous = {"status": product.status}
     if payload.status is not None:
         product.status = payload.status
+    if payload.product_type is not None:
+        product.product_type = payload.product_type
+    if payload.energy_type is not None:
+        product.energy_type = payload.energy_type
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,

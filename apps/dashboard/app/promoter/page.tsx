@@ -10,10 +10,11 @@ export default async function PromoterDashboard() {
   const branch = me ? await apiFetchOrRedirectToLogin<BranchMemberRead[]>(`/network/agents/${me.id}/branch`) : [];
 
   return (
-    <PromoterClientPage 
-      me={me} 
-      branch={branch} 
-      email={session?.email} 
+    <PromoterClientPage
+      me={me}
+      branch={branch}
+      email={session?.email}
+      organizationId={session?.organizationId}
     />
   );
 }

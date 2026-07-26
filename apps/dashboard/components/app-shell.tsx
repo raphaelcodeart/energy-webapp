@@ -178,7 +178,7 @@ export function AppShell({
 
       {/* Persistent top bar -- classic dashboard layout: page title left, icon
           cluster (theme toggle + avatar/logout menu) in the top-right corner. */}
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 lg:pl-[17rem] h-16">
+      <header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 lg:ml-64 h-16">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setMobileOpen(true)}

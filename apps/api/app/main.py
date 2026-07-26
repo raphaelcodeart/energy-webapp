@@ -23,6 +23,7 @@ from app.domains.organizations import models as _organizations_models  # noqa: F
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
+from app.domains.referral.router import authenticated_router as referral_authenticated_router
 from app.domains.referral.router import router as referral_router
 from app.domains.reports.router import router as reports_router
 from app.domains.users import models as _users_models  # noqa: F401
@@ -46,6 +47,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api")
 app.include_router(network_router, prefix="/api")
 app.include_router(referral_router, prefix="/api")
+app.include_router(referral_authenticated_router, prefix="/api")
 app.include_router(contracts_router, prefix="/api")
 app.include_router(commissions_router, prefix="/api")
 app.include_router(customers_router, prefix="/api")

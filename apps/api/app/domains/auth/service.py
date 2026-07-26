@@ -8,11 +8,13 @@ from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
+    hash_password,
     hash_refresh_token,
     verify_password,
 )
 from app.domains.audit import service as audit_service
 from app.domains.auth.models import Session
+from app.domains.auth.schemas import RegisterRequest
 from app.domains.rbac.service import get_roles_for_user
 from app.domains.users.models import User
 
@@ -156,3 +158,101 @@ async def revoke_all_sessions(db: AsyncSession, *, user_id: uuid.UUID) -> None:
         .values(revoked_at=datetime.now(UTC))
     )
     await db.commit()
+
+
+class RegistrationError(Exception):
+    pass
+
+
+PRIVATE_LIKE_KINDS = {"PRIVATE", "SOLE_PROPRIETOR"}
+COMPANY_LIKE_KINDS = {"COMPANY", "CONDOMINIUM"}
+
+
+async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID, payload: RegisterRequest) -> User:
+    """Self-service signup, gated on a valid referral code -- registration is
+    invite-only by design (docs/business-rules.md): every new customer must be
+    attributed to the promoter who referred them, no exceptions. Validates the
+    referral code FIRST, before creating anything, so an invalid/expired code
+    never leaves a half-created account behind. Everything else -- user, role
+    grant, customer, profile/company, attribution -- is one transaction, one
+    commit, so a customer can never exist without their required promoter
+    attribution."""
+    from app.domains.customers.models import Company, Customer, CustomerProfile
+    from app.domains.rbac.models import Role, UserRole
+    from app.domains.referral import service as referral_service
+    from app.domains.referral.models import CustomerAttribution
+
+    if payload.kind in PRIVATE_LIKE_KINDS and not (payload.first_name and payload.last_name):
+        raise RegistrationError("first_name and last_name are required for this customer kind")
+    if payload.kind in COMPANY_LIKE_KINDS and not payload.company_name:
+        raise RegistrationError("company_name is required for this customer kind")
+
+    promoter_code = await referral_service.get_active_promoter_code(
+        db, organization_id=organization_id, code=payload.referral_code
+    )
+    if promoter_code is None:
+        raise RegistrationError("Invalid or expired referral code -- registration is invite-only")
+
+    existing = (
+        await db.execute(
+            select(User).where(User.organization_id == organization_id, User.email == payload.email)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise RegistrationError("An account with this email already exists")
+
+    role = (
+        await db.execute(
+            select(Role).where(
+                (Role.organization_id == organization_id) | (Role.organization_id.is_(None)),
+                Role.code == "CUSTOMER",
+            )
+        )
+    ).scalars().first()
+    if role is None:
+        raise RegistrationError("Customer role is not configured for this organization")
+
+    user = User(
+        organization_id=organization_id,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        status="ACTIVE",
+    )
+    db.add(user)
+    await db.flush()
+
+    db.add(UserRole(user_id=user.id, organization_id=organization_id, role_id=role.id))
+
+    customer = Customer(
+        organization_id=organization_id,
+        user_id=user.id,
+        kind=payload.kind,
+        email=payload.email,
+        phone=payload.phone,
+    )
+    db.add(customer)
+    await db.flush()
+
+    if payload.kind in PRIVATE_LIKE_KINDS:
+        db.add(CustomerProfile(customer_id=customer.id, first_name=payload.first_name, last_name=payload.last_name))
+    else:
+        db.add(Company(customer_id=customer.id, company_name=payload.company_name))
+
+    db.add(
+        CustomerAttribution(
+            organization_id=organization_id,
+            customer_id=customer.id,
+            promoter_code_id=promoter_code.id,
+            referral_session_id=None,
+            attributed_at=datetime.now(UTC),
+        )
+    )
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=user.id,
+        action="auth.self_registered", entity_type="customer", entity_id=str(customer.id),
+        new_value={"email": payload.email, "referral_code": payload.referral_code},
+    )
+    await db.commit()
+    await db.refresh(user)
+    return user
