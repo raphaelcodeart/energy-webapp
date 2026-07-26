@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoUpload } from "@/components/photo-upload";
+import { AdminPromoterNetworkModal } from "@/components/admin-promoter-network-modal";
 import type { AgentListItemRead, RankRead } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,6 +66,7 @@ export function AdminPromotersPanel() {
 
   // Edit
   const [editingAgent, setEditingAgent] = useState<AgentListItemRead | null>(null);
+  const [networkAgent, setNetworkAgent] = useState<AgentListItemRead | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editStatus, setEditStatus] = useState("ACTIVE");
   const [editRankId, setEditRankId] = useState("");
@@ -205,15 +207,27 @@ export function AdminPromotersPanel() {
                       </span>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <button
-                        onClick={() => openEdit(a)}
-                        title="Modifica promoter"
-                        className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setNetworkAgent(a)}
+                          title="Apri la rete di questo promoter"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
+                          </svg>
+                          Apri Rete
+                        </button>
+                        <button
+                          onClick={() => openEdit(a)}
+                          title="Modifica promoter"
+                          className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -381,6 +395,14 @@ export function AdminPromotersPanel() {
             </form>
           </div>
         </div>
+      )}
+
+      {networkAgent && (
+        <AdminPromoterNetworkModal
+          agentId={networkAgent.id}
+          displayName={networkAgent.display_name}
+          onClose={() => setNetworkAgent(null)}
+        />
       )}
     </div>
   );
