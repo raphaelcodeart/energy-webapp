@@ -34,14 +34,29 @@ async def _resolve_own_agent_id(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+# Roles that hold the "network.manage" permission (see rbac/models.py
+# DEFAULT_ROLE_PERMISSIONS) -- i.e. org-wide network visibility, not just
+# their own downline. Kept as an explicit role list (matching this
+# function's existing pattern) rather than a live permission-table query:
+# real bug found while building the admin "Apri Rete" promoter drill-down
+# (Session 15) -- this used to check only SUPER_ADMIN/ORGANIZATION_ADMIN,
+# so a plain ADMIN (the actual seeded admin@lialenergy.demo account used
+# throughout this project's own demo/docs) got 403 "No agent profile for
+# this user" on every branch-summary/branch-contracts call for anyone but
+# themselves, even though the SAME admin can already see the whole
+# organization's network via GET /network/agents and /organization/levels.
+_BRANCH_ACCESS_BYPASS_ROLES = {"SUPER_ADMIN", "ORGANIZATION_ADMIN", "ADMIN", "SALES_MANAGER"}
+
+
 async def _assert_branch_access(
     db: AsyncSession, *, current_user: CurrentUser, agent_id: uuid.UUID
 ) -> None:
     """A promoter/team leader may only read a branch rooted at themselves or a
     descendant of themselves -- not a parallel branch. This is an ABAC check layered
-    on top of the RBAC permission gate above. SUPER_ADMIN/ORGANIZATION_ADMIN bypass
-    the branch-ownership check (org-wide visibility is granted by role, not branch)."""
-    if "SUPER_ADMIN" in current_user.roles or "ORGANIZATION_ADMIN" in current_user.roles:
+    on top of the RBAC permission gate above. Roles with org-wide network.manage
+    bypass the branch-ownership check entirely (org-wide visibility is granted by
+    role, not branch)."""
+    if _BRANCH_ACCESS_BYPASS_ROLES & set(current_user.roles):
         return
     requesting_agent_id = await _resolve_own_agent_id(
         db, organization_id=current_user.organization_id, user_id=current_user.user_id
