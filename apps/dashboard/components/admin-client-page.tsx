@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AppShell, type NavItem } from "@/components/app-shell";
+import { AdminOverviewPanel } from "@/components/admin-overview-panel";
 import { AdminCustomersPanel } from "@/components/admin-customers-panel";
 import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
@@ -31,6 +32,15 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  {
+    key: "overview",
+    label: "Panoramica",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 13h4v8H3v-8zm7-9h4v17h-4V4zm7 5h4v12h-4V9z" />
+      </svg>
+    ),
+  },
   {
     key: "list",
     label: "Tutti i Contratti",
@@ -80,7 +90,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
-  const [activeTab, setActiveTab] = useState<"list" | "create" | "customers" | "promoters" | "products">("list");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
@@ -238,6 +248,8 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           </>
         }
       >
+        {activeTab === "overview" && <AdminOverviewPanel />}
+
         {activeTab === "list" && (
           <div className="space-y-6">
             {/* Quick Metrics Cards */}

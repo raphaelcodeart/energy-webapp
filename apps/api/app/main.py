@@ -24,6 +24,7 @@ from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.referral.router import router as referral_router
+from app.domains.reports.router import router as reports_router
 from app.domains.users import models as _users_models  # noqa: F401
 
 settings = get_settings()
@@ -49,6 +50,7 @@ app.include_router(contracts_router, prefix="/api")
 app.include_router(commissions_router, prefix="/api")
 app.include_router(customers_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
+app.include_router(reports_router, prefix="/api")
 
 
 @app.get("/health")

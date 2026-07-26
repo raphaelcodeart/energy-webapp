@@ -29,7 +29,7 @@ PERMISSIONS = [
     "network.read_branch", "network.manage", "network.recruit",
     "commissions.read_own", "commissions.read_branch", "commissions.simulate",
     "commissions.approve", "commission_adjustments.create",
-    "payments.manage", "documents.download", "reports.export",
+    "payments.manage", "documents.download", "reports.export", "reports.read",
     "audit.read", "settings.manage",
     "products.read", "products.manage",
 ]
@@ -47,7 +47,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "network.read_branch", "network.manage", "network.recruit",
         "commissions.read_branch", "commissions.simulate", "commissions.approve",
         "commission_adjustments.create", "payments.manage", "documents.download",
-        "reports.export", "audit.read", "settings.manage",
+        "reports.export", "reports.read", "audit.read", "settings.manage",
         "products.read", "products.manage",
     ],
     "BACK_OFFICE_OPERATOR": [
@@ -57,12 +57,12 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "ACCOUNTING_OPERATOR": [
         "contracts.read", "payments.manage", "commissions.read_branch",
-        "commission_adjustments.create", "reports.export",
+        "commission_adjustments.create", "reports.export", "reports.read",
     ],
     "SALES_MANAGER": [
         "customers.read", "contracts.read", "contracts.approve",
         "network.read_branch", "network.manage", "network.recruit",
-        "commissions.read_branch", "commissions.simulate", "reports.export",
+        "commissions.read_branch", "commissions.simulate", "reports.export", "reports.read",
         "products.read", "products.manage",
     ],
     "TEAM_LEADER": [
@@ -79,7 +79,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "commissions.simulate", "products.read",
     ],
     "CUSTOMER": ["contracts.read", "documents.download"],
-    "AUDITOR": ["audit.read", "reports.export"],
+    "AUDITOR": ["audit.read", "reports.export", "reports.read"],
 }
 
 

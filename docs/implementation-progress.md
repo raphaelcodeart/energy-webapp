@@ -4,6 +4,68 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 6 — 2026-07-26 — Admin dashboard expansion, Fase 2: summary dashboard
+
+The user requested a full enterprise admin/promoter management overhaul (contracts,
+promoters, commission network, settlements, audit log, public marketplace, etc.) --
+scoped and sequenced into `docs/admin-dashboard-plan.md` (written and committed
+first, per the user's own requested process: plan → implement one phase at a time →
+verify before continuing). This session completed **Fase 2 — Dashboard riepilogativa**
+only; Fasi 3-10 remain planned, tracked in that document's status table.
+
+**Backend — new `reports` domain, read-only aggregations over existing tables:**
+- [x] `GET /reports/dashboard-summary?period_from=&period_to=` -- contract counts
+  by status (total/active/pending-approval/rejected/cancelled/suspended/expired,
+  mapped from the real `state_machine.py` status set, not guessed), commission
+  totals by status (accrued/payable/paid/reversed, summed in cents), active
+  promoter and active-customer counts, period-scoped new-contracts and
+  new-commissions figures. Defaults to the last 30 days if no range is given.
+- [x] `GET /reports/attention-items` -- contracts sitting in a review-queue status
+  (`SUBMITTED`/`DOCUMENTS_PENDING`/`UNDER_REVIEW`) for more than 7 days. Contracts
+  have no `updated_at` column by design (state changes are append-only history,
+  see `contract_status_history`), so "time in current status" is derived from
+  that contract's latest status-history row via a window function, not a
+  denormalized timestamp on the contract itself.
+- [x] `GET /reports/recent-activity?limit=` -- last N rows from the existing
+  append-only `audit_log`, no new table.
+- [x] `GET /reports/contracts-timeseries?months=` and
+  `GET /reports/commissions-timeseries?months=` -- monthly counts/sums for the
+  last N months (zero-filled for months with no activity), source data for the
+  new frontend charts.
+- [x] New `reports.read` permission (distinct from the pre-existing
+  `reports.export`), granted to SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN/
+  ACCOUNTING_OPERATOR/SALES_MANAGER/AUDITOR in `rbac/models.py` **and** patched
+  directly into the live `permissions`/`role_permissions` tables (seeded data,
+  same pattern as Session 5's new permissions) -- confirmed with a live 403 test
+  using the CUSTOMER-role demo account before touching the frontend.
+- [x] No new tables. Everything reads existing `contracts`, `commission_movements`,
+  `agent_profiles`, `customers`, `audit_log`, `contract_status_history`.
+
+**Frontend:**
+- [x] `AdminOverviewPanel` -- new default landing tab ("Panoramica") in the admin
+  sidebar: 8 KPI cards (contracts total/active/pending/rejected, commissions
+  accrued/paid, active promoters, active customers), a time-range filter
+  (oggi/7gg/mese/trimestre/anno) that re-queries `dashboard-summary` with the
+  matching date range, two Recharts charts (12-month contract volume area chart,
+  12-month commission value bar chart), an "richiede attenzione" list and a
+  recent-activity feed. Built with `useQuery` from the start (the pattern Session
+  5 had to retrofit into three panels after hitting React's `set-state-in-effect`
+  lint rule).
+- [x] `recharts` added as a dependency (first use in this codebase; MinIO and
+  Recharts were the two dependencies flagged as not-yet-installed in the plan doc).
+
+**Honest data note:** "Provvigioni pagate" (paid_cents) legitimately reads 0 today
+-- the commission engine only ever writes `ACCRUED` movements right now; the
+`PAYABLE`/`PAID` lifecycle transitions are Fase 7 (Liquidazioni/Pagamenti), not yet
+built. This is real current behavior, not a placeholder.
+
+Verified end-to-end: curl against the live API with a real JWT (dashboard-summary,
+both timeseries endpoints, attention-items, recent-activity all returned correct
+data derived from the actual seeded database), a live 403 confirming RBAC is
+enforced server-side, then the full browser path (login → BFF session cookie →
+`/api/proxy/reports/*` → FastAPI) over the real HTTPS domain. `tsc --noEmit`,
+`eslint`, and `next build` all clean before the image rebuild/redeploy.
+
 ## Session 5 — 2026-07-26 — Admin CRUD (customers/promoters/products), recruiting, top bar
 
 The user asked for: a persistent top bar with a corner icon cluster (day/night

@@ -192,9 +192,11 @@ errore (vincolo di unicità su `commission_movement_id`).
 ## 6. Endpoint necessari (indicativi, dettagliati fase per fase)
 
 ```
-GET  /api/reports/dashboard-summary?from=&to=      Fase 2
-GET  /api/reports/contracts-timeseries?from=&to=    Fase 2
-GET  /api/reports/commissions-timeseries?from=&to=  Fase 2
+GET  /api/reports/dashboard-summary?period_from=&period_to=   Fase 2 -- ✅ implementato
+GET  /api/reports/attention-items                              Fase 2 -- ✅ implementato
+GET  /api/reports/recent-activity?limit=                       Fase 2 -- ✅ implementato
+GET  /api/reports/contracts-timeseries?months=                 Fase 2 -- ✅ implementato
+GET  /api/reports/commissions-timeseries?months=                Fase 2 -- ✅ implementato
 
 GET  /api/contracts?status=&promoter_id=&...        Fase 3 (potenzia list esistente)
 POST /api/contracts/{id}/notes                       Fase 3
@@ -224,7 +226,7 @@ GET  /api/reports/export/commissions.csv              Fase 9
 | Fase | Contenuto | Stato |
 |---|---|---|
 | 1 | Layout amministrativo (AppShell, sidebar, top bar, tema) | ✅ Fatto (sessioni precedenti) |
-| 2 | Dashboard riepilogativa (KPI, grafici, filtri temporali, attività recenti) | ⏳ Questa sessione |
+| 2 | Dashboard riepilogativa (KPI, grafici, filtri temporali, attività recenti) | ✅ Fatto (Sessione 6) |
 | 3 | Gestione contratti enterprise (tabella avanzata, dettaglio a tab, azioni) | Pianificata |
 | 4 | Scheda promoter estesa (dati fiscali, coordinate pagamento, tab contratti/provvigioni) | Pianificata |
 | 5 | Vista rete enterprise (ricerca globale, navigazione bidirezionale, aggregati per nodo) | Pianificata |
@@ -259,10 +261,10 @@ precedenti (vedi `docs/implementation-progress.md`).
 
 Nessuna nuova tecnologia infrastrutturale. Nuova libreria frontend per i
 grafici (Fase 2): la spec del progetto (`docs/architecture.md`) indica
-Recharts o Apache ECharts — non ancora installata. Si userà **Recharts**
-(più leggera, integrazione React idiomatica, sufficiente per andamenti
-mensili e KPI). MinIO è già nello stack Docker per la Fase relativa ai
-documenti, ma il codice applicativo che lo usa non esiste ancora.
+Recharts o Apache ECharts. Si è usata **Recharts** (più leggera, integrazione
+React idiomatica, sufficiente per andamenti mensili e KPI) — installata e in
+uso da Fase 2 (Sessione 6). MinIO è già nello stack Docker per la Fase relativa
+ai documenti, ma il codice applicativo che lo usa non esiste ancora.
 
 ## 10. Domande ancora aperte
 

@@ -124,3 +124,52 @@ export type ProductWithVersionsRead = ProductRead & {
   versions: ProductVersionRead[];
 };
 
+export type ContractTotals = {
+  total: number;
+  active: number;
+  pending_approval: number;
+  rejected: number;
+  cancelled: number;
+  suspended: number;
+  expired: number;
+};
+
+export type CommissionTotals = {
+  accrued_cents: number;
+  payable_cents: number;
+  paid_cents: number;
+  reversed_cents: number;
+};
+
+export type DashboardSummary = {
+  contracts: ContractTotals;
+  commissions: CommissionTotals;
+  active_promoters: number;
+  active_customers: number;
+  period_new_contracts: number;
+  period_new_commissions_cents: number;
+  generated_at: string;
+};
+
+export type AttentionItem = {
+  contract_id: string;
+  customer_id: string;
+  status: string;
+  days_in_status: number;
+  reason: string;
+};
+
+export type RecentActivityItem = {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type TimeseriesPoint = {
+  period: string;
+  value: number;
+};
+
