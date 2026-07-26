@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CustomerRead } from "@/lib/types";
+import type { CustomerDetailRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomers(): Promise<CustomerRead[]> {
   const res = await fetch("/api/proxy/customers");
   if (!res.ok) throw new Error("Impossibile caricare i clienti.");
+  return res.json();
+}
+
+async function fetchCustomerDetail(id: string): Promise<CustomerDetailRead> {
+  const res = await fetch(`/api/proxy/customers/${id}`);
+  if (!res.ok) throw new Error("Impossibile caricare i dettagli del cliente.");
   return res.json();
 }
 
@@ -27,6 +33,74 @@ export function AdminCustomersPanel() {
   });
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+
+  // View popup
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const { data: viewingDetail, error: viewError } = useQuery({
+    queryKey: ["admin", "customers", "detail", viewingId],
+    queryFn: () => fetchCustomerDetail(viewingId!),
+    enabled: viewingId !== null,
+  });
+
+  // Edit form
+  const [editingCustomer, setEditingCustomer] = useState<CustomerRead | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editCompanyName, setEditCompanyName] = useState("");
+  const [editFiscalCode, setEditFiscalCode] = useState("");
+  const [editVatNumber, setEditVatNumber] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openEdit(c: CustomerRead) {
+    setEditEmail(c.email);
+    setEditPhone(c.phone ?? "");
+    setEditFiscalCode(c.fiscal_code ?? "");
+    setEditVatNumber(c.vat_number ?? "");
+    const parts = c.display_name.trim().split(/\s+/);
+    if (PRIVATE_LIKE.has(c.kind)) {
+      setEditFirstName(parts.slice(0, -1).join(" ") || parts[0] || "");
+      setEditLastName(parts.length > 1 ? parts[parts.length - 1]! : "");
+      setEditCompanyName("");
+    } else {
+      setEditFirstName("");
+      setEditLastName("");
+      setEditCompanyName(c.display_name);
+    }
+    setEditError(null);
+    setEditingCustomer(c);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCustomer) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/proxy/customers/${editingCustomer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: editEmail,
+          phone: editPhone || null,
+          fiscal_code: editFiscalCode || null,
+          vat_number: editVatNumber || null,
+          first_name: PRIVATE_LIKE.has(editingCustomer.kind) ? editFirstName : null,
+          last_name: PRIVATE_LIKE.has(editingCustomer.kind) ? editLastName : null,
+          company_name: PRIVATE_LIKE.has(editingCustomer.kind) ? null : editCompanyName,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setEditingCustomer(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+    } catch (err: any) {
+      setEditError(err.message || "Impossibile salvare le modifiche.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
 
   // Create form state
   const [kind, setKind] = useState("PRIVATE");
@@ -116,16 +190,17 @@ export function AdminCustomersPanel() {
                 <th className="py-3 px-6">Tipo</th>
                 <th className="py-3 px-6">Email</th>
                 <th className="py-3 px-6">Telefono</th>
+                <th className="py-3 px-6 text-right">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {customers === undefined ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-slate-500">Caricamento...</td>
+                  <td colSpan={5} className="text-center py-8 text-slate-500">Caricamento...</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-slate-500">Nessun cliente trovato.</td>
+                  <td colSpan={5} className="text-center py-8 text-slate-500">Nessun cliente trovato.</td>
                 </tr>
               ) : (
                 filtered.map((c) => (
@@ -138,6 +213,29 @@ export function AdminCustomersPanel() {
                     </td>
                     <td className="py-4 px-6">{c.email}</td>
                     <td className="py-4 px-6">{c.phone ?? "—"}</td>
+                    <td className="py-4 px-6">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setViewingId(c.id)}
+                          title="Mostra dettagli"
+                          className="p-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => openEdit(c)}
+                          title="Modifica cliente"
+                          className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -234,6 +332,164 @@ export function AdminCustomersPanel() {
                 <button type="submit" disabled={createLoading}
                   className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
                   {createLoading ? "Creazione..." : "Crea Cliente"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {viewingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white light:text-slate-900">Dettagli Cliente</h3>
+              <button onClick={() => setViewingId(null)}
+                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {viewError && <p className="text-sm text-rose-400">Impossibile caricare i dettagli.</p>}
+            {!viewingDetail && !viewError && <p className="text-sm text-slate-500 text-center py-8">Caricamento...</p>}
+
+            {viewingDetail && (
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="text-lg font-semibold text-white light:text-slate-900">{viewingDetail.display_name}</p>
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                    {KIND_LABELS[viewingDetail.kind] ?? viewingDetail.kind}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Email</span>
+                    <p className="text-slate-200 light:text-slate-700">{viewingDetail.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Telefono</span>
+                    <p className="text-slate-200 light:text-slate-700">{viewingDetail.phone ?? "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Codice Fiscale</span>
+                    <p className="font-mono text-xs text-slate-200 light:text-slate-700">{viewingDetail.fiscal_code ?? "—"}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold">Partita IVA</span>
+                    <p className="font-mono text-xs text-slate-200 light:text-slate-700">{viewingDetail.vat_number ?? "—"}</p>
+                  </div>
+                </div>
+
+                {viewingDetail.addresses.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Indirizzi</p>
+                    <div className="space-y-2">
+                      {viewingDetail.addresses.map((a) => (
+                        <div key={a.id} className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-300 light:text-slate-600">
+                          {a.street}, {a.postal_code} {a.city} ({a.province}) — {a.country}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {viewingDetail.supply_points.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Punti di Fornitura</p>
+                    <div className="space-y-2">
+                      {viewingDetail.supply_points.map((sp) => (
+                        <div key={sp.id} className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-300 light:text-slate-600 flex items-center justify-between">
+                          <span>{sp.energy_type}</span>
+                          <span className="font-mono">{sp.pod_code ?? sp.pdr_code ?? "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="font-mono text-[10px] text-slate-500 pt-2 border-t border-white/5 light:border-slate-200">{viewingDetail.id}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {editingCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white light:text-slate-900">Modifica Cliente</h3>
+              <button onClick={() => setEditingCustomer(null)}
+                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSave} className="space-y-4">
+              {PRIVATE_LIKE.has(editingCustomer.kind) ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome</label>
+                    <input required value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Cognome</label>
+                    <input required value={editLastName} onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Ragione sociale</label>
+                  <input required value={editCompanyName} onChange={(e) => setEditCompanyName(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Email</label>
+                  <input required type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Telefono</label>
+                  <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Fiscale</label>
+                  <input value={editFiscalCode} onChange={(e) => setEditFiscalCode(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Partita IVA</label>
+                  <input value={editVatNumber} onChange={(e) => setEditVatNumber(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
+                </div>
+              </div>
+
+              {editError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{editError}</div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setEditingCustomer(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer">
+                  Annulla
+                </button>
+                <button type="submit" disabled={editLoading}
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
+                  {editLoading ? "Salvataggio..." : "Salva Modifiche"}
                 </button>
               </div>
             </form>

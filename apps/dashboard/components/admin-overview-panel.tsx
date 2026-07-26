@@ -166,6 +166,16 @@ const QUICK_LINKS: {
       </svg>
     ),
   },
+  {
+    key: "network",
+    label: "Rete Commerciale",
+    description: "Albero promoter, 12 livelli",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminOverviewPanel({ onNavigate }: { onNavigate?: (key: string) => void }) {

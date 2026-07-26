@@ -7,6 +7,7 @@ import { AdminOverviewPanel } from "@/components/admin-overview-panel";
 import { AdminCustomersPanel } from "@/components/admin-customers-panel";
 import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
+import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
@@ -93,6 +94,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "network",
+    label: "Rete Commerciale",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
@@ -102,7 +112,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
@@ -459,6 +469,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         {activeTab === "customers" && <AdminCustomersPanel />}
         {activeTab === "promoters" && <AdminPromotersPanel />}
         {activeTab === "products" && <AdminProductsPanel />}
+        {activeTab === "network" && <AdminNetworkPanel />}
       </AppShell>
 
       {/* Transition Modal / Drawer Overlay */}

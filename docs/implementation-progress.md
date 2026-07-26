@@ -4,6 +4,73 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 10 — 2026-07-26 (same day, continued) — Expired-session crash fix, admin network tree, deep seed, product photos, customer view/edit
+
+**Bug fix (user-reported: "se apro il sito mi dice rebuild pagina"):** `/admin`,
+`/promoter`, `/customer` all threw Next.js's generic 500 error page for any
+session older than 15 minutes (the access token TTL; no silent refresh yet).
+`apiFetch()` throws on a non-2xx response and none of the three pages caught
+it. Root cause confirmed live by forging a `Cookie: lial_session=...` header
+carrying a token the API actually rejects with 401. Fixed with a new
+`apiFetchOrRedirectToLogin()` that redirects to `/login` on 401 instead of
+throwing -- first attempt also tried to clear the stale cookie, which threw a
+*different* 500 ("Cookies can only be modified in a Server Action or Route
+Handler" -- illegal from a plain Server Component render), caught while
+testing the fix live and fixed by leaving the stale cookie in place (a
+subsequent login just overwrites it).
+
+**Admin network tree restored + rebuilt properly.** The admin dashboard had
+no org-wide network view at all (only the flat `AdminPromotersPanel` table) --
+Fase 5 from `admin-dashboard-plan.md`, not yet built, which is what the user
+was actually missing ("non vedo più l'albero"). Extracted the tree-rendering
+pieces from `branch-visualizer.tsx` into a shared `components/network-tree.tsx`
+(`TreeNodeRenderer`, `LevelLegend`, depth-color logic) and built a new
+`AdminNetworkPanel` on top of it: fetches the existing org-wide
+`GET /network/agents` list, builds a full forest client-side from
+`direct_parent_agent_id` pointers (multiple independent root branches, not
+just one), with search/highlight and expand-all/collapse-all controls (starts
+collapsed for a big org tree, matching "navigare la rete nei vari livelli").
+New "Rete Commerciale" tab + a quick-link button on the overview panel.
+
+**Network depth extended to 12 levels with real agents at every level.** The
+existing demo network topped out at depth 5 and was a pure linear chain (one
+agent per level, no branching) -- neither satisfied "albero a 12 livelli" nor
+"ogni livello deve avere uno o più clienti". Seeded 19 new agents directly via
+`network_service.create_agent()` (same code path the API uses): one sibling
+added at each of levels 1-5 (so those levels have 2+ agents instead of 1), and
+7 new levels (6-12) added below the existing leaf, 2 agents per level. Verified
+live: `network_closure` now shows depth 0-12, every level with ≥2 agents,
+41 agents total org-wide (was 22).
+
+**Product renames + real photos.** "Gas Semplice" -> "Luce Family", "Luce
+Flex" -> "Luce Company" (both via the existing `PATCH /products/versions/{id}`
+-- note: this only renames the display name, the underlying `energy_type`
+column on `Product` has no update endpoint, so "Luce Family" is still
+technically a GAS-typed product under the hood; flagged, not silently
+pretended otherwise). All 5 active products got a real, free, theme-matched
+photo sourced from Wikimedia Commons (public domain / CC-licensed, no API key
+needed, verified reachable before use): glowing Edison bulbs for Luce
+Semplice, a solar-roofed house for Luce Family, a glass office tower for Luce
+Company, an offshore wind farm for Luce Green 100%, a mixed solar+wind
+building for Energia Circolare PMI.
+
+**Customer admin CRUD: view/edit icons.** `AdminCustomersPanel` rows gained a
+"Mostra" icon (popup with full customer detail -- addresses, supply points,
+fiscal data, via the existing `GET /customers/{id}`) and a "Modifica" icon
+(edit form via the existing `PATCH /customers/{id}`, previously wired
+backend-side with no UI). Deliberately did NOT add a delete action: no soft-
+delete concept exists on `Customer` (no status column, unlike `AgentProfile`/
+`Product`) and no delete endpoint exists; a real delete would either need a
+new schema concept or risk orphaning `contracts`/`supply_points` FKs --
+inventing one silently would violate "no fake buttons without real
+functionality." Verified RBAC already correctly restricts `customers.update`
+to ADMIN/BACK_OFFICE_OPERATOR-tier roles -- PROMOTER/TEAM_LEADER only have
+`customers.read`/`customers.create`, matching "solo amministratore può
+editare" (no code change needed there, confirmed by reading `rbac/models.py`).
+
+Verified live end-to-end over the real HTTPS session for every piece above.
+`tsc`/`eslint`/`next build` clean.
+
 ## Session 9 — 2026-07-26 (same day, continued) — Names above IDs, product edit + VAT, shop as customer home
 
 User-driven: lists showing raw UUIDs must show the real associated name above
