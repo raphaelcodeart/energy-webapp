@@ -31,6 +31,12 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     # arrivato dalla promozione Luce Green, preferisce essere ricontattato la
     # sera". Distinct from ContractStatusHistory.notes, which is per-transition.
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # Bank account for this specific subscription's direct-debit payments --
+    # collected when the contract is requested (a customer may have different
+    # payment details per contract), never inferred from the customer's other
+    # contracts. Nullable: an admin creating a contract on the customer's
+    # behalf may not have it on hand yet.
+    iban: Mapped[str | None] = mapped_column(String(34), nullable=True)
     # Set (and reset, on every renewal) by transition_contract() whenever the
     # contract enters ACTIVE or RENEWED. expires_at is computed from the
     # product version's contract_duration_months at that same moment -- never

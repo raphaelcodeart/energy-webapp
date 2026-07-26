@@ -66,6 +66,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "product_version_id": c.product_version_id,
             "status": c.status,
             "notes": c.notes,
+            "iban": c.iban,
             "created_at": c.created_at,
             "activated_at": c.activated_at,
             "expires_at": c.expires_at,
@@ -98,6 +99,7 @@ async def create_contract(
     actor_user_id: uuid.UUID,
     correlation_id: str,
     notes: str | None = None,
+    iban: str | None = None,
 ) -> Contract:
     """Creates a DRAFT contract. Deliberately does NOT touch commissions -- creating
     or submitting a contract never generates a commission (business-rules.md)."""
@@ -128,6 +130,7 @@ async def create_contract(
         contract_attribution_id=attribution.id,
         status="DRAFT",
         notes=notes,
+        iban=iban,
     )
     db.add(contract)
     await db.flush()
@@ -145,6 +148,25 @@ async def create_contract(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="contract.created", entity_type="contract", entity_id=str(contract.id),
         new_value={"status": "DRAFT"},
+    )
+    await db.commit()
+    await db.refresh(contract)
+    return contract
+
+
+async def set_contract_iban(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, iban: str, actor_user_id: uuid.UUID
+) -> Contract:
+    """Lets a customer add/correct their own contract's IBAN after creation
+    (e.g. the admin created the contract before receiving it, or the
+    customer wants to switch bank accounts) -- same "editable afterwards"
+    spirit as supply_points.label."""
+    previous = contract.iban
+    contract.iban = iban
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="contract.iban_updated", entity_type="contract", entity_id=str(contract.id),
+        previous_value={"iban": previous}, new_value={"iban": iban},
     )
     await db.commit()
     await db.refresh(contract)

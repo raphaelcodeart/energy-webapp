@@ -78,11 +78,16 @@ class BranchContractRead(BaseModel):
     customer_email: str | None
     customer_phone: str | None
     product_name: str
+    value_cents: int
     supply_point_label: str | None = None
     expires_at: datetime | None = None
     producer_agent_id: uuid.UUID
     producer_name: str
     commission_cents: int
+    # The VIEWING user's own cut of this specific contract (None, not 0, when
+    # they have no agent profile at all -- e.g. an org admin browsing someone
+    # else's branch, who is never a commission beneficiary).
+    my_commission_cents: int | None = None
     is_problem: bool
     admin_note: str | None = None
 

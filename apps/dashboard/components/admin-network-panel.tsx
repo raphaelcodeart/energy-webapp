@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentListItemRead } from "@/lib/types";
 import { LevelLegend, TreeNodeRenderer, type TreeNode } from "@/components/network-tree";
+import { NetworkNodeDetailModal } from "@/components/network-node-detail-modal";
 
 async function fetchAgents(): Promise<AgentListItemRead[]> {
   const res = await fetch("/api/proxy/network/agents");
@@ -65,6 +66,7 @@ export function AdminNetworkPanel() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandAll, setExpandAll] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<{ agentId: string; displayName: string } | null>(null);
 
   const copyToClipboard = (id: string) => {
     navigator.clipboard.writeText(id);
@@ -153,12 +155,21 @@ export function AdminNetworkPanel() {
                 node={root}
                 onCopy={copyToClipboard}
                 copiedId={copiedId}
+                onNodeClick={(agentId, displayName) => setSelectedNode({ agentId, displayName })}
                 startOpen
                 forceOpen={expandAll || search.trim().length > 0}
               />
             </div>
           ))}
         </div>
+      )}
+
+      {selectedNode && (
+        <NetworkNodeDetailModal
+          agentId={selectedNode.agentId}
+          displayName={selectedNode.displayName}
+          onClose={() => setSelectedNode(null)}
+        />
       )}
     </div>
   );

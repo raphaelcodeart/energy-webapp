@@ -615,7 +615,7 @@ async def get_organization_network_levels(db: AsyncSession, *, organization_id: 
 
 
 async def get_branch_contracts(
-    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
+    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID, viewer_agent_id: uuid.UUID | None = None
 ) -> list[dict]:
     """Flat, contract-level detail for a promoter's whole downline: which
     customer, which product, what status, how much commission it has generated
@@ -642,6 +642,7 @@ async def get_branch_contracts(
             Contract.expires_at,
             ContractAttribution.producer_agent_id,
             ProductVersion.name,
+            ProductVersion.base_price_cents,
         )
         .select_from(Contract)
         .join(ContractAttribution, ContractAttribution.id == Contract.contract_attribution_id)
@@ -682,6 +683,24 @@ async def get_branch_contracts(
     )
     commission_by_contract = {cid: int(total) for cid, total in (await db.execute(commission_stmt)).all()}
 
+    # "Provvigione presa da me per quel contratto" -- the viewer's OWN cut of
+    # each contract, distinct from commission_by_contract above (which sums
+    # every beneficiary's share). None (not 0) when the viewer has no agent
+    # profile at all (e.g. an org admin browsing someone else's branch) --
+    # "not a beneficiary" and "earned zero" are different facts.
+    my_commission_by_contract: dict[uuid.UUID, int] | None = None
+    if viewer_agent_id is not None:
+        my_commission_stmt = (
+            select(CommissionMovement.contract_id, func.coalesce(func.sum(CommissionMovement.amount_cents), 0))
+            .where(
+                CommissionMovement.contract_id.in_(contract_ids),
+                CommissionMovement.agent_id == viewer_agent_id,
+                CommissionMovement.status.notin_(["CANCELLED", "REVERSED"]),
+            )
+            .group_by(CommissionMovement.contract_id)
+        )
+        my_commission_by_contract = {cid: int(total) for cid, total in (await db.execute(my_commission_stmt)).all()}
+
     # Most recent admin note per contract -- what an admin wrote when moving a
     # contract to e.g. DOCUMENTS_PENDING ("manca il documento X") is exactly
     # what the promoter needs to see to know what to chase with the customer.
@@ -696,7 +715,9 @@ async def get_branch_contracts(
             latest_note_by_contract[cid] = notes
 
     result = []
-    for contract_id, status, customer_id, supply_point_id, expires_at, producer_agent_id, product_name in rows:
+    for (
+        contract_id, status, customer_id, supply_point_id, expires_at, producer_agent_id, product_name, base_price_cents,
+    ) in rows:
         customer = customers.get(customer_id)
         result.append({
             "contract_id": contract_id,
@@ -707,11 +728,15 @@ async def get_branch_contracts(
             "customer_email": customer.email if customer else None,
             "customer_phone": customer.phone if customer else None,
             "product_name": product_name,
+            "value_cents": base_price_cents,
             "supply_point_label": supply_point_labels.get(supply_point_id),
             "expires_at": expires_at,
             "producer_agent_id": producer_agent_id,
             "producer_name": agent_name_by_id.get(producer_agent_id, "—"),
             "commission_cents": commission_by_contract.get(contract_id, 0),
+            "my_commission_cents": (
+                my_commission_by_contract.get(contract_id, 0) if my_commission_by_contract is not None else None
+            ),
             "is_problem": status in PROBLEM_CONTRACT_STATUSES,
             "admin_note": latest_note_by_contract.get(contract_id),
         })

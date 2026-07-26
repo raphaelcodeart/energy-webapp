@@ -164,6 +164,18 @@ Salva l'`Organization ID` stampato in output — serve per fare login.
 **Scenario B — stai migrando dati reali dal vecchio server:** vedi sezione 5
 ("Migrare i dati da un server esistente") invece di eseguire il seed.
 
+**Opzionale — arricchire la demo con più contenuti (Session 14):** il seed
+base crea solo 20 agenti/6 livelli e una manciata di clienti. Per popolare
+l'albero della rete vendita fino a 12 livelli con più rami (utile per demo
+commerciali) e ~50 clienti/contratti in stati vari, esiste uno script
+ADDITIVO separato che va eseguito DOPO il seed base, sulla stessa
+organizzazione:
+```bash
+docker compose -f docker-compose.dev.yml exec api python -m app.seed.expand_demo
+```
+Vedi §4.7 sotto per come rimuovere tutto questo contenuto demo prima di
+passare in produzione con clienti reali.
+
 ### 4.5 Verifica
 
 ```bash
@@ -268,6 +280,55 @@ Poi:
 **Non committare mai `certbot/`** (contiene chiavi private) — è già in
 `.gitignore`. Se cambi dominio, ripeti l'intera procedura per il nuovo nome.
 
+### 4.7 Rimuovere i dati demo prima della produzione (Session 14)
+
+Sia il seed base (`python -m app.seed`) sia lo script additivo
+`app.seed.expand_demo` (§4.4) creano contenuti chiaramente marcati come demo,
+pensati per essere rimossi prima che clienti reali usino il sistema:
+
+| Contenuto | Marcatore |
+|---|---|
+| Agenti creati da `expand_demo` | `promoter_codes.code` inizia per `DEMO-` |
+| Clienti creati da `expand_demo` | `customers.email` termina per `@demo-expansion.lial` |
+| Contratti creati da `expand_demo` | `contracts.notes` contiene `[DEMO-EXPANSION]` |
+| Tutti gli utenti/agenti/clienti del seed base | password `DemoPass123!`, email `*@lialenergy.demo` |
+
+Query indicativa per rimuovere SOLO il contenuto aggiunto da `expand_demo`
+(lascia intatto il seed base, se vuoi comunque tenere qualche account demo
+per test interni):
+```sql
+-- Documenti dei contratti demo (rispetta i vincoli di chiave esterna --
+-- prima i figli, poi i genitori)
+DELETE FROM documents WHERE contract_id IN (
+  SELECT id FROM contracts WHERE notes LIKE '%[DEMO-EXPANSION]%'
+);
+DELETE FROM commission_movements WHERE contract_id IN (
+  SELECT id FROM contracts WHERE notes LIKE '%[DEMO-EXPANSION]%'
+);
+DELETE FROM contract_status_history WHERE contract_id IN (
+  SELECT id FROM contracts WHERE notes LIKE '%[DEMO-EXPANSION]%'
+);
+DELETE FROM contracts WHERE notes LIKE '%[DEMO-EXPANSION]%';
+DELETE FROM customers WHERE email LIKE '%@demo-expansion.lial';
+DELETE FROM promoter_codes WHERE code LIKE 'DEMO-%';
+DELETE FROM network_nodes WHERE agent_id IN (
+  SELECT id FROM agent_profiles WHERE id IN (
+    SELECT agent_id FROM promoter_codes WHERE code LIKE 'DEMO-%'
+  )
+);
+DELETE FROM agent_profiles WHERE id NOT IN (SELECT agent_id FROM network_nodes);
+```
+Per ripartire completamente da zero prima della produzione (rimuovere ANCHE
+il seed base), è più semplice e sicuro ricreare il database da capo (§4.3)
+piuttosto che disfare selettivamente ogni riga -- questo stack non ha ancora
+dati reali da preservare finché non lo si mette in produzione con clienti
+veri.
+
+Non dimenticare i file binari: i documenti/foto demo restano su MinIO anche
+dopo aver cancellato le righe Postgres corrispondenti (le righe portano solo
+la `storage_key`, il file resta nel bucket finché non lo elimini
+esplicitamente con `mc rm` o svuotando il bucket).
+
 ## 5. Migrare i dati da un server esistente (non solo il codice)
 
 Se il vecchio server è ancora raggiungibile, **non ripartire dal seed** — porta i
@@ -289,10 +350,24 @@ gunzip -c backups/lial_energy_dev_TIMESTAMP.sql.gz | \
 ```
 
 Questo restituisce SOLO i dati Postgres (utenti, rete, contratti, provvigioni,
-ecc.). Se ci sono documenti caricati su MinIO (attualmente non ancora
-implementato in questa versione — vedi `docs/implementation-progress.md`, dominio
-`documents` non ancora costruito), andrebbero sincronizzati separatamente con
-`mc mirror` o equivalente quando quella funzionalità esisterà.
+ecc.). Dalla Session 14 esistono anche file binari reali su MinIO (foto
+profilo/prodotto nel bucket pubblico `lial-media`, documenti sensibili nel
+bucket privato `lial-documents`, vedi `docs/security-model.md`) -- questi vanno
+sincronizzati separatamente, non li copia `scripts/backup.sh` (che fa solo
+`pg_dump`):
+```bash
+# Sul VECCHIO server (mc = MinIO client, https://min.io/docs/minio/linux/reference/minio-mc.html):
+mc alias set old http://localhost:9000 <MINIO_ROOT_USER> <MINIO_ROOT_PASSWORD>
+mc mirror old/lial-media ./minio-export/lial-media
+mc mirror old/lial-documents ./minio-export/lial-documents
+# copia ./minio-export sul nuovo server, poi sul NUOVO server:
+mc alias set new http://localhost:9000 <MINIO_ROOT_USER> <MINIO_ROOT_PASSWORD>
+mc mirror ./minio-export/lial-media new/lial-media
+mc mirror ./minio-export/lial-documents new/lial-documents
+```
+Il bucket `lial-documents` è privato (nessuna bucket policy) -- assicurati che
+`mc mirror` non ne aggiunga una per errore; verifica con `mc anonymous get
+new/lial-documents` che risponda `none`.
 
 **Non usare `scripts/restore.sh`** per questo scenario — quello script è pensato
 per ripristinare un backup nello **stesso** ambiente dopo un disastro (crea un
@@ -406,7 +481,7 @@ scripts/                          deploy, backup, restore, health-check, migrate
 
 ## 8. Problemi noti già risolti (leggi PRIMA di fare debug da zero)
 
-Questi 6 bug sono stati scoperti e corretti eseguendo per davvero
+Questi bug sono stati scoperti e corretti eseguendo per davvero
 `docker compose up --build` su questo stesso server. Se ricreando lo stack su un
 nuovo server incontri sintomi simili, **il fix è già nel codice** — molto
 probabilmente il problema è un altro. Documentati per intero in
@@ -491,6 +566,18 @@ probabilmente il problema è un altro. Documentati per intero in
     `https://tuodominio/media/...`, che nginx inoltra internamente a MinIO
     (`location /media/` in `nginx.conf`) — se manca quel blocco, aggiungilo
     prima di sospettare un bug nell'upload.
+14. **(Session 14) Qualsiasi pulsante "Salva modifiche" risponde 405, in TUTTE
+    le schermate (cliente, promoter, prodotto, punto di fornitura, ...),
+    fin dal giorno in cui ciascuna di quelle funzionalità è stata costruita**:
+    il proxy generico del BFF (`apps/dashboard/app/api/proxy/[...path]/route.ts`)
+    implementava SOLO `GET` e `POST`, mai `PATCH` -- nessuno se n'era accorto
+    perché ogni sessione precedente aveva verificato dal vivo altre parti delle
+    stesse funzionalità (es. l'upload della foto, un POST) ma mai il vero
+    pulsante di salvataggio, che è un PATCH. Fix: aggiunti handler reali
+    `PATCH`/`PUT`/`DELETE` che condividono la stessa logica di inoltro del
+    `POST` esistente (branch multipart-vs-JSON identico). Se un pulsante di
+    salvataggio sembra non fare nulla, verifica prima con `curl -X PATCH
+    https://tuodominio/api/proxy/<risorsa>` che il proxy risponda 200, non 405.
 
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
 risolto, per lo stesso motivo per cui questi lo sono.
@@ -498,9 +585,13 @@ risolto, per lo stesso motivo per cui questi lo sono.
 ## 9. Cosa NON aspettarsi che funzioni già
 
 Vedi `docs/implementation-progress.md`, sezione "Explicitly NOT in this session's
-scope" per l'elenco completo. In breve: pagamenti reali, upload documenti,
-notifiche, motore AI/pgvector, CI/CD, backup automatizzati con retention, MFA,
-HTTPS. Non sono bug — sono semplicemente fasi successive non ancora costruite.
+scope" per l'elenco completo. In breve: pagamenti reali, notifiche, motore
+AI/pgvector, CI/CD, backup automatizzati con retention, MFA. Non sono bug —
+sono semplicemente fasi successive non ancora costruite. (L'upload dei
+documenti sensibili di contratto -- carta d'identità, codice fiscale,
+bolletta, visura camerale -- ESISTE dalla Session 14, vedi
+`docs/security-model.md §Documents`; HTTPS è attivo dalla Session 3, vedi §4.6
+sopra.)
 
 ## 10. Assunzioni di business ancora provvisorie
 

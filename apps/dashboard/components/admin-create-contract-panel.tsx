@@ -81,6 +81,7 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
   const [productVersionId, setProductVersionId] = useState("");
   const [producerAgentId, setProducerAgentId] = useState("");
   const [notes, setNotes] = useState("");
+  const [iban, setIban] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -146,6 +147,7 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
           product_version_id: productVersionId,
           producer_agent_id: producerAgentId,
           notes: notes || null,
+          iban: iban ? iban.replace(/\s/g, "").toUpperCase() : null,
         }),
       });
       if (!contractRes.ok) throw new Error(await contractRes.text());
@@ -348,6 +350,13 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
                 <option key={a.id} value={a.id}>{a.display_name} ({a.promoter_code})</option>
               ))}
             </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">IBAN per Addebito (opzionale)</label>
+            <input value={iban} onChange={(e) => setIban(e.target.value)}
+              placeholder="IT00A0000000000000000000000"
+              className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 uppercase" />
           </div>
 
           <div className="space-y-1">

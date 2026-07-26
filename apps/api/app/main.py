@@ -21,6 +21,8 @@ from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.contracts.router import router as contracts_router
 from app.domains.customers import models as _customers_models  # noqa: F401
 from app.domains.customers.router import router as customers_router
+from app.domains.documents import models as _documents_models  # noqa: F401
+from app.domains.documents.router import router as documents_router
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.network.router import router as network_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
@@ -63,18 +65,20 @@ app.include_router(customers_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
+app.include_router(documents_router, prefix="/api")
 
 
 @app.on_event("startup")
 async def _ensure_media_bucket() -> None:
-    from app.core.storage import ensure_media_bucket
+    from app.core.storage import ensure_documents_bucket, ensure_media_bucket
 
     try:
         ensure_media_bucket()
+        ensure_documents_bucket()
     except Exception:
-        # Photo upload is a nice-to-have, not core to the app -- a MinIO
-        # hiccup at startup must never take down the whole API.
-        logger.exception("Could not ensure media bucket exists -- photo upload will fail until this is resolved")
+        # Photo/document upload is a nice-to-have, not core to the app -- a
+        # MinIO hiccup at startup must never take down the whole API.
+        logger.exception("Could not ensure media/documents buckets exist -- photo/document upload will fail until this is resolved")
 
 
 @app.get("/health")

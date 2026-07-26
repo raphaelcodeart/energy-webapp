@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { BranchMemberRead } from "@/lib/types";
 import { LevelLegend, TreeNodeRenderer, type TreeNode } from "@/components/network-tree";
+import { NetworkNodeDetailModal } from "@/components/network-node-detail-modal";
 
 function buildTree(members: BranchMemberRead[]): TreeNode | null {
   if (!members || members.length === 0) return null;
@@ -46,6 +47,7 @@ function buildTree(members: BranchMemberRead[]): TreeNode | null {
 export function BranchVisualizer({ members }: { members: BranchMemberRead[] }) {
   const rootNode = buildTree(members);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<{ agentId: string; displayName: string } | null>(null);
 
   const copyToClipboard = (id: string) => {
     navigator.clipboard.writeText(id);
@@ -79,10 +81,19 @@ export function BranchVisualizer({ members }: { members: BranchMemberRead[] }) {
             node={rootNode}
             onCopy={copyToClipboard}
             copiedId={copiedId}
+            onNodeClick={(agentId, displayName) => setSelectedNode({ agentId, displayName })}
             startOpen
           />
         </div>
       </div>
+
+      {selectedNode && (
+        <NetworkNodeDetailModal
+          agentId={selectedNode.agentId}
+          displayName={selectedNode.displayName}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
     </div>
   );
 }

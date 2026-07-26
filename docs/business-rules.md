@@ -194,6 +194,35 @@ formula is implemented yet — only the extension point.
 - If no photo has been uploaded, `photo_url` is `NULL` and every list/detail view
   shows a generic person icon -- never a broken `<img>` tag.
 
+## Contract documents (added Session 14)
+
+- Every contract requires `IDENTITY`, `FISCAL_CODE`, and `UTILITY_BILL`
+  (`documents/service.py::BASE_REQUIRED_DOCUMENT_TYPES`); a customer of kind
+  `COMPANY` or `CONDOMINIUM` additionally requires `CHAMBER_OF_COMMERCE`
+  (`COMPANY_LIKE_KINDS`). This is a hardcoded, honest default in the service
+  layer, not read from the pre-existing `product_versions.required_documents`
+  jsonb column -- that column has never actually been populated or wired to
+  any behavior, so treating it as configurable today would be pretending.
+- `GET /contracts/{id}/documents` always returns one row per *required* type
+  for that customer's kind, with `document: null` when nothing has been
+  uploaded yet -- "missing" is a first-class, visible state, not silence.
+- Either the customer (their own contract only) or staff can upload a
+  document; only staff can review (approve/reject with a note). This covers
+  both the normal flow (customer uploads, admin reviews) and the exception
+  the user specifically asked for: a customer sends a document some other
+  way (email, in person) and an admin uploads it into the system on their
+  behalf.
+- Uploading a document does not, by itself, change contract status --
+  reviewing/transitioning is a separate, explicit action. The state machine's
+  `SUBMITTED`/`UNDER_REVIEW` → `DOCUMENTS_PENDING` transition is how staff
+  flags "this contract can't proceed until the customer completes their
+  paperwork"; the transition's `notes` field is where staff records *which*
+  document is missing, surfaced back to the promoter's own network view
+  (`get_branch_contracts()`'s `admin_note` field) so they know what to chase.
+- See `security-model.md §Documents` for how these files are stored --
+  private bucket, presigned-URL-only access, never a public or guessable
+  link.
+
 ## Password reset
 
 - `POST /auth/forgot-password` always returns success regardless of whether the

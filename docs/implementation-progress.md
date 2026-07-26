@@ -4,6 +4,135 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 14 — 2026-07-26 (same day, continued) — Sensitive document uploads (private storage), contract IBAN, demo data expanded to 12 full levels, network tree click-through popup
+
+Continuation of another large multi-part request. All items below were built,
+tested, and verified live:
+
+- **Sensitive contract documents, built end-to-end** (identity, fiscal code,
+  utility bill, and — for companies/condominiums — chamber-of-commerce
+  registration). New `documents` domain (`app/domains/documents/`): a
+  `Document` model with an explicit state machine
+  (`PENDING_REVIEW → APPROVED/REJECTED`), org- and contract-scoped everywhere,
+  snapshotting the uploader's role at upload time (same "frozen at the moment
+  it happens" pattern used elsewhere in this project). Endpoints:
+  `POST /contracts/{id}/documents` (multipart, customer-own-contract-or-staff),
+  `GET /contracts/{id}/documents` (one row per *required* type for that
+  customer's kind, `null` if not yet uploaded — so the UI can show "missing"
+  as a first-class state, not just absence of data), `GET
+  /documents/{id}/url` (short-lived presigned view link), `PATCH
+  /documents/{id}/review` (admin/back-office only, approve or reject with a
+  note). Required types are `IDENTITY`/`FISCAL_CODE`/`UTILITY_BILL` for
+  everyone, plus `CHAMBER_OF_COMMERCE` for `COMPANY`/`CONDOMINIUM` customers.
+  Both the customer (their own contract) and admin/back-office (any contract,
+  e.g. "the customer emailed me the file, I'm uploading it for them") can
+  upload; only admin/back-office can review. New RBAC permissions
+  `documents.upload` (also granted to `CUSTOMER`) and `documents.review`,
+  seeded via an idempotent data migration (`0009`) using the same
+  `on_conflict_do_nothing()` pattern as migration `0006` — declaring a
+  permission in code alone never reaches an already-seeded live database.
+- **Private document storage — the actual security requirement driving this
+  feature**: the user was explicit that these files must never be reachable
+  by search engines or anyone outside the organization, "solo dall'amministratore",
+  with a real protected storage design, not just "don't link to it". Built as
+  a *second*, entirely separate MinIO bucket (`lial-documents`) alongside the
+  existing public `lial-media` bucket from Session 13 — this one gets **no
+  bucket policy at all** (MinIO buckets are private-by-default; the fix here
+  was writing *less* code, not more). The only access path is a server-side,
+  time-limited (5-minute) presigned SigV4 URL
+  (`storage.py::generate_presigned_document_url()`), generated after the
+  `documents.download`/ownership check already ran — never a direct or
+  guessable link. New nginx location `/lial-documents/` reverse-proxies to
+  MinIO with a **hardcoded** `Host: minio:9000` header (not `$host`) — SigV4
+  signatures are computed over the exact host the signing client used
+  (MinIO's internal Docker name), so forwarding the public domain's Host
+  instead would make every presigned URL fail with `SignatureDoesNotMatch`
+  regardless of validity; this is the same "static `proxy_pass` target,
+  documented trade-off" pattern used for `/backend/` and `/media/` in earlier
+  sessions. Verified live, all three ways: (1) a valid presigned URL returns
+  the real file (200), (2) the identical path with the signature query
+  string stripped off returns MinIO's own `403 AccessDenied`, and (3) listing
+  the bucket directly also 403s. No indexable, guessable, or unauthenticated
+  path to a sensitive document exists anywhere in this design.
+- **Real bug found and fixed — every PATCH-based save in the app had been
+  silently broken since the feature it belonged to was first built**: the
+  BFF's generic proxy (`app/api/proxy/[...path]/route.ts`) only ever
+  implemented `GET` and `POST` handlers. Discovered while wiring the new
+  `PATCH /documents/{id}/review` endpoint, which 405'd through the proxy;
+  checked whether this was a new regression by hitting `PATCH
+  /api/proxy/customers/{id}` directly — also 405, confirming this had been
+  broken for customer edit, promoter edit, product edit, supply-point label
+  edit, and (from this same session) contract IBAN update, the entire time
+  those "save" buttons existed. Fixed by extracting a shared
+  `proxyWithBody()` helper and adding real `PATCH`/`PUT`/`DELETE` handlers
+  alongside the existing `POST`. Verified live, before and after: `PATCH
+  /api/proxy/customers/{id}` went from 405 to 200 with the fix in place.
+- **Contract IBAN**: `contracts.iban` column (migration `0009`, basic format
+  validation — `^[A-Z]{2}[0-9A-Z]{13,32}$`, not a full mod-97 checksum),
+  editable by the customer on their own contract or staff on any contract via
+  `PATCH /contracts/{id}/iban`. Added to the admin's new-contract form and to
+  an inline editor on the customer's own contract card.
+  `ContractDocumentsPanel` (new shared component) renders the
+  required-document checklist with upload/view/approve/reject, wired into
+  both the customer's contract card (upload-only) and the admin's contract
+  review modal (adds approve/reject with a note).
+- **Demo data expanded to a real, fully-branching 12-level tree**: the live
+  network had already reached depth 12 from earlier ad-hoc testing, but as
+  two bare, single-file chains (2 people at most depths) — not a tree anyone
+  could look at and understand. An additive script
+  (`app/seed/expand_demo.py`, run once against the *existing* live
+  organization, never a fresh seed) added 30 more agents broadening every
+  level from 0 to 12 (new root branches, extra siblings at mid-tree and
+  deep-tree nodes) and 50 more customers with contracts spread across the
+  whole tree (old and new agents alike) in a realistic status mix — active,
+  draft, submitted, under review, rejected, cancelled, and
+  `DOCUMENTS_PENDING` (some with a partial document upload, some with none at
+  all, to demonstrate the "missing documentation" flow end-to-end). Resulting
+  live totals: 71 agents across 13 depth levels (0–12), 56 customers, 57
+  contracts, 90 documents (85 approved, 5 still pending review). Every row
+  this script creates is tagged for easy removal before production —
+  `promoter_code` starting with `DEMO-`, customer email domain
+  `@demo-expansion.lial`, contract notes containing the literal
+  `[DEMO-EXPANSION]` — see `server-migration-guide.md` for the deletion
+  queries keyed off these markers.
+- **Network tree: click-through detail popup**. Every node in both the
+  admin's org-wide tree and a promoter's own branch view now has a clickable
+  name + info icon (propagated through `TreeNodeRenderer` via a new
+  `onNodeClick` prop) that opens `NetworkNodeDetailModal`, showing: people
+  below that node, levels below, contract counts by bucket (in progress,
+  closed, rejected), total value created, and a per-contract table
+  (customer, product, status, value). This reuses the existing
+  `get_branch_summary`/`get_branch_contracts` service functions rooted at
+  *whichever* node was clicked, not just the branch root — no new backend
+  concept needed, since the existing ABAC check (`_assert_branch_access`)
+  already permits any ancestor to query any descendant's branch. One
+  genuinely new piece: **"provvigione presa da me per quel contratto"** — the
+  commission the *specific viewing user* earned from each contract, which is
+  different from that contract's total commission across every beneficiary
+  in the multilevel plan. `get_branch_contracts()` now accepts an optional
+  `viewer_agent_id` and returns a `my_commission_cents` field per contract
+  (`null`, not `0`, when the viewer has no agent profile at all — e.g. an
+  org admin browsing someone else's branch, who was never a commission
+  beneficiary; distinguishing "not a beneficiary" from "earned zero" was
+  deliberate). Verified live: a promoter viewing a contract 12 levels down
+  their own tree correctly saw their own smaller cut (e.g. €25 of a €95
+  total commission payout), while an org admin viewing the same contract saw
+  `my_commission_cents: null`.
+- Backend: 79 tests passing (was 65 at the end of Session 13 — new tests for
+  the documents domain: required-document-types-per-customer-kind, upload +
+  read-back, unknown-document-type rejection, approve/reject, presigned-URL
+  properties, and org-scoping). Frontend: clean `tsc --noEmit`, clean
+  `eslint`, clean `next build`. Verified live over HTTPS: the full
+  document-upload → presigned-view → approve round trip (both as the
+  uploading customer and as the reviewing admin), the private bucket
+  rejecting every unsigned/public request, IBAN update from both the
+  customer and admin side, the expanded 12-level tree's real counts via the
+  live API, the tree popup's branch-summary/branch-contracts data for both
+  an admin and a promoter viewer (including the `my_commission_cents`
+  difference above), and that pre-existing isolation still holds — a
+  customer still gets 403 on another customer's contract documents, a
+  promoter still gets 403 on a branch they're not an ancestor of.
+
 ## Session 13 — 2026-07-26 (same day, continued) — Network tree bug fix, password reset, photo uploads (customer/promoter/product), promoter reassignment, security hardening, three real nginx/MinIO bugs found and fixed
 
 Continuation of another large multi-part request. All items below were built,

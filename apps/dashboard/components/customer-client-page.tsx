@@ -3,10 +3,76 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
+import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
+
+function IbanEditor({ contractId, initialIban }: { contractId: string; initialIban: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(initialIban ?? "");
+  const [saved, setSaved] = useState(initialIban);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/proxy/contracts/${contractId}/iban`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ iban: value.replace(/\s/g, "").toUpperCase() }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(value.replace(/\s/g, "").toUpperCase());
+      setEditing(false);
+    } catch {
+      setError("IBAN non valido. Controlla il formato inserito.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div>
+        <span className="text-xs text-slate-500">IBAN per Addebito</span>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-xs text-slate-300 light:text-slate-600 font-mono">{saved ?? "Non impostato"}</p>
+          <button
+            onClick={() => { setValue(saved ?? ""); setEditing(true); }}
+            className="text-[10px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer"
+          >
+            {saved ? "Modifica" : "Aggiungi"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <span className="text-xs text-slate-500">IBAN per Addebito</span>
+      <div className="flex items-center gap-2 mt-0.5">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="IT00A0000000000000000000000"
+          className="w-full rounded-lg glass-input px-2 py-1 text-xs uppercase focus:border-orange-500"
+        />
+        <button onClick={handleSave} disabled={saving} className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-50">
+          {saving ? "..." : "Salva"}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-[10px] font-semibold text-slate-500 hover:text-slate-400 cursor-pointer">
+          Annulla
+        </button>
+      </div>
+      {error && <p className="text-[10px] text-rose-400 mt-1">{error}</p>}
+    </div>
+  );
+}
 
 async function fetchProductsForLookup(): Promise<ProductCatalogRead[]> {
   const res = await fetch("/api/proxy/products");
@@ -199,6 +265,16 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                           <p className="text-xs text-slate-500 mt-0.5">—</p>
                         )}
                       </div>
+                      <IbanEditor contractId={c.id} initialIban={c.iban} />
+                    </div>
+
+                    {/* Documents required for this contract -- upload-only for the
+                        customer (review controls are staff-only, see admin-client-page.tsx) */}
+                    <div className="mb-6">
+                      <h5 className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider mb-3">
+                        Documenti Richiesti
+                      </h5>
+                      <ContractDocumentsPanel contractId={c.id} />
                     </div>
 
                     {/* Visual Stepper */}

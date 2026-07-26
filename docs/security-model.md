@@ -82,14 +82,46 @@
   enough that "always filter by org_id in the repository" stops being a reliable
   guarantee by convention alone.
 
-## Documents
-- Uploads validated by MIME whitelist and size limit before storage.
-- Storage keys are opaque; the bucket is never exposed directly — all access is via
-  short-lived signed URLs issued after an authorization check.
+## Documents (identity, fiscal code, utility bill, chamber-of-commerce — Session 14)
+- Uploads (`app/domains/documents/`) are validated by MIME whitelist
+  (`application/pdf`, `image/jpeg`, `image/png` only) and a 15 MB size limit
+  before storage; rejected content never reaches MinIO.
+- **Private bucket, no public access of any kind**: `lial-documents`
+  (`S3_BUCKET_DOCUMENTS`) is a SEPARATE MinIO bucket from the public
+  `lial-media` photo bucket below, and deliberately gets **no bucket policy
+  at all** — `ensure_documents_bucket()` only creates the bucket if missing,
+  nothing else, because MinIO buckets are private-by-default until a policy
+  explicitly grants anonymous access. There is no code path, in this project,
+  that can make a document in this bucket publicly reachable.
+- **Access is exclusively via short-lived presigned URLs**: every read goes
+  through `GET /documents/{id}/url` (gated by `documents.download` +
+  contract-ownership ABAC), which returns a SigV4-signed URL good for 5
+  minutes (`generate_presigned_document_url()`, `PRESIGNED_URL_TTL_SECONDS =
+  300`). There is no other way to fetch a document's bytes — no direct
+  bucket URL, no static file path, nothing a search-engine crawler or a
+  leaked link could reuse after the window expires.
+- **Reverse-proxy signature mechanics**: nginx's `location /lial-documents/`
+  (`infrastructure/nginx/nginx.conf`) forwards to MinIO with a **hardcoded**
+  `Host: minio:9000` header, not `$host`. The presigning client inside the
+  API signs the request against MinIO's internal Docker hostname
+  (`http://minio:9000`); SigV4 signatures cover the `Host` header, so if
+  nginx forwarded the public domain's Host instead, every presigned URL
+  would fail `SignatureDoesNotMatch` regardless of validity. Verified live:
+  the signed URL returns the file (200); the identical path with the
+  signature stripped off, or a bare bucket-listing request, both return
+  MinIO's own `403 AccessDenied`.
 - Antivirus scan hook (`document_scan_results`) is a pluggable interface; no scanner is
   wired in v1 (documented gap, not silently assumed safe — downloads remain
   permission-gated regardless of scan status).
-- **Not the same bucket as profile/product photos** (Session 13,
+- Who can see what: `documents.upload` is granted to `CUSTOMER` (their own
+  contract only, ABAC-checked) and every staff role; `documents.review`
+  (approve/reject with a note) is staff-only — a customer can add documents
+  but never mark their own as verified. Admin/back-office can also upload a
+  document to any contract directly ("the customer sent it another way"),
+  not just review what the customer submitted themselves.
+
+## Profile / product photos — a deliberately different, PUBLIC bucket
+- **Not the same bucket as the sensitive documents above** (Session 13,
   `core/storage.py`): photos live in a SEPARATE, deliberately PUBLIC-read
   bucket (`lial-media`/`S3_BUCKET_MEDIA`) served directly by nginx, since
   they're not sensitive and need to be trivially embeddable as `<img src>`.

@@ -83,12 +83,17 @@ export function TreeNodeRenderer({
   node,
   onCopy,
   copiedId,
+  onNodeClick,
   startOpen = false,
   forceOpen = false,
 }: {
   node: TreeNode;
   onCopy: (id: string) => void;
   copiedId: string | null;
+  /** Opens the node-detail popup (people below, contracts, commission) for
+      this specific agent -- see network-node-detail-modal.tsx. Propagated to
+      every descendant so the popup works at any depth, not just the root. */
+  onNodeClick?: (agentId: string, displayName: string) => void;
   /** Initial open state for THIS node only -- never propagated to children,
       so by default each level starts collapsed and has to be opened one
       click at a time ("apri il primo livello, vedi il secondo, apri
@@ -133,9 +138,30 @@ export function TreeNodeRenderer({
 
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-white light:text-slate-900 truncate">
-                {formatShortName(node.display_name)}
-              </span>
+              {onNodeClick ? (
+                <button
+                  onClick={() => onNodeClick(node.agent_id, node.display_name)}
+                  className="text-sm font-semibold text-white light:text-slate-900 truncate hover:text-orange-400 transition cursor-pointer underline decoration-dotted decoration-slate-600 underline-offset-2"
+                  title="Vedi dettagli (persone sotto, contratti, provvigioni)"
+                >
+                  {formatShortName(node.display_name)}
+                </button>
+              ) : (
+                <span className="text-sm font-semibold text-white light:text-slate-900 truncate">
+                  {formatShortName(node.display_name)}
+                </span>
+              )}
+              {onNodeClick && (
+                <button
+                  onClick={() => onNodeClick(node.agent_id, node.display_name)}
+                  className="p-0.5 rounded text-slate-500 hover:text-orange-400 hover:bg-white/5 transition cursor-pointer"
+                  title="Dettagli nodo"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              )}
               <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${depthStyle.chip}`}>
                 {depthStyle.label}
               </span>
@@ -180,6 +206,7 @@ export function TreeNodeRenderer({
               node={child}
               onCopy={onCopy}
               copiedId={copiedId}
+              onNodeClick={onNodeClick}
               forceOpen={forceOpen}
             />
           ))}

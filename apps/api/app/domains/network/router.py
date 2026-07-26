@@ -113,8 +113,11 @@ async def get_branch_contracts(
     promoter's whole downline -- lets a promoter go from "there's a problem" to
     "here's the customer to contact" without leaving the network view."""
     await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
+    viewer_agent_id = await _resolve_own_agent_id(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
     rows = await network_service.get_branch_contracts(
-        db, organization_id=current_user.organization_id, root_agent_id=agent_id
+        db, organization_id=current_user.organization_id, root_agent_id=agent_id, viewer_agent_id=viewer_agent_id
     )
     return [BranchContractRead(**row) for row in rows]
 

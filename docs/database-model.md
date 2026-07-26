@@ -230,6 +230,10 @@ contracts
     recomputed retroactively if the product version's duration later changes.
     Powers the admin contract list's expiry column + year filter and the
     promoter's per-contract expiry display),
+  iban nullable (added Session 14 -- direct-debit account for the utility's
+    recurring charge; basic format check only, `^[A-Z]{2}[0-9A-Z]{13,32}$`,
+    not a full mod-97 checksum. Editable by the customer on their own
+    contract or by staff on any contract),
   created_at
 
 contract_status_history
@@ -238,6 +242,21 @@ contract_status_history
 
 contract_events
   id, contract_id, event_type, payload jsonb, created_at
+
+documents (added Session 14 -- sensitive contract paperwork; see
+  security-model.md for the private-storage design this table backs)
+  id, organization_id, contract_id,
+  document_type (IDENTITY/FISCAL_CODE/UTILITY_BILL/CHAMBER_OF_COMMERCE --
+    the last one only required for COMPANY/CONDOMINIUM customers, see
+    business-rules.md),
+  original_filename, storage_key (opaque, unique -- the MinIO object key in
+    the private `lial-documents` bucket, never a URL),
+  content_type, size_bytes,
+  uploaded_by_user_id, uploaded_by_role (snapshot at upload time -- "frozen
+    at the moment it happens", same pattern as network_snapshots),
+  status (PENDING_REVIEW/APPROVED/REJECTED, indexed), reviewed_by_user_id
+    nullable, reviewed_at nullable, review_note nullable,
+  created_at
 ```
 
 Contract `status` is constrained (checked in application code + a Postgres CHECK

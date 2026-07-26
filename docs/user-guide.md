@@ -76,14 +76,20 @@ prezzo e IVA. Le altre sezioni: **I miei Contratti** (stato tradotto in
 italiano, prodotto acquistato mostrato per nome non per codice tecnico, punto
 di fornitura mostrato con un nome comprensibile — es. "Energia elettrica - Via
 Roma 12, Milano" — non solo il codice POD/PDR, e data di scadenza/rinnovo ben
-in evidenza, colorata in ambra quando manca meno di 30 giorni) e **Supporto &
-Assistenza** — qui puoi aprire un ticket vero (non solo un modulo che scompare):
-resta visibile nella tua area finché non viene risolto, e vedi le risposte
-dell'amministrazione direttamente nella conversazione.
+in evidenza, colorata in ambra quando manca meno di 30 giorni). Ogni contratto
+mostra anche il proprio **IBAN per l'addebito** (modificabile in linea) e i
+**documenti richiesti** (carta d'identità, codice fiscale, bolletta luce/gas,
+e per aziende/condomini anche la visura camerale): per ciascuno vedi se manca,
+è in attesa di verifica o è già stato approvato, e puoi caricare/sostituire il
+file direttamente da qui — se l'amministrazione segnala "documenti mancanti"
+su un contratto, è qui che li aggiungi. **Supporto & Assistenza** — qui puoi
+aprire un ticket vero (non solo un modulo che scompare): resta visibile nella
+tua area finché non viene risolto, e vedi le risposte dell'amministrazione
+direttamente nella conversazione.
 
 Cosa non è ancora disponibile: acquisto/checkout diretto dallo shop (oggi la
 vetrina è consultabile, l'attivazione di un contratto passa dall'amministrazione
-o dal promoter), download documenti, storico pagamenti/fatture.
+o dal promoter), storico pagamenti/fatture.
 
 ### 3.2 Area Promoter (`/promoter`)
 
@@ -106,7 +112,13 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   (fino a 12), con nomi reali (non solo codici), qualifiche. Naviga livello per
   livello: si apre subito il tuo primo livello (i tuoi diretti), poi clicchi
   su una persona per aprire il livello sotto di lei, e così via — non un unico
-  elenco con tutto espanso insieme.
+  elenco con tutto espanso insieme. **Clicca il nome (o l'icona accanto) di
+  qualsiasi persona nell'albero** per aprire un popup di dettaglio: quante
+  persone ha sotto di sé, quanti contratti e in che stato, il valore
+  complessivo generato in quel ramo e — per ogni contratto — **la provvigione
+  che HAI guadagnato tu specificamente da quel contratto** (diversa dalla
+  provvigione totale pagata a tutta la filiera, perché nel piano multilivello
+  ogni persona nella catena prende una quota diversa).
 - **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
   pulsante **Condividi** su ogni prodotto: copia negli appunti un link diretto
   a quel prodotto con il tuo codice promoter già incorporato, pronto da inviare
@@ -137,14 +149,21 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   punto di fornitura con nome comprensibile, colonna scadenza/rinnovo colorata
   per urgenza, filtro per anno (storico separato per anno, utile perché ogni
   anno ci saranno contratti da rinnovare), filtri per stato, azione di
-  transizione di stato con motivazione obbligatoria.
+  transizione di stato con motivazione obbligatoria. Il pulsante **Recensisci**
+  apre anche i **documenti del contratto** (carta d'identità, codice fiscale,
+  bolletta, visura camerale per aziende/condomini): da qui puoi caricare un
+  documento per conto del cliente (es. se te lo ha inviato via email) e,
+  quando il cliente ha caricato il suo, **approvarlo o respingerlo** con una
+  nota — la nota compare automaticamente al promoter nella sua vista di rete,
+  cosi sa cosa manca e può contattare il cliente.
 - **Nuovo Contratto** — form completo: scegli se cliente nuovo o esistente; per
   un cliente nuovo raccoglie tipologia (privato/azienda), codice fiscale o
   partita IVA, nome e cognome (o ragione sociale), email, cellulare, PEC
-  (opzionale) e i dati del punto di fornitura; poi scegli l'offerta e il
-  promoter/venditore che ha portato la vendita, con una nota libera opzionale
-  (utile per l'amministrazione — chi lo ha invitato, con quale promozione,
-  preferenze di contatto).
+  (opzionale) e i dati del punto di fornitura; poi scegli l'offerta, l'IBAN per
+  l'addebito (opzionale, puoi aggiungerlo dopo) e il promoter/venditore che ha
+  portato la vendita, con una nota libera opzionale (utile per
+  l'amministrazione — chi lo ha invitato, con quale promozione, preferenze di
+  contatto).
 - **Anagrafiche Clienti** — foto profilo (o icona generica se non caricata) in
   ogni riga; icona **Mostra** apre un popup con tutti i dati (indirizzi, punti
   di fornitura, dati fiscali) e in più un **riepilogo contratti**: prodotto,
@@ -170,7 +189,12 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   proprio ramo), qui vedi **l'intera organizzazione**: tutti i rami, con
   ricerca ed espandi/comprimi. Naviga livello per livello come nella vista
   promoter — "Espandi tutto" o una ricerca forzano l'apertura di tutti i
-  livelli in una volta.
+  livelli in una volta. Come nella vista promoter, **clicca il nome di
+  qualsiasi persona** per il popup di dettaglio (persone sotto, contratti,
+  valore, provvigioni) — qui però, essendo un ruolo di staff e non un
+  promoter con una propria filiera, la provvigione mostrata è quella totale
+  del ramo, non "la tua", perché lo staff non è un beneficiario del piano
+  provvigionale.
 - **Ticket di Supporto** — tutti i ticket aperti da clienti e promoter, con
   filtro per chi li ha aperti e per stato; rispondi e la risposta appare
   subito nell'area del cliente/promoter. Una risposta su un ticket "Aperto" lo

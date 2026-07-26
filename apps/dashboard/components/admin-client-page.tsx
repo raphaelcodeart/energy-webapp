@@ -9,6 +9,7 @@ import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
+import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
 import { SectionBanner } from "@/components/section-banner";
 import type { ContractRead, CustomerRead } from "@/lib/types";
@@ -447,6 +448,11 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               <p>Cliente: <span className="font-semibold text-white light:text-slate-900">{customerNameById.get(selectedContract.customer_id) ?? "Cliente sconosciuto"}</span></p>
               <p>ID Contratto: <span className="font-mono text-white light:text-slate-900 text-[10px]">{selectedContract.id}</span></p>
               <p>Stato Attuale: <span className="font-bold text-orange-400">{STATUS_LABELS[selectedContract.status] || selectedContract.status}</span></p>
+            </div>
+
+            <div className="mb-5">
+              <p className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase mb-2">Documenti Contrattuali</p>
+              <ContractDocumentsPanel contractId={selectedContract.id} isStaff />
             </div>
 
             <form onSubmit={handleExecuteTransition} className="space-y-4">

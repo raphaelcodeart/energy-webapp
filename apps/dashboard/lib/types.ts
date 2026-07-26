@@ -14,6 +14,7 @@ export type ContractRead = {
   expires_at: string | null;
   product_name: string | null;
   supply_point_label: string | null;
+  iban: string | null;
 };
 
 export type CommissionMovementRead = {
@@ -252,11 +253,13 @@ export type BranchContractRead = {
   customer_email: string | null;
   customer_phone: string | null;
   product_name: string;
+  value_cents: number;
   supply_point_label: string | null;
   expires_at: string | null;
   producer_agent_id: string;
   producer_name: string;
   commission_cents: number;
+  my_commission_cents: number | null;
   is_problem: boolean;
   admin_note: string | null;
 };

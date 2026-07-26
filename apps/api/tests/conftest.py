@@ -15,6 +15,7 @@ from app.domains.catalog import models as _catalog_models  # noqa: F401
 from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.customers import models as _customers_models  # noqa: F401
+from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.organizations.models import Organization
@@ -43,6 +44,18 @@ async def _create_schema():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_storage_buckets():
+    """Normally done by main.py's FastAPI startup event, which never fires in
+    a pytest run (no ASGI lifespan here) -- tests that upload real files
+    (test_documents.py, and any future photo-upload test) need the buckets to
+    already exist against the real MinIO this stack runs, same as the live app."""
+    from app.core.storage import ensure_documents_bucket, ensure_media_bucket
+
+    ensure_media_bucket()
+    ensure_documents_bucket()
 
 
 @pytest_asyncio.fixture
