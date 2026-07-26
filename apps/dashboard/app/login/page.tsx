@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -63,20 +64,15 @@ export default function LoginPage() {
       </div>
 
       {/* Background decorations */}
-      <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-violet-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
-      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-cyan-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
+      <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-orange-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
+      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-amber-600/10 rounded-full blur-3xl -z-10 animate-fade-in" />
 
       <div className="w-full max-w-md animate-scale-up">
         {/* Logo / Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-tr from-violet-600 to-cyan-500 shadow-lg shadow-violet-500/20 mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-white shadow-lg shadow-orange-500/20 mb-4">
+            <Image src="/logo.png" alt="Lial Energy" width={72} height={65} priority />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white light:text-slate-900">
-            LIAL <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">ENERGY</span>
-          </h1>
           <p className="text-slate-400 light:text-slate-500 text-sm mt-2">Piattaforma di Gestione Commerciale & Rete</p>
         </div>
 
@@ -93,7 +89,7 @@ export default function LoginPage() {
             </label>
             <input
               id="organizationId"
-              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={organizationId}
               onChange={(e) => setOrganizationId(e.target.value)}
               placeholder="Inserisci il codice UUID dell'organizzazione"
@@ -108,7 +104,7 @@ export default function LoginPage() {
             <input
               id="email"
               type="email"
-              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nome@lialenergy.demo"
@@ -123,7 +119,7 @@ export default function LoginPage() {
             <input
               id="password"
               type="password"
-              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -143,7 +139,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-violet-600/30 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none cursor-pointer mt-2"
+            className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-orange-600/30 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none cursor-pointer mt-2"
           >
             {submitting ? (
               <span className="flex items-center justify-center gap-2">
@@ -160,8 +156,8 @@ export default function LoginPage() {
         </form>
 
         {/* Demo Helper Panel */}
-        <div className="glass-card rounded-2xl p-6 mt-6 border-cyan-500/10">
-          <h3 className="text-sm font-semibold text-cyan-400 flex items-center gap-2 mb-3">
+        <div className="glass-card rounded-2xl p-6 mt-6 border-amber-500/10">
+          <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2 mb-3">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -174,14 +170,14 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => fillTestCredentials("admin")}
-              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-violet-500/20 hover:border-violet-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
+              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-orange-500/20 hover:border-orange-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
             >
               Amministratore
             </button>
             <button
               type="button"
               onClick={() => fillTestCredentials("promoter")}
-              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-cyan-500/20 hover:border-cyan-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
+              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-amber-500/20 hover:border-amber-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
             >
               Promoter
             </button>

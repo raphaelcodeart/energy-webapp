@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -25,17 +26,15 @@ interface AppShellProps {
 
 function LogoMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 shadow-lg shadow-violet-500/20 shrink-0">
-        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      </div>
-      {!compact && (
-        <span className="text-lg font-bold tracking-tight text-white light:text-slate-900">
-          LIAL <span className="text-violet-400 light:text-violet-600">ENERGY</span>
-        </span>
-      )}
+    <div className="flex items-center rounded-xl bg-white p-1.5 shadow-sm shrink-0">
+      <Image
+        src="/logo.png"
+        alt="Lial Energy"
+        width={compact ? 32 : 40}
+        height={compact ? 29 : 36}
+        priority
+        className="h-auto w-auto"
+      />
     </div>
   );
 }
@@ -71,7 +70,7 @@ function UserMenu({ email, roleLabel }: { email?: string; roleLabel: string }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-xs font-bold text-white shadow-md cursor-pointer"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 text-xs font-bold text-white shadow-md cursor-pointer"
         aria-label="Menu utente"
       >
         {initials}
@@ -129,21 +128,21 @@ export function AppShell({
               }}
               className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all cursor-pointer group ${
                 active
-                  ? "bg-gradient-to-r from-violet-600/15 to-cyan-500/10 text-violet-300 light:text-violet-700 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25)]"
+                  ? "bg-gradient-to-r from-orange-600/15 to-amber-500/10 text-orange-300 light:text-orange-700 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25)]"
                   : "text-slate-400 light:text-slate-500 hover:bg-white/5 light:hover:bg-slate-900/5 hover:text-white light:hover:text-slate-900"
               }`}
             >
               <span
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
                   active
-                    ? "bg-violet-500/20 text-violet-400 light:bg-violet-100 light:text-violet-600"
+                    ? "bg-orange-500/20 text-orange-400 light:bg-orange-100 light:text-orange-600"
                     : "bg-white/5 light:bg-slate-900/5 text-current opacity-80 group-hover:opacity-100 group-hover:bg-white/10 light:group-hover:bg-slate-900/10"
                 }`}
               >
                 {item.icon}
               </span>
               <span className="flex-1 text-left truncate">{item.label}</span>
-              {active && <span className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />}
+              {active && <span className="h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />}
             </button>
           );
         })}

@@ -65,12 +65,12 @@ export function PromoterClientPage({ me, branch, email }: PromoterClientPageProp
           <div className="flex items-center gap-4 bg-slate-900/60 light:bg-slate-50 border border-white/5 light:border-slate-200 rounded-2xl px-5 py-3 glass-card">
             <div>
               <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Codice Promoter</p>
-              <p className="font-mono text-base text-cyan-400 font-semibold">{me.promoter_code}</p>
+              <p className="font-mono text-base text-amber-400 font-semibold">{me.promoter_code}</p>
             </div>
             <div className="h-8 w-px bg-white/10 light:bg-slate-200" />
             <div>
               <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">Qualifica Attuale</p>
-              <p className="text-base text-violet-400 font-semibold">{me.current_rank_id || "Nessuna"}</p>
+              <p className="text-base text-orange-400 font-semibold">{me.current_rank_id || "Nessuna"}</p>
             </div>
           </div>
         ) : undefined
@@ -92,10 +92,10 @@ export function PromoterClientPage({ me, branch, email }: PromoterClientPageProp
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
                     {branch.length} agenti nel ramo
                   </span>
-                  <span className="px-2.5 py-1 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 font-semibold">
                     Profondità massima: {maxDepth} / 12 livelli
                   </span>
                 </div>

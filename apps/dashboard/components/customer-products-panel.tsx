@@ -38,7 +38,7 @@ export function CustomerProductsPanel() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12 text-slate-400 light:text-slate-500 gap-2">
-        <svg className="animate-spin h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24">
+        <svg className="animate-spin h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
@@ -75,20 +75,20 @@ export function CustomerProductsPanel() {
             return (
               <div
                 key={p.id}
-                className="glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-violet-500/30 transition-all duration-200"
+                className="glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/30 transition-all duration-200"
               >
-                <div className="h-40 bg-gradient-to-br from-violet-500/10 to-cyan-500/10 flex items-center justify-center overflow-hidden">
+                <div className="h-40 bg-gradient-to-br from-orange-500/10 to-amber-500/10 flex items-center justify-center overflow-hidden">
                   {v.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element -- external, admin-supplied URLs
                     <img src={v.image_url} alt={v.name} className="w-full h-full object-cover" />
                   ) : (
-                    <svg className="w-12 h-12 text-violet-400/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-12 h-12 text-orange-400/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                   )}
                 </div>
                 <div className="p-5">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
                     {ENERGY_LABELS[p.energy_type] ?? p.energy_type}
                   </span>
                   <h4 className="text-base font-semibold text-white light:text-slate-900 mt-3 mb-1">{v.name}</h4>
@@ -96,7 +96,7 @@ export function CustomerProductsPanel() {
                     <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-3">{v.description}</p>
                   )}
                   <div className="flex items-baseline gap-1 pt-3 border-t border-white/5 light:border-slate-200">
-                    <span className="text-xl font-bold text-violet-400">{euro(v.base_price_cents)}</span>
+                    <span className="text-xl font-bold text-orange-400">{euro(v.base_price_cents)}</span>
                     <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
                   </div>
                   {v.initial_fee_cents > 0 && (

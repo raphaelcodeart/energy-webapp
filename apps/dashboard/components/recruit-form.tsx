@@ -59,7 +59,7 @@ export function RecruitForm({ onRecruited }: { onRecruited: () => void }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-500/20 transition cursor-pointer"
+        className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer"
       >
         + Aggiungi Collaboratore
       </button>
@@ -91,18 +91,18 @@ export function RecruitForm({ onRecruited }: { onRecruited: () => void }) {
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome e Cognome</label>
               <input required value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Promoter</label>
               <input required value={promoterCode} onChange={(e) => setPromoterCode(e.target.value)}
                 placeholder="Es: S1-MARIO-ROSSI"
-                className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-violet-500" />
+                className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-orange-500" />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Qualifica iniziale</label>
               <select value={rankId} onChange={(e) => setRankId(e.target.value)}
-                className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500">
+                className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
                 <option value="">— Nessuna —</option>
                 {ranks.map((r) => (
                   <option key={r.id} value={r.id}>{r.code} — {r.name}</option>
@@ -120,7 +120,7 @@ export function RecruitForm({ onRecruited }: { onRecruited: () => void }) {
                 Annulla
               </button>
               <button type="submit" disabled={loading}
-                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
+                className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
                 {loading ? "Registrazione..." : "Registra"}
               </button>
             </div>

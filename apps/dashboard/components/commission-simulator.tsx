@@ -111,7 +111,7 @@ export function CommissionSimulator() {
                     type="radio"
                     checked={!useCustom}
                     onChange={() => setUseCustom(false)}
-                    className="accent-violet-500 cursor-pointer"
+                    className="accent-orange-500 cursor-pointer"
                   />
                   Predefiniti Demo
                 </label>
@@ -120,7 +120,7 @@ export function CommissionSimulator() {
                     type="radio"
                     checked={useCustom}
                     onChange={() => setUseCustom(true)}
-                    className="accent-violet-500 cursor-pointer"
+                    className="accent-orange-500 cursor-pointer"
                   />
                   ID Personalizzato
                 </label>
@@ -130,7 +130,7 @@ export function CommissionSimulator() {
                 <select
                   value={contractId}
                   onChange={(e) => setContractId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
                 >
                   {DEMO_CONTRACTS.map(c => (
                     <option key={c.id} value={c.id} className="bg-slate-950 light:bg-white">
@@ -144,7 +144,7 @@ export function CommissionSimulator() {
                   placeholder="Inserisci UUID contratto (es: e1000000-...)"
                   value={customContractId}
                   onChange={(e) => setCustomContractId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-violet-500"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500"
                 />
               )}
             </div>
@@ -165,12 +165,12 @@ export function CommissionSimulator() {
                 placeholder="UUID Agente (es: a0, a1...)"
                 value={overrideAgentId}
                 onChange={(e) => setOverrideAgentId(e.target.value)}
-                className="flex-1 rounded-xl glass-input px-3 py-2 text-xs focus:border-violet-500"
+                className="flex-1 rounded-xl glass-input px-3 py-2 text-xs focus:border-orange-500"
               />
               <select
                 value={overrideRank}
                 onChange={(e) => setOverrideRank(e.target.value)}
-                className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 light:bg-white focus:border-violet-500"
+                className="w-24 rounded-xl glass-input px-2 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
               >
                 {["S1", "S2", "S3", "TL1", "TL2", "TL3", "TL4", "MD1", "MD2", "MD3", "MD4", "MD5"].map(r => (
                   <option key={r} value={r} className="bg-slate-950 light:bg-white">{r}</option>
@@ -179,7 +179,7 @@ export function CommissionSimulator() {
               <button
                 type="button"
                 onClick={addOverride}
-                className="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer"
               >
                 Aggiungi
               </button>
@@ -194,7 +194,7 @@ export function CommissionSimulator() {
                     className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 light:bg-slate-100 border border-slate-700 light:border-slate-300 text-xs text-slate-200 light:text-slate-700"
                   >
                     <span className="font-mono text-[10px] text-slate-400 light:text-slate-500">{agent.substring(0, 6)}...</span>:
-                    <span className="font-bold text-violet-400">{rank}</span>
+                    <span className="font-bold text-orange-400">{rank}</span>
                     <button
                       type="button"
                       onClick={() => removeOverride(agent)}
@@ -212,7 +212,7 @@ export function CommissionSimulator() {
             type="button"
             onClick={runSimulation}
             disabled={loading}
-            className="w-full mt-4 rounded-xl bg-gradient-to-r from-amber-500 to-violet-600 hover:from-amber-400 hover:to-violet-500 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-violet-600/20 transition-all duration-300 disabled:opacity-50 cursor-pointer"
+            className="w-full mt-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 py-3 text-sm font-semibold text-white shadow-lg hover:shadow-orange-600/20 transition-all duration-300 disabled:opacity-50 cursor-pointer"
           >
             {loading ? "Calcolo provvigioni in corso..." : "Esegui Simulazione"}
           </button>
@@ -270,7 +270,7 @@ export function CommissionSimulator() {
                           <span className="font-mono text-xs text-slate-300 light:text-slate-600">
                             Agente: {step.beneficiary_agent_id.substring(0, 6)}...
                           </span>
-                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded">
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded">
                             {step.rank_code}
                           </span>
                         </div>

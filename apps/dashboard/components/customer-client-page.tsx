@@ -151,8 +151,8 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                       isRejected || isCancelled
                         ? "from-rose-500 to-red-600"
                         : c.status === "ACTIVE"
-                          ? "from-emerald-400 to-cyan-500"
-                          : "from-amber-400 to-violet-500"
+                          ? "from-emerald-400 to-amber-500"
+                          : "from-amber-400 to-orange-500"
                     }`} />
 
                     {/* Header details */}
@@ -192,7 +192,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                           {/* Connector Line */}
                           <div className="absolute top-4 left-4 right-4 h-0.5 bg-slate-800 light:bg-slate-100 -z-10" />
                           <div
-                            className="absolute top-4 left-4 h-0.5 bg-gradient-to-r from-violet-500 to-cyan-400 -z-10 transition-all duration-500"
+                            className="absolute top-4 left-4 h-0.5 bg-gradient-to-r from-orange-500 to-amber-400 -z-10 transition-all duration-500"
                             style={{ width: `${(stepIndex / (STEPS.length - 1)) * 100}%` }}
                           />
 
@@ -206,9 +206,9 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                                   <div
                                     className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
                                       isActive
-                                        ? "bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-600/30 scale-110"
+                                        ? "bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-600/30 scale-110"
                                         : isCompleted
-                                          ? "bg-slate-900 light:bg-white border-cyan-500 text-cyan-400"
+                                          ? "bg-slate-900 light:bg-white border-amber-500 text-amber-400"
                                           : "bg-slate-950 light:bg-white border-slate-800 light:border-slate-200 text-slate-600"
                                     }`}
                                   >
@@ -220,7 +220,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                                       idx + 1
                                     )}
                                   </div>
-                                  <span className={`text-[10px] font-semibold mt-2 ${isActive ? "text-violet-400" : isCompleted ? "text-slate-300 light:text-slate-600" : "text-slate-600"}`}>
+                                  <span className={`text-[10px] font-semibold mt-2 ${isActive ? "text-orange-400" : isCompleted ? "text-slate-300 light:text-slate-600" : "text-slate-600"}`}>
                                     {STATUS_LABELS[step] ?? step}
                                   </span>
                                 </div>
@@ -267,7 +267,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
       {activeTab === "support" && (
         <div className="max-w-2xl mx-auto glass-card rounded-2xl p-8 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-violet-500/10 rounded-xl border border-violet-500/20 text-violet-400">
+            <div className="p-2 bg-orange-500/10 rounded-xl border border-orange-500/20 text-orange-400">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
@@ -297,7 +297,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                     id="ticketType"
                     value={ticketType}
                     onChange={(e) => setTicketType(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
                   >
                     <option value="ASSISTENZA_TECNICA" className="bg-slate-950 light:bg-white">Problema Tecnico</option>
                     <option value="FATTURAZIONE" className="bg-slate-950 light:bg-white">Fatture e Consumi</option>
@@ -316,7 +316,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                     placeholder="Breve descrizione..."
                     value={ticketSubject}
                     onChange={(e) => setTicketSubject(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500"
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
                   />
                 </div>
               </div>
@@ -332,14 +332,14 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
                   placeholder="Descrivi qui la tua richiesta o il problema riscontrato..."
                   value={ticketMessage}
                   onChange={(e) => setTicketMessage(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500 resize-none"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 resize-none"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submittingTicket}
-                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-50 cursor-pointer mt-2"
+                className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-300 disabled:opacity-50 cursor-pointer mt-2"
               >
                 {submittingTicket ? "Invio in corso..." : "Invia Messaggio"}
               </button>

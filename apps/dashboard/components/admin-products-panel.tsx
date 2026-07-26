@@ -100,7 +100,7 @@ export function AdminProductsPanel() {
         </p>
         <button
           onClick={() => setShowCreate(true)}
-          className="px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-500/20 transition cursor-pointer shrink-0"
+          className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer shrink-0"
         >
           + Nuovo Prodotto
         </button>
@@ -128,7 +128,7 @@ export function AdminProductsPanel() {
               </div>
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
                     {ENERGY_LABELS[p.energy_type] ?? p.energy_type}
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -153,7 +153,7 @@ export function AdminProductsPanel() {
                     Target: {CUSTOMER_TYPE_LABELS[p.customer_type] ?? p.customer_type}
                   </span>
                   {p.current_version && (
-                    <span className="text-sm font-bold text-violet-400">
+                    <span className="text-sm font-bold text-orange-400">
                       {euro(p.current_version.base_price_cents)}
                     </span>
                   )}
@@ -182,12 +182,12 @@ export function AdminProductsPanel() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice</label>
                   <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="Es: LUCE-PMI-01"
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-violet-500" />
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-orange-500" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome</label>
                   <input required value={name} onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
               </div>
 
@@ -195,7 +195,7 @@ export function AdminProductsPanel() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Tipo Energia</label>
                   <select value={energyType} onChange={(e) => setEnergyType(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500">
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
                     {Object.entries(ENERGY_LABELS).map(([code2, label]) => (
                       <option key={code2} value={code2}>{label}</option>
                     ))}
@@ -204,7 +204,7 @@ export function AdminProductsPanel() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Cliente Target</label>
                   <select value={customerType} onChange={(e) => setCustomerType(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500">
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
                     {Object.entries(CUSTOMER_TYPE_LABELS).map(([code2, label]) => (
                       <option key={code2} value={code2}>{label}</option>
                     ))}
@@ -216,14 +216,14 @@ export function AdminProductsPanel() {
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Descrizione</label>
                 <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder="Descrizione visibile ai clienti nel marketplace..."
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500 resize-none" />
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 resize-none" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Foto prodotto (URL immagine)</label>
                 <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="https://..."
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -231,24 +231,24 @@ export function AdminProductsPanel() {
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Prezzo base (EUR)</label>
                   <input required inputMode="decimal" value={basePriceEuro} onChange={(e) => setBasePriceEuro(e.target.value)}
                     placeholder="18.00"
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Fee iniziale (EUR)</label>
                   <input inputMode="decimal" value={initialFeeEuro} onChange={(e) => setInitialFeeEuro(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Fee ricorrente (EUR)</label>
                   <input inputMode="decimal" value={recurringFeeEuro} onChange={(e) => setRecurringFeeEuro(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Periodicità fatturazione</label>
                 <select value={billingPeriod} onChange={(e) => setBillingPeriod(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500">
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
                   <option value="MONTHLY">Mensile</option>
                   <option value="QUARTERLY">Trimestrale</option>
                   <option value="ANNUAL">Annuale</option>
@@ -265,7 +265,7 @@ export function AdminProductsPanel() {
                   Annulla
                 </button>
                 <button type="submit" disabled={createLoading}
-                  className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
                   {createLoading ? "Creazione..." : "Crea Prodotto"}
                 </button>
               </div>
