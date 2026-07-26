@@ -7,6 +7,7 @@ from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
 from app.domains.catalog import service as catalog_service
 from app.domains.catalog.schemas import (
+    ProductCatalogRead,
     ProductCreate,
     ProductRead,
     ProductUpdate,
@@ -19,13 +20,25 @@ from app.domains.catalog.schemas import (
 router = APIRouter(prefix="/products", tags=["catalog"])
 
 
-@router.get("", response_model=list[ProductRead])
+@router.get("", response_model=list[ProductCatalogRead])
 async def list_products(
     current_user: CurrentUser = Depends(require_permission("products.read")),
     db: AsyncSession = Depends(get_db),
-) -> list[ProductRead]:
-    products = await catalog_service.list_products(db, organization_id=current_user.organization_id)
-    return [ProductRead.model_validate(p) for p in products]
+) -> list[ProductCatalogRead]:
+    """Returns every product paired with its current version's display fields
+    (name/description/photo/price) -- both the admin catalog grid and the
+    customer-facing marketplace read from this same endpoint; the customer app
+    filters to status == ACTIVE client-side, admins see every status."""
+    pairs = await catalog_service.list_products_with_current_version(
+        db, organization_id=current_user.organization_id
+    )
+    return [
+        ProductCatalogRead(
+            **ProductRead.model_validate(product).model_dump(),
+            current_version=ProductVersionRead.model_validate(version) if version else None,
+        )
+        for product, version in pairs
+    ]
 
 
 @router.get("/{product_id}", response_model=ProductWithVersionsRead)

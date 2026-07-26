@@ -106,6 +106,7 @@ export type ProductVersionRead = {
   version_label: string;
   name: string;
   description: string;
+  image_url: string | null;
   base_price_cents: number;
   initial_fee_cents: number;
   recurring_fee_cents: number;
@@ -126,6 +127,10 @@ export type ProductRead = {
 
 export type ProductWithVersionsRead = ProductRead & {
   versions: ProductVersionRead[];
+};
+
+export type ProductCatalogRead = ProductRead & {
+  current_version: ProductVersionRead | null;
 };
 
 export type ContractTotals = {

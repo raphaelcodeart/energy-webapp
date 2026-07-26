@@ -23,6 +23,32 @@ async def list_products(db: AsyncSession, *, organization_id: uuid.UUID) -> list
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_products_with_current_version(
+    db: AsyncSession, *, organization_id: uuid.UUID
+) -> list[tuple[Product, ProductVersion | None]]:
+    """Each product paired with its most recent version (by valid_from) -- the
+    catalog grid (admin) and the marketplace (customer) both render name/photo/
+    price from this without a per-product detail round-trip."""
+    products = await list_products(db, organization_id=organization_id)
+    if not products:
+        return []
+
+    product_ids = [p.id for p in products]
+    versions_stmt = (
+        select(ProductVersion)
+        .where(ProductVersion.product_id.in_(product_ids))
+        .order_by(ProductVersion.product_id, ProductVersion.valid_from.desc())
+    )
+    versions = (await db.execute(versions_stmt)).scalars().all()
+
+    latest_by_product: dict[uuid.UUID, ProductVersion] = {}
+    for version in versions:
+        if version.product_id not in latest_by_product:
+            latest_by_product[version.product_id] = version
+
+    return [(product, latest_by_product.get(product.id)) for product in products]
+
+
 async def get_product_with_versions(
     db: AsyncSession, *, organization_id: uuid.UUID, product_id: uuid.UUID
 ) -> tuple[Product, list[ProductVersion]] | None:
@@ -59,6 +85,7 @@ async def create_product(
         version_label=payload.version_label,
         name=payload.name,
         description=payload.description,
+        image_url=payload.image_url,
         base_price_cents=payload.base_price_cents,
         initial_fee_cents=payload.initial_fee_cents,
         recurring_fee_cents=payload.recurring_fee_cents,
@@ -98,6 +125,7 @@ async def add_product_version(
         version_label=payload.version_label,
         name=payload.name,
         description=payload.description,
+        image_url=payload.image_url,
         base_price_cents=payload.base_price_cents,
         initial_fee_cents=payload.initial_fee_cents,
         recurring_fee_cents=payload.recurring_fee_cents,
@@ -141,6 +169,8 @@ async def update_product_version(
         version.name = payload.name
     if payload.description is not None:
         version.description = payload.description
+    if payload.image_url is not None:
+        version.image_url = payload.image_url
     if payload.base_price_cents is not None:
         version.base_price_cents = payload.base_price_cents
     if payload.initial_fee_cents is not None:

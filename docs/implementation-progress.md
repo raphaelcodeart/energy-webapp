@@ -4,6 +4,64 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 7 — 2026-07-26 (same day, continued) — Network tree readability, customer marketplace, nginx root-cause fix
+
+Three user-driven fixes, done live between Fase 2 and Fase 3 of the admin
+dashboard plan (not itself a numbered phase):
+
+**Network tree: real names + per-level colors.** `GET
+/network/agents/{id}/branch` returned only `(agent_id, depth)`, so the tree/
+table UI rendered raw truncated UUIDs -- unusable for a non-technical user
+trying to read their own downline. The endpoint now joins `agent_profiles`/
+`ranks` and returns `display_name`, `promoter_code`, `status`, `rank_code`.
+`BranchVisualizer` shows "Nome C." (given name + surname initial) per node and
+gives each depth (0=root, 1-12=career-plan levels) a distinct color (left
+rail + badge chip) with a legend at the top, so levels are recognizable at a
+glance. `BranchTable` got the same underlying fields.
+
+**Customer-facing product catalog ("ecosystem").** The admin could create
+products/versions but customers had no way to see them -- the customer app
+only had "I miei Contratti" and "Supporto". Added `image_url` to
+`product_versions` (migration `0002_product_version_image_url`, first
+migration since the initial schema) and a `ProductCatalogRead` schema that
+pairs each product with its current version's display fields (name,
+description, photo, price) so `GET /products` serves both the admin catalog
+grid and the new customer marketplace from one call, no N+1 detail fetch.
+`products.read` granted to the `CUSTOMER` role (previously only
+`contracts.read`/`documents.download`) -- patched into the live DB the same
+way as prior new-permission sessions. New `CustomerProductsPanel` ("Prodotti
+& Servizi" tab): ecommerce-style cards, photo/name/description/price, filtered
+to `ACTIVE` products only. Admin's `AdminProductsPanel` gained a photo-URL
+field on the create form and the same card styling. No purchase/checkout flow
+was added -- this is read-only catalog visibility for an already-registered
+customer, distinct from the still-deferred Fase 10 (public, invite-only
+marketplace for anonymous visitors).
+
+**Real bug found and root-cause fixed: nginx stale upstream IP on container
+recreation.** After rebuilding/recreating the `dashboard` container, nginx
+kept proxying to the *old* container IP (`connect() failed (111: Connection
+refused)`, 502s on every route) until manually reloaded -- `upstream {
+server dashboard:3000; }` blocks resolve the hostname once, at nginx
+startup/reload, and never again. This is the same class of bug as Session 3's
+"Docker bind mount points at an orphaned inode," just for DNS instead of
+filesystem, and it will keep recurring on every future deploy that recreates
+a container. Root-cause fixed instead of just working around it this time:
+`infrastructure/nginx/nginx.conf` now uses `resolver 127.0.0.11 valid=10s;`
+(Docker's embedded DNS) with a `set $upstream ...; proxy_pass
+http://$upstream;` pattern instead of static `upstream {}` blocks -- this
+forces nginx to re-resolve the container's current IP on every request
+(bounded by the 10s TTL), so container recreation no longer requires a manual
+`nginx -s reload`. Verified by force-recreating the dashboard container (IP
+changed `172.18.0.7` -> `172.18.0.6`) and confirming the live HTTPS site kept
+working with zero nginx intervention.
+
+Verified end-to-end: live curl with real JWTs (branch endpoint returns real
+names, CUSTOMER role can read `/products`, other roles still can't reach
+admin-only catalog actions), full browser-session path over HTTPS for both
+the network tree and the customer marketplace, `tsc`/`eslint`/`next build`
+clean, alembic migration applied to the live DB before the new api image was
+deployed.
+
 ## Session 6 — 2026-07-26 — Admin dashboard expansion, Fase 2: summary dashboard
 
 The user requested a full enterprise admin/promoter management overhaul (contracts,

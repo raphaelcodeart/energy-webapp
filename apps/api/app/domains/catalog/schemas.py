@@ -11,6 +11,7 @@ class ProductVersionRead(BaseModel):
     version_label: str
     name: str
     description: str
+    image_url: str | None
     base_price_cents: int
     initial_fee_cents: int
     recurring_fee_cents: int
@@ -35,6 +36,14 @@ class ProductWithVersionsRead(ProductRead):
     versions: list[ProductVersionRead] = []
 
 
+class ProductCatalogRead(ProductRead):
+    """Product + its current (most recent) version, denormalized for list views --
+    the admin catalog grid and the customer-facing marketplace both need
+    name/description/photo/price without an N+1 detail fetch per product."""
+
+    current_version: ProductVersionRead | None = None
+
+
 class ProductCreate(BaseModel):
     code: str
     energy_type: str  # ELECTRICITY / GAS / DUAL_FUEL
@@ -44,6 +53,7 @@ class ProductCreate(BaseModel):
     version_label: str = "1.0"
     name: str
     description: str = ""
+    image_url: str | None = None
     base_price_cents: int
     initial_fee_cents: int = 0
     recurring_fee_cents: int = 0
@@ -54,6 +64,7 @@ class ProductVersionCreate(BaseModel):
     version_label: str
     name: str
     description: str = ""
+    image_url: str | None = None
     base_price_cents: int
     initial_fee_cents: int = 0
     recurring_fee_cents: int = 0
@@ -63,6 +74,7 @@ class ProductVersionCreate(BaseModel):
 class ProductVersionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    image_url: str | None = None
     base_price_cents: int | None = None
     initial_fee_cents: int | None = None
     recurring_fee_cents: int | None = None

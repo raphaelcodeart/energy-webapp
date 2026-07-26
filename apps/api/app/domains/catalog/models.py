@@ -27,6 +27,7 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     version_label: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(String(2000), default="")
+    image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     base_price_cents: Mapped[int] = mapped_column(BigInteger)
     initial_fee_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     recurring_fee_cents: Mapped[int] = mapped_column(BigInteger, default=0)

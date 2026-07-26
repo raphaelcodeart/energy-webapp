@@ -78,7 +78,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         # the ledger (see commissions/simulations/simulate.py), so safe to grant.
         "commissions.simulate", "products.read",
     ],
-    "CUSTOMER": ["contracts.read", "documents.download"],
+    "CUSTOMER": ["contracts.read", "documents.download", "products.read"],
     "AUDITOR": ["audit.read", "reports.export", "reports.read"],
 }
 
