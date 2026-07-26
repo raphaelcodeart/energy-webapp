@@ -1,0 +1,225 @@
+"use client";
+
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AgentListItemRead, RankRead } from "@/lib/types";
+
+const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  SUSPENDED: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  TERMINATED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+};
+
+async function fetchAgents(): Promise<AgentListItemRead[]> {
+  const res = await fetch("/api/proxy/network/agents");
+  if (!res.ok) throw new Error("Impossibile caricare la rete commerciale.");
+  return res.json();
+}
+
+async function fetchRanks(): Promise<RankRead[]> {
+  const res = await fetch("/api/proxy/commissions/ranks");
+  if (!res.ok) throw new Error("Impossibile caricare le qualifiche.");
+  return res.json();
+}
+
+export function AdminPromotersPanel() {
+  const queryClient = useQueryClient();
+  const { data: agents, error: loadError } = useQuery({
+    queryKey: ["admin", "agents"],
+    queryFn: fetchAgents,
+  });
+  const { data: ranks = [] } = useQuery({
+    queryKey: ["admin", "ranks"],
+    queryFn: fetchRanks,
+  });
+  const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const [displayName, setDisplayName] = useState("");
+  const [promoterCode, setPromoterCode] = useState("");
+  const [parentAgentId, setParentAgentId] = useState("");
+  const [rankId, setRankId] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const nameById = new Map((agents ?? []).map((a) => [a.id, a.display_name]));
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateLoading(true);
+    setCreateError(null);
+    try {
+      const res = await fetch("/api/proxy/network/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: displayName,
+          promoter_code: promoterCode,
+          parent_agent_id: parentAgentId || null,
+          current_rank_id: rankId || null,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setShowCreate(false);
+      setDisplayName("");
+      setPromoterCode("");
+      setParentAgentId("");
+      setRankId("");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "agents"] });
+    } catch (err: any) {
+      setCreateError(err.message || "Impossibile creare l'agente.");
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  const filtered = (agents ?? []).filter(
+    (a) =>
+      a.display_name.toLowerCase().includes(search.toLowerCase()) ||
+      a.promoter_code.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="w-full sm:max-w-xs relative">
+          <input
+            type="text"
+            placeholder="Cerca promoter o codice..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl glass-input pl-10 pr-4 py-2 text-xs focus:border-violet-500"
+          />
+          <svg className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-500/20 transition cursor-pointer shrink-0"
+        >
+          + Nuovo Promoter
+        </button>
+      </div>
+
+      {loadError && <p className="text-sm text-rose-400">Impossibile caricare la rete commerciale.</p>}
+
+      <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold">
+                <th className="py-3 px-6">Nome</th>
+                <th className="py-3 px-6">Codice</th>
+                <th className="py-3 px-6">Qualifica</th>
+                <th className="py-3 px-6">Sponsor</th>
+                <th className="py-3 px-6">Stato</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 light:divide-slate-200">
+              {agents === undefined ? (
+                <tr><td colSpan={5} className="text-center py-8 text-slate-500">Caricamento...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-8 text-slate-500">Nessun promoter trovato.</td></tr>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
+                    <td className="py-4 px-6 font-medium text-white light:text-slate-900">{a.display_name}</td>
+                    <td className="py-4 px-6 font-mono text-xs">{a.promoter_code}</td>
+                    <td className="py-4 px-6">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-violet-500/10 text-violet-400 border-violet-500/20">
+                        {a.rank_code ?? "—"}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-xs">
+                      {a.direct_parent_agent_id ? nameById.get(a.direct_parent_agent_id) ?? "—" : "Radice"}
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[a.status] ?? STATUS_COLORS.ACTIVE}`}>
+                        {a.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white light:text-slate-900">Nuovo Promoter</h3>
+              <button onClick={() => setShowCreate(false)}
+                className="p-1 hover:bg-white/5 rounded-lg text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome e Cognome</label>
+                <input required value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-violet-500" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Promoter</label>
+                <input required value={promoterCode} onChange={(e) => setPromoterCode(e.target.value)}
+                  placeholder="Es: S1-MARIO-ROSSI"
+                  className="w-full rounded-xl glass-input px-3 py-2 text-sm font-mono focus:border-violet-500" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Sponsor (ramo di appartenenza)</label>
+                <select
+                  value={parentAgentId}
+                  onChange={(e) => setParentAgentId(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
+                >
+                  <option value="">— Nessuno (nuova radice di rete) —</option>
+                  {(agents ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>{a.display_name} ({a.promoter_code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Qualifica iniziale</label>
+                <select
+                  value={rankId}
+                  onChange={(e) => setRankId(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-violet-500"
+                >
+                  <option value="">— Nessuna —</option>
+                  {ranks.map((r) => (
+                    <option key={r.id} value={r.id}>{r.code} — {r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {createError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{createError}</div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setShowCreate(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer">
+                  Annulla
+                </button>
+                <button type="submit" disabled={createLoading}
+                  className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
+                  {createLoading ? "Creazione..." : "Crea Promoter"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

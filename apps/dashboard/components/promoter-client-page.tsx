@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
 import { BranchVisualizer } from "@/components/branch-visualizer";
 import { MyCommissions } from "@/components/my-commissions";
 import { CommissionSimulator } from "@/components/commission-simulator";
+import { RecruitForm } from "@/components/recruit-form";
 import type { AgentProfileRead, BranchMemberRead } from "@/lib/types";
 
 interface PromoterClientPageProps {
@@ -46,6 +48,8 @@ const NAV_ITEMS: NavItem[] = [
 
 export function PromoterClientPage({ me, branch, email }: PromoterClientPageProps) {
   const [activeTab, setActiveTab] = useState<"network" | "commissions" | "simulator">("network");
+  const router = useRouter();
+  const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
 
   return (
     <AppShell
@@ -85,17 +89,31 @@ export function PromoterClientPage({ me, branch, email }: PromoterClientPageProp
       ) : (
         <div>
           {activeTab === "network" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <BranchVisualizer members={branch} />
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
+                    {branch.length} agenti nel ramo
+                  </span>
+                  <span className="px-2.5 py-1 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-semibold">
+                    Profondità massima: {maxDepth} / 12 livelli
+                  </span>
+                </div>
+                <RecruitForm onRecruited={() => router.refresh()} />
               </div>
-              <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-                <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Dettaglio Ramo</h3>
-                <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
-                  Elenco tabellare di tutti i collaboratori diretti e indiretti.
-                </p>
-                <div className="overflow-x-auto">
-                  <BranchTable members={branch} />
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <BranchVisualizer members={branch} />
+                </div>
+                <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+                  <h3 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Dettaglio Ramo</h3>
+                  <p className="text-xs text-slate-400 light:text-slate-500 mb-6">
+                    Elenco tabellare di tutti i collaboratori diretti e indiretti, fino a 12 livelli di profondità.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <BranchTable members={branch} />
+                  </div>
                 </div>
               </div>
             </div>

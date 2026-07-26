@@ -306,6 +306,92 @@ async def move_agent(
     await db.commit()
 
 
+async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:
+    from app.domains.commissions.models import Rank
+
+    stmt = (
+        select(
+            AgentProfile.id,
+            AgentProfile.display_name,
+            AgentProfile.promoter_code,
+            AgentProfile.status,
+            AgentProfile.current_rank_id,
+            AgentProfile.joined_at,
+            Rank.code,
+            NetworkNode.direct_parent_agent_id,
+        )
+        .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
+        .join(
+            NetworkNode,
+            (NetworkNode.agent_id == AgentProfile.id) & (NetworkNode.effective_to.is_(None)),
+            isouter=True,
+        )
+        .where(AgentProfile.organization_id == organization_id)
+        .order_by(AgentProfile.joined_at.desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "id": r[0],
+            "display_name": r[1],
+            "promoter_code": r[2],
+            "status": r[3],
+            "current_rank_id": r[4],
+            "joined_at": r[5],
+            "rank_code": r[6],
+            "direct_parent_agent_id": r[7],
+        }
+        for r in rows
+    ]
+
+
+async def update_agent(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    display_name: str | None,
+    status_value: str | None,
+    current_rank_id: uuid.UUID | None,
+    actor_user_id: uuid.UUID,
+) -> AgentProfile | None:
+    from app.domains.commissions.models import AgentRankHistory
+
+    agent = await db.get(AgentProfile, agent_id)
+    if agent is None or agent.organization_id != organization_id:
+        return None
+
+    previous = {"status": agent.status, "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None}
+    if display_name is not None:
+        agent.display_name = display_name
+    if status_value is not None:
+        agent.status = status_value
+    if current_rank_id is not None:
+        agent.current_rank_id = current_rank_id
+        db.add(
+            AgentRankHistory(
+                organization_id=organization_id,
+                agent_id=agent_id,
+                rank_id=current_rank_id,
+                effective_from=utcnow(),
+                calculation_source="MANUAL",
+                rule_version_id="manual-admin-update",
+                approved_by=actor_user_id,
+                reason="Aggiornamento qualifica da pannello amministrativo",
+            )
+        )
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="network.agent_updated", entity_type="agent_profile", entity_id=str(agent_id),
+        previous_value=previous,
+        new_value={"status": agent.status, "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None},
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
 async def is_ancestor(
     db: AsyncSession, *, organization_id: uuid.UUID, ancestor_agent_id: uuid.UUID, agent_id: uuid.UUID
 ) -> bool:

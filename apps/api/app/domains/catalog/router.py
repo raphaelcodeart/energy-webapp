@@ -1,0 +1,117 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_db
+from app.core.deps import CurrentUser, require_permission
+from app.domains.catalog import service as catalog_service
+from app.domains.catalog.schemas import (
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+    ProductVersionCreate,
+    ProductVersionRead,
+    ProductVersionUpdate,
+    ProductWithVersionsRead,
+)
+
+router = APIRouter(prefix="/products", tags=["catalog"])
+
+
+@router.get("", response_model=list[ProductRead])
+async def list_products(
+    current_user: CurrentUser = Depends(require_permission("products.read")),
+    db: AsyncSession = Depends(get_db),
+) -> list[ProductRead]:
+    products = await catalog_service.list_products(db, organization_id=current_user.organization_id)
+    return [ProductRead.model_validate(p) for p in products]
+
+
+@router.get("/{product_id}", response_model=ProductWithVersionsRead)
+async def get_product(
+    product_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("products.read")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductWithVersionsRead:
+    result = await catalog_service.get_product_with_versions(
+        db, organization_id=current_user.organization_id, product_id=product_id
+    )
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    product, versions = result
+    return ProductWithVersionsRead(
+        **ProductRead.model_validate(product).model_dump(),
+        versions=[ProductVersionRead.model_validate(v) for v in versions],
+    )
+
+
+@router.patch("/{product_id}", response_model=ProductRead)
+async def update_product(
+    product_id: uuid.UUID,
+    payload: ProductUpdate,
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductRead:
+    product = await catalog_service.update_product(
+        db,
+        organization_id=current_user.organization_id,
+        product_id=product_id,
+        payload=payload,
+        actor_user_id=current_user.user_id,
+    )
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    return ProductRead.model_validate(product)
+
+
+@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+async def create_product(
+    payload: ProductCreate,
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductRead:
+    product = await catalog_service.create_product(
+        db, organization_id=current_user.organization_id, payload=payload, actor_user_id=current_user.user_id
+    )
+    return ProductRead.model_validate(product)
+
+
+@router.post(
+    "/{product_id}/versions", response_model=ProductVersionRead, status_code=status.HTTP_201_CREATED
+)
+async def add_product_version(
+    product_id: uuid.UUID,
+    payload: ProductVersionCreate,
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductVersionRead:
+    version = await catalog_service.add_product_version(
+        db,
+        organization_id=current_user.organization_id,
+        product_id=product_id,
+        payload=payload,
+        actor_user_id=current_user.user_id,
+    )
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    return ProductVersionRead.model_validate(version)
+
+
+@router.patch("/versions/{version_id}", response_model=ProductVersionRead)
+async def update_product_version(
+    version_id: uuid.UUID,
+    payload: ProductVersionUpdate,
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ProductVersionRead:
+    version = await catalog_service.update_product_version(
+        db,
+        organization_id=current_user.organization_id,
+        version_id=version_id,
+        payload=payload,
+        actor_user_id=current_user.user_id,
+    )
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product version not found")
+    return ProductVersionRead.model_validate(version)

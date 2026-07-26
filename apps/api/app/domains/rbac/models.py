@@ -26,11 +26,12 @@ PERMISSIONS = [
     "customers.read", "customers.create", "customers.update",
     "contracts.read", "contracts.create", "contracts.submit",
     "contracts.review", "contracts.approve", "contracts.activate",
-    "network.read_branch", "network.manage",
+    "network.read_branch", "network.manage", "network.recruit",
     "commissions.read_own", "commissions.read_branch", "commissions.simulate",
     "commissions.approve", "commission_adjustments.create",
     "payments.manage", "documents.download", "reports.export",
     "audit.read", "settings.manage",
+    "products.read", "products.manage",
 ]
 
 # Default role -> permission grants for the demo/seed environment. Real deployments
@@ -43,15 +44,16 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "customers.read", "customers.create", "customers.update",
         "contracts.read", "contracts.create", "contracts.submit",
         "contracts.review", "contracts.approve", "contracts.activate",
-        "network.read_branch", "network.manage",
+        "network.read_branch", "network.manage", "network.recruit",
         "commissions.read_branch", "commissions.simulate", "commissions.approve",
         "commission_adjustments.create", "payments.manage", "documents.download",
         "reports.export", "audit.read", "settings.manage",
+        "products.read", "products.manage",
     ],
     "BACK_OFFICE_OPERATOR": [
         "customers.read", "customers.create", "customers.update",
         "contracts.read", "contracts.create", "contracts.submit", "contracts.review",
-        "documents.download",
+        "documents.download", "products.read",
     ],
     "ACCOUNTING_OPERATOR": [
         "contracts.read", "payments.manage", "commissions.read_branch",
@@ -59,20 +61,22 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "SALES_MANAGER": [
         "customers.read", "contracts.read", "contracts.approve",
-        "network.read_branch", "network.manage",
+        "network.read_branch", "network.manage", "network.recruit",
         "commissions.read_branch", "commissions.simulate", "reports.export",
+        "products.read", "products.manage",
     ],
     "TEAM_LEADER": [
         "customers.read", "contracts.read", "contracts.create",
-        "network.read_branch", "commissions.read_own", "commissions.read_branch",
+        "network.read_branch", "network.recruit",
+        "commissions.read_own", "commissions.read_branch", "products.read",
     ],
     "PROMOTER": [
         "customers.read", "customers.create",
         "contracts.read", "contracts.create",
-        "network.read_branch", "commissions.read_own",
+        "network.read_branch", "network.recruit", "commissions.read_own",
         # Read-only preview of their own potential earnings -- never writes to
         # the ledger (see commissions/simulations/simulate.py), so safe to grant.
-        "commissions.simulate",
+        "commissions.simulate", "products.read",
     ],
     "CUSTOMER": ["contracts.read", "documents.download"],
     "AUDITOR": ["audit.read", "reports.export"],

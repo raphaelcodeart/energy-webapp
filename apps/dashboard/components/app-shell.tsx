@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { LogoutButton } from "@/components/logout-button";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export interface NavItem {
@@ -40,6 +40,64 @@ function LogoMark({ compact = false }: { compact?: boolean }) {
   );
 }
 
+/** Top-right icon cluster: theme toggle + avatar menu (classic dashboard corner). */
+function UserMenu({ email, roleLabel }: { email?: string; roleLabel: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const initials = ((email || "?").split("@")[0] ?? "?")
+    .split(/[._-]/)
+    .map((p) => p[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-xs font-bold text-white shadow-md cursor-pointer"
+        aria-label="Menu utente"
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-11 z-50 w-56 rounded-xl border border-white/10 light:border-slate-200 bg-slate-900 light:bg-white shadow-xl animate-scale-up overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/5 light:border-slate-100">
+            <p className="truncate text-sm font-semibold text-white light:text-slate-900">{email}</p>
+            <p className="truncate text-xs text-slate-400 light:text-slate-500">{roleLabel}</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-400 light:text-rose-600 hover:bg-white/5 light:hover:bg-slate-50 transition cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Esci
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell({
   roleLabel,
   email,
@@ -52,13 +110,6 @@ export function AppShell({
   headerActions,
 }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  const initials = ((email || "?").split("@")[0] ?? "?")
-    .split(/[._-]/)
-    .map((p) => p[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
@@ -92,25 +143,10 @@ export function AppShell({
         })}
       </nav>
 
-      <div className="p-3 space-y-3 border-t border-white/5 light:border-slate-900/5 mt-2">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 light:text-slate-400">
-            Aspetto
-          </span>
-          <ThemeToggle />
-        </div>
-
-        <div className="flex items-center gap-2.5 rounded-xl bg-white/5 light:bg-slate-900/[0.03] p-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-xs font-bold text-white">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white light:text-slate-900">{email}</p>
-            <p className="truncate text-[10px] text-slate-400 light:text-slate-500">{roleLabel}</p>
-          </div>
-        </div>
-
-        <LogoutButton className="w-full justify-center" />
+      <div className="p-4 border-t border-white/5 light:border-slate-900/5 mt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 light:text-slate-400">
+          {roleLabel}
+        </p>
       </div>
     </div>
   );
@@ -135,32 +171,44 @@ export function AppShell({
         </div>
       )}
 
-      {/* Mobile top bar */}
-      <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-4 h-16">
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="p-2 -ml-2 rounded-lg text-slate-300 light:text-slate-600 hover:bg-white/5 light:hover:bg-slate-900/5 cursor-pointer"
-          aria-label="Apri il menu"
-        >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <LogoMark compact />
-        <ThemeToggle />
+      {/* Persistent top bar -- classic dashboard layout: page title left, icon
+          cluster (theme toggle + avatar/logout menu) in the top-right corner. */}
+      <header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 lg:pl-[17rem] h-16">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="lg:hidden p-2 -ml-2 rounded-lg text-slate-300 light:text-slate-600 hover:bg-white/5 light:hover:bg-slate-900/5 cursor-pointer shrink-0"
+            aria-label="Apri il menu"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="lg:hidden">
+            <LogoMark compact />
+          </div>
+          {headerTitle && (
+            <h1 className="hidden lg:block truncate text-base font-semibold text-white light:text-slate-900">
+              {headerTitle}
+            </h1>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <ThemeToggle />
+          <UserMenu email={email} roleLabel={roleLabel} />
+        </div>
       </header>
 
       {/* Main content */}
       <div className="lg:pl-64">
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
-          {(headerTitle || headerActions) && (
+          {(headerTitle || headerSubtitle || headerActions) && (
             <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                {headerTitle && (
-                  <h1 className="text-2xl font-bold tracking-tight text-white light:text-slate-900 sm:text-3xl">
-                    {headerTitle}
-                  </h1>
-                )}
+                <h1 className="lg:hidden text-2xl font-bold tracking-tight text-white light:text-slate-900 sm:text-3xl">
+                  {headerTitle}
+                </h1>
                 {headerSubtitle && <div className="text-sm text-slate-400 light:text-slate-500 mt-1">{headerSubtitle}</div>}
               </div>
               {headerActions && <div className="flex gap-3">{headerActions}</div>}

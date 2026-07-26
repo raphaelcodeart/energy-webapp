@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser, require_permission
-from app.domains.commissions.models import CommissionMovement
+from app.core.deps import CurrentUser, get_current_user, require_permission
+from app.domains.commissions.models import CommissionMovement, Rank
 from app.domains.commissions.schemas import (
     CommissionMovementRead,
+    RankRead,
     SimulateRequest,
     SimulationStepRead,
 )
@@ -37,6 +38,24 @@ async def get_my_commissions(
     )
     movements = (await db.execute(stmt)).scalars().all()
     return [CommissionMovementRead.model_validate(m) for m in movements]
+
+
+@router.get("/ranks", response_model=list[RankRead])
+async def list_ranks(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RankRead]:
+    """Reference data (rank ladder) -- any authenticated org member can read it, no
+    dedicated permission: it's needed by the admin agent-creation form and the
+    promoter's own simulator, and carries no sensitive/economic-decision weight by
+    itself (see docs/commission-engine-specification.md)."""
+    stmt = (
+        select(Rank)
+        .where(Rank.organization_id == current_user.organization_id)
+        .order_by(Rank.level.asc())
+    )
+    ranks = (await db.execute(stmt)).scalars().all()
+    return [RankRead.model_validate(r) for r in ranks]
 
 
 @router.post("/contracts/{contract_id}/simulate", response_model=list[SimulationStepRead])

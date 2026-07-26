@@ -10,11 +10,13 @@ from app.domains.audit import models as _audit_models  # noqa: F401
 from app.domains.auth import models as _auth_models  # noqa: F401
 from app.domains.auth.router import router as auth_router
 from app.domains.catalog import models as _catalog_models  # noqa: F401
+from app.domains.catalog.router import router as catalog_router
 from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.commissions.router import router as commissions_router
 from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.contracts.router import router as contracts_router
 from app.domains.customers import models as _customers_models  # noqa: F401
+from app.domains.customers.router import router as customers_router
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.network.router import router as network_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
@@ -45,6 +47,8 @@ app.include_router(network_router, prefix="/api")
 app.include_router(referral_router, prefix="/api")
 app.include_router(contracts_router, prefix="/api")
 app.include_router(commissions_router, prefix="/api")
+app.include_router(customers_router, prefix="/api")
+app.include_router(catalog_router, prefix="/api")
 
 
 @app.get("/health")

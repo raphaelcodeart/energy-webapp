@@ -27,3 +27,13 @@ class SimulationStepRead(BaseModel):
 
 class SimulateRequest(BaseModel):
     rank_overrides: dict[str, str] | None = None
+
+
+class RankRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    name: str
+    level: int
+    personal_token_cents: int

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { AppShell, type NavItem } from "@/components/app-shell";
+import { AdminCustomersPanel } from "@/components/admin-customers-panel";
+import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
+import { AdminProductsPanel } from "@/components/admin-products-panel";
 import type { ContractRead } from "@/lib/types";
 
 interface AdminClientPageProps {
@@ -46,11 +49,38 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "customers",
+    label: "Anagrafiche Clienti",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  },
+  {
+    key: "promoters",
+    label: "Anagrafiche Promoter",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: "products",
+    label: "Prodotti & Marketplace",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
-  const [activeTab, setActiveTab] = useState<"list" | "create">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "create" | "customers" | "promoters" | "products">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
@@ -396,6 +426,10 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
             </form>
           </div>
         )}
+
+        {activeTab === "customers" && <AdminCustomersPanel />}
+        {activeTab === "promoters" && <AdminPromotersPanel />}
+        {activeTab === "products" && <AdminProductsPanel />}
       </AppShell>
 
       {/* Transition Modal / Drawer Overlay */}

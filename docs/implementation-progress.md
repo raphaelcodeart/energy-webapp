@@ -4,6 +4,79 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 5 — 2026-07-26 — Admin CRUD (customers/promoters/products), recruiting, top bar
+
+The user asked for: a persistent top bar with a corner icon cluster (day/night
+toggle moved there, "classic dashboard" style); full admin management of customer
+records, promoter/agent records, and marketplace products; promoters managing
+their own network and enrolling their own recruits; and confirmation the network
+view supports the full 12-level career-plan depth.
+
+**Backend — three new CRUD surfaces, all org-scoped and RBAC-gated:**
+- [x] `customers` domain gained a real `service.py`/`router.py` (previously only
+  `models.py` existed, used internally by `contracts`): list/get/create/update,
+  plus `POST /customers/{id}/supply-points` since a customer isn't usable in a
+  contract without one. `PRIVATE`/`SOLE_PROPRIETOR` create a `CustomerProfile`,
+  `COMPANY`/`CONDOMINIUM` create a `Company`, in the same transaction as the `Customer`.
+- [x] `network` domain gained org-wide agent management: `GET/POST /network/agents`,
+  `PATCH /network/agents/{id}` (rank changes write `AgentRankHistory`, matching
+  the existing manual-qualification-change pattern), gated by `network.manage`
+  (admin-level, org-wide) -- deliberately separate from the already-existing
+  branch-scoped `network.read_branch`.
+- [x] `POST /network/agents/recruit` -- lets a promoter enroll a new *direct*
+  collaborator under themselves specifically (parent is resolved server-side from
+  the caller's own agent, never client-supplied), gated by a new `network.recruit`
+  permission distinct from `network.manage` so a promoter can grow their own
+  branch without being able to place agents anywhere else in the tree.
+- [x] `catalog` domain gained `service.py`/`router.py`: product+first-version
+  created together (a product with zero versions can't be sold), later versions
+  only ever added (never mutate a version live contracts already point to,
+  per `docs/business-rules.md`), `products.read`/`products.manage` permissions.
+- [x] `GET /commissions/ranks` -- reference data (the 12-rank ladder, S1-S3/TL1-4/MD1-5)
+  needed by the new agent-creation forms and already used by the simulator;
+  gated by authentication only, not a specific permission (harmless read).
+- [x] RBAC: 3 new permission codes (`network.recruit`, `products.read`,
+  `products.manage`), granted per role in `rbac/models.py` **and** patched
+  directly into the running database's `role_permissions` table (seeded data,
+  not a schema migration) so the existing deployment didn't need a full reseed.
+- [x] All 26 existing tests still pass; new endpoints smoke-tested live over
+  HTTPS (create customer/product, admin agent list, promoter recruit landing at
+  depth 1, ranks list returning exactly 12 rows) before touching the frontend.
+
+**Frontend:**
+- [x] `AppShell` restructured: a persistent top bar (not just the old mobile-only
+  one) now spans every screen size, sitting to the right of the desktop sidebar.
+  Page title on the left, theme toggle + an avatar button (opens a small
+  email/role/logout menu, click-outside-to-close) in the top-right corner --
+  "classic dashboard" layout. The sidebar footer lost the theme toggle and user
+  card it used to carry (moved to the top bar) and now just shows the role label.
+- [x] Three new admin sidebar sections, each a self-contained panel component:
+  `AdminCustomersPanel` (search, table, create modal with kind-conditional
+  fields), `AdminPromotersPanel` (table showing rank/sponsor/status resolved
+  from the agent list, create modal with a parent-agent and rank dropdown),
+  `AdminProductsPanel` (card grid, create modal with EUR-to-cents conversion).
+- [x] `RecruitForm` -- a promoter-facing "+ Aggiungi Collaboratore" button in the
+  Rete Commerciale tab, calling the scoped recruit endpoint; triggers
+  `router.refresh()` on success so the branch view (a server-fetched prop)
+  updates without a full reload.
+- [x] Confirmed (by reading the code, not assuming) that `BranchVisualizer` and
+  `BranchTable` have no hardcoded depth cap -- the closure table and the UI both
+  already support arbitrary depth, so "12 livelli" was a labeling/badge
+  addition (`Profondità massima: N / 12 livelli`), not a new capability to build.
+
+**Bugs found and fixed while building this:**
+- [x] All three new admin panels originally fetched data with a raw
+  `useEffect(() => { loadX() }, [])` -- React's newer lint rules correctly flag
+  calling `setState` (even indirectly, through an async function) inside a plain
+  effect. Refactored to `useQuery`/`useQueryClient` (already the established
+  pattern in this codebase via `my-commissions.tsx`), which is both lint-clean
+  and gives free caching/invalidation instead of manual refetch plumbing.
+
+Verified end-to-end over the live HTTPS deployment after rebuilding both the
+`api`/`celery-*` and `dashboard` images: all three new admin sections render
+with live data, the promoter recruit flow adds a real depth-1 descendant, and
+the top-bar theme toggle/avatar menu are present in the rendered HTML.
+
 ## Session 4 — 2026-07-26 — App shell, sidebar navigation, light/dark theme
 
 The user pulled a redesign from GitHub (glassmorphism UI, admin contract
