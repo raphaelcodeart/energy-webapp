@@ -9,12 +9,18 @@ silently invented into unlabelled code.
 ## 1. Rank table (career plan) figures
 
 **Placeholder**: `S1..S3`, `TL1..TL4`, `MD1..MD5` with linearly increasing
-`personal_token_cents` (4000 → 9500), see `business-rules.md §Ranks`. Real thresholds
-for `personal_volume_threshold_cents`, `group_volume_threshold_cents`, and
-`evaluation_window_months` are unknown.
-**Where to fix**: seed data in `apps/api/app/seed/ranks.py`, or a new
-`commission_rule_versions` row once the plan document is available — no code change
-needed, only data.
+`personal_token_cents` (4000 → 9500), see `business-rules.md §Ranks`.
+**Update (Session 15)**: `personal_volume_threshold_cents` /
+`group_volume_threshold_cents` are no longer 0 -- populated with placeholder
+ascending figures (migration `0010`) at the user's explicit request ("go get
+those criteria and set them yourself"), used by the new rank-promotion-progress
+feature (`business-rules.md §Rank promotion progress`). Still not confirmed
+Lial Energy policy. `evaluation_window_months` remains unused/unknown -- the
+progress calculation is lifetime-cumulative, not evaluated over any window.
+**Where to fix**: `apps/api/alembic/versions/0010_rank_promotion_thresholds.py`
+and `apps/api/app/seed/ranks.py` (both need updating together to stay in
+sync), or a new `commission_rule_versions` row once the real plan document is
+available — no application code change needed, only data.
 
 ## 2. Network move approval
 

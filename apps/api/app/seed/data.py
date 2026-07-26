@@ -66,6 +66,8 @@ async def run() -> None:
                 name=r["name"],
                 level=r["level"],
                 personal_token_cents=r["personal_token_cents"],
+                personal_volume_threshold_cents=r["personal_volume_threshold_cents"],
+                group_volume_threshold_cents=r["group_volume_threshold_cents"],
                 valid_from=FIXED_NOW,
                 rule_version=RULE_VERSION,
             )

@@ -17,6 +17,18 @@ class AgentProfileRead(BaseModel):
     rank_code: str | None = None
 
 
+class RankProgressRead(BaseModel):
+    current_rank_code: str | None
+    current_rank_name: str | None
+    next_rank_code: str | None
+    next_rank_name: str | None
+    is_max_rank: bool
+    personal_volume_cents: int
+    personal_volume_threshold_cents: int
+    group_volume_cents: int
+    group_volume_threshold_cents: int
+
+
 class NetworkNodeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

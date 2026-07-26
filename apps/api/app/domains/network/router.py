@@ -19,6 +19,7 @@ from app.domains.network.schemas import (
     BranchSummaryRead,
     MoveAgentRequest,
     OrganizationNetworkLevelsRead,
+    RankProgressRead,
     RecruitRequest,
 )
 
@@ -118,6 +119,22 @@ async def get_branch(
         db, organization_id=current_user.organization_id, root_agent_id=agent_id
     )
     return [BranchMemberRead(**row) for row in branch]
+
+
+@router.get("/agents/{agent_id}/rank-progress", response_model=RankProgressRead)
+async def get_rank_progress(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("network.read_branch")),
+    db: AsyncSession = Depends(get_db),
+) -> RankProgressRead:
+    """How close this agent is to their next rank's promotion thresholds --
+    placeholder feature, see commissions/services/rank_progress.py docstring.
+    Same branch-ownership rule as /branch."""
+    from app.domains.commissions.services.rank_progress import get_rank_progress as compute_rank_progress
+
+    await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
+    progress = await compute_rank_progress(db, organization_id=current_user.organization_id, agent_id=agent_id)
+    return RankProgressRead(**progress.__dict__)
 
 
 @router.get("/agents/{agent_id}/branch-summary", response_model=BranchSummaryRead)

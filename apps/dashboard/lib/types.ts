@@ -240,6 +240,18 @@ export type BranchSummaryRead = {
   totals: BranchSummaryTotals;
 };
 
+export type RankProgressRead = {
+  current_rank_code: string | null;
+  current_rank_name: string | null;
+  next_rank_code: string | null;
+  next_rank_name: string | null;
+  is_max_rank: boolean;
+  personal_volume_cents: number;
+  personal_volume_threshold_cents: number;
+  group_volume_cents: number;
+  group_volume_threshold_cents: number;
+};
+
 export type OrganizationNetworkLevelsRead = {
   people_total: number;
   levels_total: number;

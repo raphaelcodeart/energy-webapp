@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { BranchContractRead, BranchSummaryRead } from "@/lib/types";
+import type { BranchContractRead, BranchSummaryRead, RankProgressRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Bozza",
@@ -38,6 +38,24 @@ async function fetchBranchContracts(agentId: string): Promise<BranchContractRead
   return res.json();
 }
 
+async function fetchRankProgress(agentId: string): Promise<RankProgressRead> {
+  const res = await fetch(`/api/proxy/network/agents/${agentId}/rank-progress`);
+  if (!res.ok) throw new Error("Impossibile caricare l'avanzamento qualifica.");
+  return res.json();
+}
+
+function ProgressBar({ current, target }: { current: number; target: number }) {
+  const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 100;
+  return (
+    <div className="h-2 rounded-full bg-white/10 light:bg-slate-200 overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-emerald-500" : "bg-gradient-to-r from-amber-500 to-orange-600"}`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
 export function PromoterAziendaPanel({ agentId }: { agentId: string }) {
   const { data: summary, error: summaryError, isLoading: summaryLoading } = useQuery({
     queryKey: ["promoter", "branch-summary", agentId],
@@ -46,6 +64,10 @@ export function PromoterAziendaPanel({ agentId }: { agentId: string }) {
   const { data: contracts, error: contractsError } = useQuery({
     queryKey: ["promoter", "branch-contracts", agentId],
     queryFn: () => fetchBranchContracts(agentId),
+  });
+  const { data: rankProgress } = useQuery({
+    queryKey: ["promoter", "rank-progress", agentId],
+    queryFn: () => fetchRankProgress(agentId),
   });
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
@@ -146,6 +168,56 @@ export function PromoterAziendaPanel({ agentId }: { agentId: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           {totalProblems} {totalProblems === 1 ? "contratto ha" : "contratti hanno"} bisogno di attenzione nella tua rete.
+        </div>
+      )}
+
+      {/* Rank promotion progress -- placeholder thresholds, see
+          docs/business-rules.md#rank-promotion-progress-placeholder */}
+      {rankProgress && (
+        <div className="glass-card rounded-2xl p-5 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+          {rankProgress.is_max_rank ? (
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400 shrink-0">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm text-slate-300 light:text-slate-600">
+                Hai raggiunto la qualifica massima (<span className="font-bold text-orange-400">{rankProgress.current_rank_name}</span>).
+              </p>
+            </div>
+          ) : rankProgress.next_rank_code ? (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-white light:text-slate-900">
+                  Verso la qualifica <span className="text-orange-400">{rankProgress.next_rank_code}</span> — {rankProgress.next_rank_name}
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-slate-400 light:text-slate-500">Volume personale</span>
+                    <span className="font-semibold text-slate-300 light:text-slate-600">
+                      {euro(rankProgress.personal_volume_cents)} / {euro(rankProgress.personal_volume_threshold_cents)}
+                    </span>
+                  </div>
+                  <ProgressBar current={rankProgress.personal_volume_cents} target={rankProgress.personal_volume_threshold_cents} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-slate-400 light:text-slate-500">Volume di gruppo (tutta la tua rete)</span>
+                    <span className="font-semibold text-slate-300 light:text-slate-600">
+                      {euro(rankProgress.group_volume_cents)} / {euro(rankProgress.group_volume_threshold_cents)}
+                    </span>
+                  </div>
+                  <ProgressBar current={rankProgress.group_volume_cents} target={rankProgress.group_volume_threshold_cents} />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-4">
+                Valori indicativi calcolati sul totale storico dei contratti attivi (personali e di tutta la tua rete). Soglie provvisorie in attesa del regolamento provvigionale ufficiale.
+              </p>
+            </>
+          ) : null}
         </div>
       )}
 

@@ -33,6 +33,47 @@ Configured via the `ranks` table, not hardcoded. Seed values used for demo/tests
 `single_branch_cap_percentage` defaults to 33% for every rank (see "Regola del 33%"
 below) but is per-rank, per-plan-version configurable.
 
+### Rank promotion progress (PLACEHOLDER, added Session 15)
+
+`personal_volume_threshold_cents` / `group_volume_threshold_cents` were present
+in the schema since the very first migration but always left at 0 (never
+populated, never read) until the user explicitly asked for real numbers
+("procurati quei criteri qualifica e falli tu" -- go get those qualification
+criteria and set them yourself) rather than leave the feature unbuilt.
+Migration `0010` and `seed/ranks.py` seed the figures below; they are still a
+placeholder pending the real `Allegato_A_Piano_Carriera_Regolamento_
+Provvigionale.pdf` (see `open-questions.md #1`) -- reasonable, ascending,
+demo-scale numbers picked by the assistant on explicit request, not confirmed
+Lial Energy policy.
+
+| code | personal_volume_threshold_cents | group_volume_threshold_cents |
+|---|---|---|
+| S1 | 0 | 0 |
+| S2 | 1500 | 1500 |
+| S3 | 3000 | 4000 |
+| TL1 | 3000 | 8000 |
+| TL2 | 3000 | 12000 |
+| TL3 | 3000 | 16000 |
+| TL4 | 3000 | 20000 |
+| MD1 | 3000 | 25000 |
+| MD2 | 3000 | 30000 |
+| MD3 | 3000 | 35000 |
+| MD4 | 3000 | 40000 |
+| MD5 | 3000 | 45000 |
+
+`GET /network/agents/{agent_id}/rank-progress`
+(`commissions/services/rank_progress.py`) compares an agent's CUMULATIVE
+("lifetime", not evaluated over `evaluation_window_months` -- that column
+remains unused, a separate not-yet-built axis of this same placeholder)
+contract value on `ACTIVE`/`RENEWED` contracts against the NEXT rank's
+thresholds: `personal_volume_cents` is what the agent personally produced;
+`group_volume_cents` is the same sum across their entire downline including
+themselves (same descendant lookup as `get_branch_summary`). Surfaced as two
+progress bars in the promoter's own "La mia Azienda" panel and in the admin's
+per-promoter "Apri Rete" drill-down (same shared component). An agent already
+at the top rank (no higher `level` exists for their `rule_version`) shows
+"qualifica massima raggiunta" instead of a bar.
+
 ## Contract state machine
 
 ```
