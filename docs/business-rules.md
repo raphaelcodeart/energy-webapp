@@ -263,6 +263,40 @@ formula is implemented yet — only the extension point.
   open a ticket directly "about this contract" instead of the admin having to guess
   which one they mean from free text.
 
+### Search, filter, and deletion (added Session 19)
+
+- The admin ticket list (`AdminTicketsPanel`) can be filtered by opener
+  (customer/promoter), category, and status, plus a free-text search over
+  subject and opener name. Filtering is entirely client-side (the ticket
+  list for one organization is small enough that this is simpler than
+  adding query params to `GET /support/tickets`) -- if the dataset grows
+  large enough to matter, move this filtering server-side rather than
+  fetching the whole list.
+- A ticket can be **permanently deleted only once its status is
+  `RESOLVED`** (not `CLOSED` -- deliberately narrower, matching exactly
+  what was asked for; revisit if `CLOSED` should also be eligible). The
+  delete control (in both the ticket list row and the ticket detail view)
+  is disabled for any other status, so there is no way to trigger the
+  attempt from the UI on a non-resolved ticket. The backend enforces the
+  same rule independently (`support/service.py::delete_ticket`, raising
+  `TicketDeletionError` -> `400`) -- the frontend disabled-state is a UX
+  courtesy, not the actual guard.
+- Deletion always shows a confirmation dialog naming the ticket subject
+  before calling `DELETE /support/tickets/{id}`; there is no direct delete
+  with no confirmation step anywhere in the UI.
+- Gated by a new `tickets.delete` permission, deliberately narrower than
+  `tickets.respond` (granted to `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN`
+  only, not `BACK_OFFICE_OPERATOR`) -- same "narrower than the capability
+  that looks like it should cover it" pattern as `network.approve` (see
+  `security-model.md`), since permanently destroying a ticket is more
+  consequential than replying to one.
+- Deleting a ticket also deletes its `TicketMessage` rows in the same
+  transaction (no FK `ondelete` cascade exists at the DB level) and
+  records an audit entry (`action="ticket.deleted"`, with the subject/
+  category/status snapshotted into `previous_value`) before the rows are
+  removed -- the audit trail survives even though the ticket itself no
+  longer does.
+
 ## Notifications (added Session 17)
 
 See `database-model.md §7` for the table shape. Behavior:

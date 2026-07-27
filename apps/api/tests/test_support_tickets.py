@@ -146,3 +146,72 @@ async def test_promoter_and_customer_ticket_lists_are_separate(db, organization_
 
     all_tickets = await support_service.list_tickets(db, organization_id=organization_id)
     assert len(all_tickets) == 2
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_a_ticket_that_is_not_resolved(db, organization_id):
+    customer_user = await _make_user(db, organization_id, email_prefix="cust")
+    staff_user = await _make_user(db, organization_id, email_prefix="staff")
+
+    ticket = await support_service.create_ticket(
+        db, organization_id=organization_id, actor_user_id=customer_user.id, actor_role="CUSTOMER",
+        payload=TicketCreate(subject="Ancora aperto", message="Non ancora risolto."),
+    )
+    assert ticket.status == "OPEN"
+
+    with pytest.raises(support_service.TicketDeletionError):
+        await support_service.delete_ticket(
+            db, organization_id=organization_id, ticket_id=ticket.id, actor_user_id=staff_user.id,
+        )
+
+    still_there = await support_service.get_ticket_detail(
+        db, organization_id=organization_id, ticket_id=ticket.id,
+        requester_user_id=customer_user.id, requester_is_staff=False,
+    )
+    assert still_there is not None
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_resolved_ticket_removes_it_and_its_messages(db, organization_id):
+    customer_user = await _make_user(db, organization_id, email_prefix="cust")
+    staff_user = await _make_user(db, organization_id, email_prefix="staff")
+
+    ticket = await support_service.create_ticket(
+        db, organization_id=organization_id, actor_user_id=customer_user.id, actor_role="CUSTOMER",
+        payload=TicketCreate(subject="Da eliminare", message="Problema risolto, grazie."),
+    )
+    await support_service.update_status(
+        db, organization_id=organization_id, ticket_id=ticket.id, actor_user_id=staff_user.id,
+        payload=TicketStatusUpdate(status="RESOLVED"),
+    )
+
+    result = await support_service.delete_ticket(
+        db, organization_id=organization_id, ticket_id=ticket.id, actor_user_id=staff_user.id,
+    )
+    assert result is True
+
+    gone = await support_service.get_ticket_detail(
+        db, organization_id=organization_id, ticket_id=ticket.id,
+        requester_user_id=staff_user.id, requester_is_staff=True,
+    )
+    assert gone is None
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_ticket_from_another_org_returns_none(db, organization_id):
+    customer_user = await _make_user(db, organization_id, email_prefix="cust")
+    staff_user = await _make_user(db, organization_id, email_prefix="staff")
+
+    ticket = await support_service.create_ticket(
+        db, organization_id=organization_id, actor_user_id=customer_user.id, actor_role="CUSTOMER",
+        payload=TicketCreate(subject="Altra org", message="Non dovrebbe essere raggiungibile."),
+    )
+    await support_service.update_status(
+        db, organization_id=organization_id, ticket_id=ticket.id, actor_user_id=staff_user.id,
+        payload=TicketStatusUpdate(status="RESOLVED"),
+    )
+
+    result = await support_service.delete_ticket(
+        db, organization_id=uuid.uuid4(), ticket_id=ticket.id, actor_user_id=staff_user.id,
+    )
+    assert result is None

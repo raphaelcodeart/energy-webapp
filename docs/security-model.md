@@ -79,6 +79,13 @@
   they're implicitly granted the full `PERMISSIONS` list rather than an
   explicit subset. See `business-rules.md §New promoter suggest-then-approve
   workflow`.
+- `tickets.delete` (Session 19): same narrowing pattern applied again --
+  `BACK_OFFICE_OPERATOR` holds `tickets.respond` (reply, change status) but
+  not `tickets.delete` (permanently remove a resolved ticket and its
+  messages); only `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN` get it. The
+  service layer also independently refuses to delete anything not in
+  `RESOLVED` status regardless of who's asking. See `business-rules.md
+  §Support tickets §Search, filter, and deletion`.
 
 ## Multi-tenancy
 - Every tenant-scoped table carries `organization_id`. All repository queries filter on

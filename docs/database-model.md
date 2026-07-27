@@ -344,6 +344,13 @@ auto-transitions it to `IN_PROGRESS`. New permission codes: `tickets.create`
 `tickets.respond` (see/reply to any ticket, change status -- granted to
 `ADMIN`-tier roles). See `business-rules.md §Support tickets`.
 
+**Deletion (Session 19):** a `RESOLVED` ticket (and its `ticket_messages`, no
+DB-level `ondelete` cascade exists so both are removed explicitly in the
+same transaction) can be permanently deleted via `tickets.delete`
+(`SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN` only -- narrower than
+`tickets.respond`, `BACK_OFFICE_OPERATOR` doesn't get it). See
+`business-rules.md §Support tickets §Search, filter, and deletion`.
+
 ## 7. Notifications (added Session 17)
 
 ```

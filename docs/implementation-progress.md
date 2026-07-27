@@ -4,6 +4,37 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 19 — 2026-07-27 — Ticket search/filter, delete-when-resolved, and a proxy 204 bug found along the way
+
+- **Ticket search & filter**: `AdminTicketsPanel` gained a free-text search
+  (subject + opener name) and a category filter, alongside the existing
+  opener/status filters -- all client-side over the already-fetched list
+  (see `business-rules.md §Support tickets §Search, filter, and deletion`).
+- **Ticket deletion, gated on RESOLVED status**: a new `DELETE
+  /support/tickets/{id}` endpoint (`tickets.delete` permission, migration
+  0012, granted to `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN` only --
+  deliberately not `BACK_OFFICE_OPERATOR`, same narrowing pattern as
+  `network.approve`) deletes a ticket and its messages in one transaction,
+  but only if `status == RESOLVED`; any other status raises
+  `TicketDeletionError` -> `400`. The frontend disables the trash-icon
+  button (in both the ticket list row and the detail view) for any
+  non-resolved ticket and always shows a confirm dialog naming the ticket
+  before calling the endpoint -- there is no direct-delete path.
+- **Real bug, found and fixed**: the shared BFF proxy
+  (`app/api/proxy/[...path]/route.ts`) built every response as `new
+  NextResponse(body, {status: apiRes.status})`, including for a 204 No
+  Content. The Fetch spec throws when a 204/205/304 response is
+  constructed with a non-null body -- even `""` counts as non-null -- so
+  every no-content response 500'd inside the proxy despite the upstream
+  call already succeeding. This was invisible until now because the DELETE
+  endpoint added this session was the **first ever 204 response** returned
+  by any endpoint reachable through this proxy. Confirmed live: a ticket
+  delete removed the row from the database while the UI reported
+  "Impossibile eliminare il ticket." Fixed by special-casing
+  204/205/304 to `new NextResponse(null, ...)`. Re-verified live after the
+  fix: delete now both removes the ticket server-side and reflects it
+  correctly in the UI.
+
 ## Session 18 — 2026-07-27 — Hide Organization ID from login/forgot-password
 
 - User asked what the "ID Organizzazione" field on login/forgot-password and

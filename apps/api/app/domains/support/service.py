@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.audit import service as audit_service
@@ -13,6 +13,12 @@ from app.domains.support.schemas import TicketCreate, TicketMessageCreate, Ticke
 from app.domains.users.models import User
 
 ADMIN_REPLY_ROLE = "ADMIN"
+
+
+class TicketDeletionError(Exception):
+    """Raised when a ticket can't be deleted yet -- only status RESOLVED is
+    eligible (see update_status: CLOSED is a distinct, later terminal state,
+    intentionally not included here)."""
 
 
 def actor_role_for(roles: list[str]) -> str:
@@ -253,6 +259,35 @@ async def add_message(
     await db.commit()
     await db.refresh(ticket)
     return ticket
+
+
+async def delete_ticket(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    ticket_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> bool | None:
+    """Staff-only (tickets.delete, enforced at the router). Returns None if the
+    ticket doesn't exist in this org (-> router 404), raises
+    TicketDeletionError if it's not yet RESOLVED (-> router 400). No FK
+    ondelete is defined on ticket_messages.ticket_id, so its rows must be
+    removed explicitly in the same transaction before the ticket row itself."""
+    ticket = await db.get(Ticket, ticket_id)
+    if ticket is None or ticket.organization_id != organization_id:
+        return None
+    if ticket.status != "RESOLVED":
+        raise TicketDeletionError("Only a resolved ticket can be deleted.")
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="ticket.deleted", entity_type="ticket", entity_id=str(ticket_id),
+        previous_value={"subject": ticket.subject, "category": ticket.category, "status": ticket.status},
+    )
+    await db.execute(delete(TicketMessage).where(TicketMessage.ticket_id == ticket_id))
+    await db.delete(ticket)
+    await db.commit()
+    return True
 
 
 async def update_status(

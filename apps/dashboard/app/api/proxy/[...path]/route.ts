@@ -61,10 +61,17 @@ async function proxyWithBody(
   });
 
   const body = await apiRes.text();
-  return new NextResponse(body, {
-    status: apiRes.status,
-    headers: { "Content-Type": apiRes.headers.get("content-type") ?? "application/json" },
-  });
+  const headers = { "Content-Type": apiRes.headers.get("content-type") ?? "application/json" };
+  // A 204/205/304 response must not carry a body -- the Response constructor
+  // throws "Response with null body status cannot have body" even for an
+  // empty string, which silently 500s every no-content response (e.g.
+  // DELETE /support/tickets/{id}) despite the upstream call having already
+  // succeeded. Confirmed live: a ticket delete removed the row but the
+  // proxy call surfaced as a failure until this branch was added.
+  if (apiRes.status === 204 || apiRes.status === 205 || apiRes.status === 304) {
+    return new NextResponse(null, { status: apiRes.status, headers });
+  }
+  return new NextResponse(body, { status: apiRes.status, headers });
 }
 
 export async function POST(request: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {

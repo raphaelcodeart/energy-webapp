@@ -126,6 +126,23 @@ async def add_staff_message(
     return TicketRead(**row)
 
 
+@router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ticket(
+    ticket_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("tickets.delete")),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    try:
+        result = await support_service.delete_ticket(
+            db, organization_id=current_user.organization_id, ticket_id=ticket_id,
+            actor_user_id=current_user.user_id,
+        )
+    except support_service.TicketDeletionError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+
 @router.patch("/{ticket_id}/status", response_model=TicketRead)
 async def update_ticket_status(
     ticket_id: uuid.UUID,

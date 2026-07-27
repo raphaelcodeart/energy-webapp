@@ -32,7 +32,7 @@ PERMISSIONS = [
     "payments.manage", "documents.download", "reports.export", "reports.read",
     "audit.read", "settings.manage",
     "products.read", "products.manage",
-    "tickets.create", "tickets.respond",
+    "tickets.create", "tickets.respond", "tickets.delete",
     "documents.upload", "documents.review",
 ]
 
@@ -50,7 +50,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "commissions.read_branch", "commissions.simulate", "commissions.approve",
         "commission_adjustments.create", "payments.manage", "documents.download",
         "reports.export", "reports.read", "audit.read", "settings.manage",
-        "products.read", "products.manage", "tickets.respond",
+        "products.read", "products.manage", "tickets.respond", "tickets.delete",
         "documents.upload", "documents.review",
     ],
     "BACK_OFFICE_OPERATOR": [
