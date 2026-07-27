@@ -28,6 +28,17 @@ export type CommissionMovementRead = {
   effective_date: string;
 };
 
+export type NotificationRead = {
+  id: string;
+  type: string;
+  entity_type: string;
+  entity_id: string;
+  title: string;
+  body: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
 export type CommissionMovementDetailRead = {
   id: string;
   contract_id: string;
@@ -148,6 +159,7 @@ export type AgentListItemRead = {
   rank_code: string | null;
   direct_parent_agent_id: string | null;
   joined_at: string;
+  rejection_reason: string | null;
 };
 
 export type ProductVersionRead = {

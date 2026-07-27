@@ -25,6 +25,8 @@ from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.documents.router import router as documents_router
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.network.router import router as network_router
+from app.domains.notifications import models as _notifications_models  # noqa: F401
+from app.domains.notifications.router import router as notifications_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
@@ -66,6 +68,7 @@ app.include_router(catalog_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
+app.include_router(notifications_router, prefix="/api")
 
 
 @app.on_event("startup")

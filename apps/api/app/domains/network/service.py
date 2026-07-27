@@ -60,16 +60,20 @@ async def create_agent(
     actor_user_id: uuid.UUID | None = None,
     current_rank_id: uuid.UUID | None = None,
     user_id: uuid.UUID | None = None,
+    status: str = "ACTIVE",
 ) -> AgentProfile:
     """Register a brand-new agent (no pre-existing subtree) under an optional parent.
-    Use move_agent() to relocate an agent that already has descendants."""
+    Use move_agent() to relocate an agent that already has descendants. status
+    defaults to ACTIVE for internal/test callers; the two user-facing creation
+    routes (POST /agents, POST /agents/recruit) explicitly pass
+    PENDING_APPROVAL -- see AgentProfile.status docstring."""
     joined_at = joined_at or utcnow()
 
     agent = AgentProfile(
         organization_id=organization_id,
         display_name=display_name,
         promoter_code=promoter_code,
-        status="ACTIVE",
+        status=status,
         joined_at=joined_at,
         current_rank_id=current_rank_id,
         user_id=user_id,
@@ -320,6 +324,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             Rank.code,
             NetworkNode.direct_parent_agent_id,
             AgentProfile.photo_url,
+            AgentProfile.rejection_reason,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -342,6 +347,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "rank_code": r[6],
             "direct_parent_agent_id": r[7],
             "photo_url": r[8],
+            "rejection_reason": r[9],
         }
         for r in rows
     ]
@@ -388,6 +394,65 @@ async def update_agent(
         action="network.agent_updated", entity_type="agent_profile", entity_id=str(agent_id),
         previous_value=previous,
         new_value={"status": agent.status, "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None},
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
+class AgentApprovalError(Exception):
+    pass
+
+
+async def approve_agent(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID, actor_user_id: uuid.UUID
+) -> AgentProfile | None:
+    """Turns a suggested collaborator (PENDING_APPROVAL, created via POST
+    /agents or /agents/recruit) into a real, usable ACTIVE agent -- gated on
+    network.approve (SUPER_ADMIN/ORGANIZATION_ADMIN only, i.e. the
+    "amministratore principale"), never the plain network.manage a regular
+    ADMIN already holds."""
+    agent = await db.get(AgentProfile, agent_id)
+    if agent is None or agent.organization_id != organization_id:
+        return None
+    if agent.status != "PENDING_APPROVAL":
+        raise AgentApprovalError(f"Agent is {agent.status}, not PENDING_APPROVAL")
+
+    agent.status = "ACTIVE"
+    agent.approved_by_user_id = actor_user_id
+    agent.approved_at = utcnow()
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="network.agent_approved", entity_type="agent_profile", entity_id=str(agent_id),
+        previous_value={"status": "PENDING_APPROVAL"}, new_value={"status": "ACTIVE"},
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
+async def reject_agent(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID, actor_user_id: uuid.UUID, reason: str | None
+) -> AgentProfile | None:
+    """Rejects a suggested collaborator -- soft (TERMINATED + a reason kept on
+    the row), never a hard delete, consistent with this project's
+    append-only-history discipline elsewhere (documents, contracts)."""
+    agent = await db.get(AgentProfile, agent_id)
+    if agent is None or agent.organization_id != organization_id:
+        return None
+    if agent.status != "PENDING_APPROVAL":
+        raise AgentApprovalError(f"Agent is {agent.status}, not PENDING_APPROVAL")
+
+    agent.status = "TERMINATED"
+    agent.approved_by_user_id = actor_user_id
+    agent.approved_at = utcnow()
+    agent.rejection_reason = reason
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="network.agent_rejected", entity_type="agent_profile", entity_id=str(agent_id),
+        previous_value={"status": "PENDING_APPROVAL"}, new_value={"status": "TERMINATED", "reason": reason},
     )
     await db.commit()
     await db.refresh(agent)

@@ -13,6 +13,7 @@ from app.domains.network.schemas import (
     AgentCreateRequest,
     AgentListItemRead,
     AgentProfileRead,
+    AgentRejectRequest,
     AgentUpdateRequest,
     BranchContractRead,
     BranchMemberRead,
@@ -22,6 +23,7 @@ from app.domains.network.schemas import (
     RankProgressRead,
     RecruitRequest,
 )
+from app.domains.notifications import service as notifications_service
 
 router = APIRouter(prefix="/network", tags=["network"])
 
@@ -202,6 +204,10 @@ async def create_agent(
     current_user: CurrentUser = Depends(require_permission("network.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> AgentProfileRead:
+    """A plain ADMIN can only SUGGEST a new promoter -- created PENDING_APPROVAL,
+    not usable (can't be a contract producer) until a network.approve-holder
+    (SUPER_ADMIN/ORGANIZATION_ADMIN, the "amministratore principale") approves
+    it via PATCH /agents/{id}/approve. See AgentProfile.status docstring."""
     try:
         agent = await network_service.create_agent(
             db,
@@ -211,9 +217,19 @@ async def create_agent(
             parent_agent_id=payload.parent_agent_id,
             current_rank_id=payload.current_rank_id,
             actor_user_id=current_user.user_id,
+            status="PENDING_APPROVAL",
         )
     except network_service.NetworkError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    await notifications_service.notify_roles(
+        db, organization_id=current_user.organization_id, roles=notifications_service.APPROVAL_NOTIFY_ROLES,
+        type_="PROMOTER_APPROVAL_REQUESTED", entity_type="agent_profile", entity_id=agent.id,
+        title=f"Nuovo promoter suggerito: {agent.display_name}",
+        body=f"Codice {agent.promoter_code} in attesa di approvazione.",
+        exclude_user_id=current_user.user_id,
+    )
+    await db.commit()
     return AgentProfileRead.model_validate(agent)
 
 
@@ -271,7 +287,10 @@ async def recruit_agent(
     """A promoter enrolling a new direct collaborator under themselves. Unlike
     POST /agents (org-wide, network.manage-gated), this is scoped: the caller can
     only recruit as their OWN direct child, never place a new agent anywhere else
-    in the tree -- that still requires network.manage (or a move request)."""
+    in the tree -- that still requires network.manage (or a move request).
+    Same suggest-then-approve workflow as POST /agents: created
+    PENDING_APPROVAL, not usable until an "amministratore principale"
+    approves it."""
     own_agent_id = await _resolve_own_agent_id(
         db, organization_id=current_user.organization_id, user_id=current_user.user_id
     )
@@ -287,9 +306,72 @@ async def recruit_agent(
             parent_agent_id=own_agent_id,
             current_rank_id=payload.current_rank_id,
             actor_user_id=current_user.user_id,
+            status="PENDING_APPROVAL",
         )
     except network_service.NetworkError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    await notifications_service.notify_roles(
+        db, organization_id=current_user.organization_id, roles=notifications_service.APPROVAL_NOTIFY_ROLES,
+        type_="PROMOTER_APPROVAL_REQUESTED", entity_type="agent_profile", entity_id=agent.id,
+        title=f"Nuovo collaboratore suggerito: {agent.display_name}",
+        body=f"Reclutato da un promoter -- codice {agent.promoter_code} in attesa di approvazione.",
+    )
+    await db.commit()
+    return AgentProfileRead.model_validate(agent)
+
+
+@router.patch("/agents/{agent_id}/approve", response_model=AgentProfileRead)
+async def approve_agent(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("network.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> AgentProfileRead:
+    try:
+        agent = await network_service.approve_agent(
+            db, organization_id=current_user.organization_id, agent_id=agent_id, actor_user_id=current_user.user_id
+        )
+    except network_service.AgentApprovalError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+
+    if agent.user_id is not None:
+        await notifications_service.notify_user(
+            db, organization_id=current_user.organization_id, user_id=agent.user_id,
+            type_="PROMOTER_APPROVED", entity_type="agent_profile", entity_id=agent.id,
+            title="Il tuo profilo promoter è stato approvato",
+            body=f"{agent.display_name} ({agent.promoter_code}) è ora attivo.",
+        )
+        await db.commit()
+    return AgentProfileRead.model_validate(agent)
+
+
+@router.patch("/agents/{agent_id}/reject", response_model=AgentProfileRead)
+async def reject_agent(
+    agent_id: uuid.UUID,
+    payload: AgentRejectRequest,
+    current_user: CurrentUser = Depends(require_permission("network.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> AgentProfileRead:
+    try:
+        agent = await network_service.reject_agent(
+            db, organization_id=current_user.organization_id, agent_id=agent_id,
+            actor_user_id=current_user.user_id, reason=payload.reason,
+        )
+    except network_service.AgentApprovalError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+
+    if agent.user_id is not None:
+        await notifications_service.notify_user(
+            db, organization_id=current_user.organization_id, user_id=agent.user_id,
+            type_="PROMOTER_REJECTED", entity_type="agent_profile", entity_id=agent.id,
+            title="Il tuo profilo promoter suggerito non è stato approvato",
+            body=payload.reason,
+        )
+        await db.commit()
     return AgentProfileRead.model_validate(agent)
 
 

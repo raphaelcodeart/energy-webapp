@@ -71,6 +71,14 @@
   caller's org/branch context as a mandatory argument — there is no "unscoped" query
   path available to routers. This is enforced by convention + code review today;
   Postgres Row-Level Security is deferred (see below) rather than assumed as a backstop.
+- `network.approve` (Session 17): a real example of a permission deliberately
+  narrower than an existing one that looks like it should cover it. A plain
+  `ADMIN` holds `network.manage` (create/edit any agent) but NOT
+  `network.approve` (confirm a suggested agent into an active one) —
+  `SUPER_ADMIN`/`ORGANIZATION_ADMIN` are the only roles that get it, since
+  they're implicitly granted the full `PERMISSIONS` list rather than an
+  explicit subset. See `business-rules.md §New promoter suggest-then-approve
+  workflow`.
 
 ## Multi-tenancy
 - Every tenant-scoped table carries `organization_id`. All repository queries filter on

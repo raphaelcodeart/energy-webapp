@@ -44,6 +44,28 @@ async def get_my_commissions(
     return [CommissionMovementRead.model_validate(m) for m in movements]
 
 
+@router.get("/mine/detailed", response_model=list[CommissionMovementDetailRead])
+async def get_my_commissions_detailed(
+    current_user: CurrentUser = Depends(require_permission("commissions.read_own")),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommissionMovementDetailRead]:
+    """Same full traceability as the admin ledger (GET /commissions/movements)
+    -- contract, customer, network level, rank at calculation, breakdown,
+    explanation -- but hard-scoped to the caller's OWN agent_id, never
+    org-wide. Reuses admin_ledger.get_commission_movements() rather than a
+    parallel implementation; the only difference from the admin endpoint is
+    this mandatory agent_id filter and the read_own (not approve) gate."""
+    agent_stmt = select(AgentProfile.id).where(
+        AgentProfile.organization_id == current_user.organization_id,
+        AgentProfile.user_id == current_user.user_id,
+    )
+    agent_id = (await db.execute(agent_stmt)).scalar_one_or_none()
+    if agent_id is None:
+        return []
+    rows = await admin_ledger.get_commission_movements(db, organization_id=current_user.organization_id, agent_id=agent_id)
+    return [CommissionMovementDetailRead(**row) for row in rows]
+
+
 @router.get("/ranks", response_model=list[RankRead])
 async def list_ranks(
     current_user: CurrentUser = Depends(get_current_user),

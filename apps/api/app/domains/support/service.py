@@ -7,6 +7,7 @@ from app.domains.audit import service as audit_service
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.network.models import AgentProfile
+from app.domains.notifications import service as notifications_service
 from app.domains.support.models import Ticket, TicketMessage
 from app.domains.support.schemas import TicketCreate, TicketMessageCreate, TicketStatusUpdate
 from app.domains.users.models import User
@@ -147,6 +148,12 @@ async def create_ticket(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="ticket.created", entity_type="ticket", entity_id=str(ticket.id),
         new_value={"subject": payload.subject, "category": payload.category},
+    )
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="TICKET_CREATED", entity_type="ticket", entity_id=ticket.id,
+        title=f"Nuovo ticket: {payload.subject}", body=payload.message[:200],
+        exclude_user_id=actor_user_id,
     )
     await db.commit()
     await db.refresh(ticket)

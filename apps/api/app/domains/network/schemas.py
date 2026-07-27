@@ -121,6 +121,7 @@ class AgentListItemRead(BaseModel):
     rank_code: str | None
     direct_parent_agent_id: uuid.UUID | None
     joined_at: datetime
+    rejection_reason: str | None = None
 
 
 class AgentCreateRequest(BaseModel):
@@ -140,6 +141,10 @@ class AgentUpdateRequest(BaseModel):
     display_name: str | None = None
     status: str | None = None
     current_rank_id: uuid.UUID | None = None
+
+
+class AgentRejectRequest(BaseModel):
+    reason: str | None = None
 
 
 class OrganizationNetworkLevelsRead(BaseModel):

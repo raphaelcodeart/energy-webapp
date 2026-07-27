@@ -20,12 +20,25 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     )
     display_name: Mapped[str] = mapped_column(String(255))
     promoter_code: Mapped[str] = mapped_column(String(32))
+    # ACTIVE / SUSPENDED / TERMINATED / PENDING_APPROVAL (added Session 17 --
+    # both the admin's "+ Nuovo Promoter" and a promoter's own "recruit" now
+    # only ever SUGGEST a new collaborator; a distinct network.approve-gated
+    # action (network/router.py) is what actually activates them. A
+    # PENDING_APPROVAL agent already exists in the tree (visible as a
+    # suggestion) but contracts/service.py::create_contract() already
+    # rejects any non-ACTIVE producer, so they simply can't be attributed a
+    # sale until approved -- no extra guard needed there.
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
     photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     joined_at: Mapped[datetime] = mapped_column()
     current_rank_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ranks.id"), nullable=True
     )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class NetworkNode(UUIDPKMixin, TimestampMixin, Base):

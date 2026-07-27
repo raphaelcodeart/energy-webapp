@@ -4,6 +4,131 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 17 — 2026-07-28 — In-app notifications, promoter suggest-then-approve workflow, promoter dashboard quick-links, rebuilt commission statement
+
+- **New promoter approval workflow**: `POST /network/agents` (admin,
+  org-wide) and `POST /network/agents/recruit` (a promoter enrolling their
+  own direct collaborator) now only ever create `PENDING_APPROVAL` agents,
+  never immediately `ACTIVE` -- a plain `ADMIN` can "suggest" a collaborator
+  but only `SUPER_ADMIN`/`ORGANIZATION_ADMIN` (the "amministratore
+  principale") can turn that into a real, contract-producing agent, via new
+  `PATCH /network/agents/{id}/approve`/`/reject` endpoints gated on a new
+  `network.approve` permission deliberately not granted to plain `ADMIN`
+  (who already holds the broader `network.manage`). Rejecting is soft
+  (`TERMINATED` + a kept reason), never a hard delete. See
+  `business-rules.md §New promoter suggest-then-approve workflow`.
+- **New in-app notifications domain** (`app/domains/notifications/`): a
+  bell icon in the header (all three dashboards, shared `app-shell.tsx`)
+  with an unread badge and dropdown, plus a small unread dot on whichever
+  sidebar nav item is actually relevant to a given notification (each
+  `NavItem` opts in via a `notificationTypes` array, so e.g. a promoter
+  approval request only lights up "Anagrafiche Promoter", never "Tutti i
+  Contratti"). Clicking a notification marks it read and navigates to the
+  matching tab. Polled every 25s, no WebSockets. Wired into: contract
+  creation, ticket creation, both promoter-approval creation paths, and
+  every commission movement generated (notifies the specific beneficiary's
+  linked user, if they have a login). See `database-model.md §7` and
+  `business-rules.md §Notifications` for the full fan-out design (one row
+  per recipient, never per role; the triggering actor is excluded from
+  their own event's notifications).
+- **Promoter dashboard: quick-link buttons + rebuilt "Estratto Conto
+  Provvigioni"**. Added the same large quick-access button grid the admin
+  Panoramica already had (Rete Commerciale, Prodotti da Condividere,
+  Movimenti Provvigioni, Simulatore, Supporto) to the promoter's own "La
+  mia Azienda" landing tab. `MyCommissions` (`my-commissions.tsx`) was a
+  bare list of type/amount/status before this session -- rebuilt on a new
+  `GET /commissions/mine/detailed` endpoint (reuses the admin ledger's
+  `admin_ledger.get_commission_movements()`, hard-scoped to the caller's
+  own `agent_id`, gated on `commissions.read_own` not `commissions.approve`)
+  to show, per movement: customer name, product, and a plain-language
+  "provenienza" ("Prodotto da te" / "Da un tuo diretto" / "Da N livelli
+  sotto di te" -- `depth_from_producer` is already relative to the viewer
+  when the row is their own), with a click-to-expand full breakdown
+  (contract value, base token, already-distributed-below, the same
+  human-readable explanation the admin ledger shows) -- the exact same
+  traceability the admin gets, just permission-scoped to "yours only".
+- **Real bug fixed while building this**: the admin contract "Recensisci"
+  dropdown listed every one of the 14 contract statuses regardless of the
+  contract's actual current status, so picking anything the state machine
+  didn't allow from that status (e.g. `DRAFT` → `ACTIVE`) always 400'd with
+  "Cannot transition contract from X to Y" -- confusing since nothing in
+  the UI hinted which choices were valid. Fixed by mirroring
+  `state_machine.py::ALLOWED_TRANSITIONS` as a frontend constant and
+  filtering the dropdown to the contract's real valid next-states; a
+  contract already in a terminal state (`REJECTED`/`CANCELLED`) now shows a
+  clear "reached a final state" message instead of a dropdown with no
+  valid choices.
+
+Backend: 93 tests passing (was 87 -- 6 new: PENDING_APPROVAL creation,
+approve/reject + idempotent re-decision rejection, notification fan-out
+excludes the actor and only reaches the right role, mark-read/mark-all-read,
+contract creation notifies staff). Frontend: clean tsc/eslint/next build.
+Verified live over HTTPS with a headless browser end to end: admin creates a
+promoter → PENDING_APPROVAL confirmed via API → SUPER_ADMIN sees the bell
+badge and the "Anagrafiche Promoter" sidebar dot → clicking the notification
+navigates there and marks it read → clicking "Approva" through the real UI
+flips the agent to ACTIVE; a plain ADMIN's approve attempt correctly 403s;
+the promoter dashboard's quick-links and the rebuilt commission statement
+(including row expansion) all render real data correctly.
+
+## Session 16 — 2026-07-27 (same day, continued) — Clickable KPI cards, admin commission traceability + payment tracking, CSV export
+
+- Every KPI card on the admin Panoramica is now clickable and navigates to
+  the relevant tab pre-filtered to exactly the rows that produced that
+  number (`Contratti attivi` → contracts list filtered `ACTIVE`, `In attesa
+  di approvazione` → the same status set `reports/service.py` already sums
+  for that KPI, `Respinti / cessati` → a new combined `REJECTED`+`CANCELLED`
+  filter value, `Promoter attivi`/`Clienti attivi` → their respective lists
+  filtered to active, `Provvigioni maturate/pagate` → the new Provvigioni
+  tab pre-filtered by status).
+- New admin "Provvigioni" tab + `GET /commissions/movements`
+  (`commissions/services/admin_ledger.py`, gated on `commissions.approve`
+  -- org-wide, so it must NOT reuse `commissions.read_branch`, which
+  `TEAM_LEADER`/`PROMOTER` also hold for their own branch only): full
+  traceability per commission movement -- contract, customer, promoter,
+  their depth below the contract's producer, rank at calculation vs. now,
+  and the exact breakdown -- all of it already computed by
+  `CommissionCalculationStep` at calculation time but never exposed by any
+  endpoint before this. Plus `GET /commissions/movements/by-level` for a
+  per-network-level rollup (contracts/revenue/commission at each depth).
+- New `PATCH /commissions/movements/{id}/pay`: the missing write path for
+  `commission_movements.status`/`paid_date`, present in the schema since
+  migration 0001 but never set to anything but `ACCRUED` by any code path --
+  "Provvigioni pagate" had always shown €0,00 for exactly that reason.
+  Rejects re-paying an already-`PAID` movement.
+- CSV export (`lib/csv-export.ts`, client-side, no backend endpoint needed)
+  added to Tutti i Contratti, Anagrafiche Clienti, Anagrafiche Promoter, and
+  the new Provvigioni tab.
+
+Backend: 87 tests passing (was 83 -- 4 new). Frontend: clean tsc/eslint/next
+build. Verified live: KPI clicks land pre-filtered correctly; a movement was
+marked paid through the real UI and the "Provvigioni pagate" total updated.
+
+## Session 15 — 2026-07-27 (same day, continued) — Rank promotion progress ("what's missing for the next qualification")
+
+Requested, then explicitly authorized this session ("procurati quei criteri
+qualifica e falli tu" -- go get those criteria and set them yourself) after
+being told the real promotion thresholds were never defined anywhere
+(`open-questions.md #1`). `ranks.personal_volume_threshold_cents`/
+`group_volume_threshold_cents` existed in the schema since migration 0001
+but were always 0, never read anywhere -- populated with reasonable,
+ascending, demo-scale placeholder figures (migration 0010 +
+`seed/ranks.py`), explicitly documented as not confirmed Lial Energy policy.
+New `GET /network/agents/{id}/rank-progress` compares an agent's cumulative
+(lifetime, not evaluation-windowed) contract value against the next rank's
+thresholds -- personal (self-produced) and group (entire downline including
+self) -- surfaced as two progress bars in `PromoterAziendaPanel`, shared by
+both the promoter's own "La mia Azienda" tab and the admin's per-promoter
+"Apri Rete" drill-down. An agent already at the top rank shows "qualifica
+massima raggiunta" instead. Also fixed in this session: the promoter header
+box showed the raw rank UUID instead of the rank code (backend never
+returned `rank_code` on `GET /network/mine`) and was narrower than the
+content below it.
+
+Backend: 83 tests passing (was 79 -- 4 new). Frontend: clean tsc/eslint/next
+build. Verified live: migration applied, real threshold figures on all 12
+ranks, correct progress data for both a mid-tier and a max-tier agent.
+
 ## Session 14 — 2026-07-26 (same day, continued) — Sensitive document uploads (private storage), contract IBAN, demo data expanded to 12 full levels, network tree click-through popup
 
 Continuation of another large multi-part request. All items below were built,

@@ -11,6 +11,13 @@ const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   SUSPENDED: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   TERMINATED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  PENDING_APPROVAL: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+};
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Attivo",
+  SUSPENDED: "Sospeso",
+  TERMINATED: "Cessato",
+  PENDING_APPROVAL: "Da approvare",
 };
 
 async function fetchAgents(): Promise<AgentListItemRead[]> {
@@ -65,6 +72,51 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
   const [createError, setCreateError] = useState<string | null>(null);
 
   const nameById = new Map((agents ?? []).map((a) => [a.id, a.display_name]));
+
+  // Approval workflow -- only network.approve holders (SUPER_ADMIN/
+  // ORGANIZATION_ADMIN, the "amministratore principale") can actually
+  // succeed here; a plain ADMIN sees the buttons too but the backend 403s,
+  // surfaced as approvalError below. Not worth plumbing role info through
+  // the session just to hide two buttons the server already guards.
+  const [approvalActionId, setApprovalActionId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [rejectingAgent, setRejectingAgent] = useState<AgentListItemRead | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  async function handleApprove(agentId: string) {
+    setApprovalActionId(agentId);
+    setApprovalError(null);
+    try {
+      const res = await fetch(`/api/proxy/network/agents/${agentId}/approve`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!res.ok) throw new Error(await res.text());
+      await queryClient.invalidateQueries({ queryKey: ["admin", "agents"] });
+    } catch (err: any) {
+      setApprovalError(err.message || "Impossibile approvare -- solo l'amministratore principale può farlo.");
+    } finally {
+      setApprovalActionId(null);
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectingAgent) return;
+    setApprovalActionId(rejectingAgent.id);
+    setApprovalError(null);
+    try {
+      const res = await fetch(`/api/proxy/network/agents/${rejectingAgent.id}/reject`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: rejectReason || null }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await queryClient.invalidateQueries({ queryKey: ["admin", "agents"] });
+      setRejectingAgent(null);
+      setRejectReason("");
+    } catch (err: any) {
+      setApprovalError(err.message || "Impossibile rifiutare -- solo l'amministratore principale può farlo.");
+    } finally {
+      setApprovalActionId(null);
+    }
+  }
 
   // Edit
   const [editingAgent, setEditingAgent] = useState<AgentListItemRead | null>(null);
@@ -203,6 +255,9 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
       </div>
 
       {loadError && <p className="text-sm text-rose-400">Impossibile caricare la rete commerciale.</p>}
+      {approvalError && (
+        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{approvalError}</div>
+      )}
 
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
         <div className="overflow-x-auto">
@@ -239,31 +294,53 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
                     </td>
                     <td className="py-4 px-6">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[a.status] ?? STATUS_COLORS.ACTIVE}`}>
-                        {a.status}
+                        {STATUS_LABELS[a.status] ?? a.status}
                       </span>
+                      {a.status === "TERMINATED" && a.rejection_reason && (
+                        <p className="text-[10px] text-rose-400 mt-1 max-w-[160px]">{a.rejection_reason}</p>
+                      )}
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setNetworkAgent(a)}
-                          title="Apri la rete di questo promoter"
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
-                          </svg>
-                          Apri Rete
-                        </button>
-                        <button
-                          onClick={() => openEdit(a)}
-                          title="Modifica promoter"
-                          className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      </div>
+                      {a.status === "PENDING_APPROVAL" ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleApprove(a.id)}
+                            disabled={approvalActionId === a.id}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                          >
+                            Approva
+                          </button>
+                          <button
+                            onClick={() => setRejectingAgent(a)}
+                            disabled={approvalActionId === a.id}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                          >
+                            Rifiuta
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setNetworkAgent(a)}
+                            title="Apri la rete di questo promoter"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
+                            </svg>
+                            Apri Rete
+                          </button>
+                          <button
+                            onClick={() => openEdit(a)}
+                            title="Modifica promoter"
+                            className="p-1.5 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 transition cursor-pointer"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -439,6 +516,40 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
           displayName={networkAgent.display_name}
           onClose={() => setNetworkAgent(null)}
         />
+      )}
+
+      {rejectingAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
+            <h3 className="text-lg font-bold text-white light:text-slate-900 mb-2">Rifiuta {rejectingAgent.display_name}</h3>
+            <p className="text-xs text-slate-400 light:text-slate-500 mb-4">
+              Il profilo suggerito viene segnato come cessato. Il codice promoter {rejectingAgent.promoter_code} non sarà più utilizzabile.
+            </p>
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block mb-1">Motivazione (opzionale)</label>
+            <textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Es: codice duplicato, dati incompleti..."
+              className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 resize-none mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setRejectingAgent(null); setRejectReason(""); }}
+                className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={approvalActionId === rejectingAgent.id}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
+              >
+                {approvalActionId === rejectingAgent.id ? "Salvataggio..." : "Conferma Rifiuto"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

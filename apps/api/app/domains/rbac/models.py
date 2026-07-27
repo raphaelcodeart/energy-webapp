@@ -26,7 +26,7 @@ PERMISSIONS = [
     "customers.read", "customers.create", "customers.update",
     "contracts.read", "contracts.create", "contracts.submit",
     "contracts.review", "contracts.approve", "contracts.activate",
-    "network.read_branch", "network.manage", "network.recruit",
+    "network.read_branch", "network.manage", "network.recruit", "network.approve",
     "commissions.read_own", "commissions.read_branch", "commissions.simulate",
     "commissions.approve", "commission_adjustments.create",
     "payments.manage", "documents.download", "reports.export", "reports.read",

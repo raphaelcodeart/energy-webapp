@@ -124,6 +124,36 @@ calculations elsewhere in this document.
   `network_snapshot_id` on the contract. Subsequent moves of any agent in that chain
   never retroactively change attribution, past calculations, or past ledger entries.
 
+### New promoter suggest-then-approve workflow (added Session 17)
+
+Every new collaborator, however they're created, only ever gets SUGGESTED --
+never immediately live:
+
+- `POST /network/agents` (an ADMIN adding a promoter anywhere in the org
+  tree) and `POST /network/agents/recruit` (a promoter enrolling their own
+  direct collaborator) both now create the agent with
+  `status = PENDING_APPROVAL`, not `ACTIVE`.
+- A `PENDING_APPROVAL` agent already exists and is visible in the network
+  tree (it's a real row, a real node) but cannot be used as a contract
+  producer -- `contracts/service.py::create_contract()` already rejected any
+  non-`ACTIVE` producer before this feature existed, so no new guard was
+  needed there; the approval workflow rides entirely on a check that was
+  already correct.
+- Only `network.approve` holders can turn a suggestion into a real
+  collaborator: `PATCH /network/agents/{id}/approve` (→ `ACTIVE`) or `PATCH
+  /network/agents/{id}/reject` (→ `TERMINATED`, with an optional reason kept
+  on the row, never a hard delete). `network.approve` is granted only to
+  `SUPER_ADMIN`/`ORGANIZATION_ADMIN` -- the "amministratore principale" the
+  user asked for -- deliberately NOT to a plain `ADMIN`, who already holds
+  `network.manage` (can suggest) but not `network.approve` (cannot confirm
+  their own suggestion). Re-approving/re-rejecting an already-decided agent
+  is rejected (`AgentApprovalError`), not silently accepted.
+- Both creation paths and both approval outcomes fire a notification (see
+  `database-model.md §7`) -- `PROMOTER_APPROVAL_REQUESTED` to every
+  `network.approve` holder when something needs a decision,
+  `PROMOTER_APPROVED`/`PROMOTER_REJECTED` back to the suggested agent's own
+  `user_id` if they already have a login.
+
 ## Entrepreneurial Difference ("Differenza Imprenditoriale")
 
 Defined as the difference between the personal token that a given rank would earn on a
@@ -232,6 +262,32 @@ formula is implemented yet — only the extension point.
 - A ticket can optionally reference a `contract_id`, letting a customer or promoter
   open a ticket directly "about this contract" instead of the admin having to guess
   which one they mean from free text.
+
+## Notifications (added Session 17)
+
+See `database-model.md §7` for the table shape. Behavior:
+
+- **Who gets what**: `CONTRACT_CREATED`/`TICKET_CREATED`/
+  `PROMOTER_APPROVAL_REQUESTED` fan out to every user holding a role in a
+  fixed set (`notifications/service.py::STAFF_NOTIFY_ROLES` for the first
+  two, the narrower `APPROVAL_NOTIFY_ROLES` for the third -- only
+  `network.approve` holders can act on an approval request, so only they
+  are told about one). `COMMISSION_EARNED`/`PROMOTER_APPROVED`/
+  `PROMOTER_REJECTED` go to exactly one specific user -- the beneficiary
+  agent's own `user_id`, when they have a login at all (an agent with no
+  `user_id` -- a collaborator who predates having their own account --
+  simply generates no notification for that event, not an error).
+- **The actor never notifies themselves**: whoever triggered the event
+  (created the contract, opened the ticket) is excluded from that event's
+  own fan-out (`notify_roles(..., exclude_user_id=actor_user_id)`) -- an
+  admin creating a contract doesn't need to be told they just did that.
+- **Read state is per person**: marking a notification read only affects
+  the row for that recipient; a fanned-out event that reached five admins
+  produces five independent rows, so one admin dismissing it doesn't
+  silently clear it for the other four.
+- **No push, no email** -- notifications are in-app only, polled every 25s
+  by the frontend. Real-time delivery (WebSockets/SSE) and email digests are
+  future work, not built here.
 
 ## Promoter reassignment
 

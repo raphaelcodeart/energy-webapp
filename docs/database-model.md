@@ -60,7 +60,20 @@ audit_log (append-only, no updates/deletes)
 ```
 agent_profiles
   id, organization_id, user_id nullable (promoters may predate a user account),
-  display_name, promoter_code (unique), status,
+  display_name, promoter_code (unique),
+  status (ACTIVE/SUSPENDED/TERMINATED/PENDING_APPROVAL -- the last one added
+    Session 17: both POST /network/agents (admin, org-wide) and POST
+    /network/agents/recruit (a promoter enrolling their own direct
+    collaborator) now only SUGGEST a new agent -- created PENDING_APPROVAL,
+    unusable as a contract producer (create_contract() already rejects any
+    non-ACTIVE producer, so this needed no extra guard) until approved),
+  approved_by_user_id nullable, approved_at nullable (added Session 17 --
+    who/when a PENDING_APPROVAL agent was approved via PATCH
+    /network/agents/{id}/approve, network.approve-gated),
+  rejection_reason nullable (added Session 17 -- set by PATCH
+    /network/agents/{id}/reject; a rejected agent is TERMINATED with a
+    reason kept on the row, never hard-deleted, same append-only-history
+    discipline as everywhere else in this project),
   photo_url nullable (added Session 13 -- profile photo, uploaded via
     POST /network/agents/{id}/photo to the public "lial-media" bucket, see
     §6 in server-migration-guide.md and core/storage.py. Same "name
@@ -331,7 +344,50 @@ auto-transitions it to `IN_PROGRESS`. New permission codes: `tickets.create`
 `tickets.respond` (see/reply to any ticket, change status -- granted to
 `ADMIN`-tier roles). See `business-rules.md §Support tickets`.
 
-## 7. ER diagram (core slice)
+## 7. Notifications (added Session 17)
+
+```
+notifications
+  id, organization_id, recipient_user_id, created_at,
+  type (CONTRACT_CREATED / TICKET_CREATED / PROMOTER_APPROVAL_REQUESTED /
+    PROMOTER_APPROVED / PROMOTER_REJECTED / COMMISSION_EARNED),
+  entity_type, entity_id (what the notification is ABOUT -- e.g. "contract"
+    + a contract's uuid -- so the frontend can navigate to it),
+  title, body nullable,
+  is_read (default false)
+```
+
+One row per **recipient user**, not per role or per event -- `notifications/
+service.py::notify_roles()` fans a single staff-facing event (new contract,
+new ticket, a promoter awaiting approval) out into one row per user holding
+one of the target roles at that moment, so read/unread state is tracked
+correctly per person even when several admins share a role (one admin
+marking a notification read must never silently clear it for a colleague).
+`notify_user()` is the single-recipient case (a specific promoter earning a
+commission, or being told their suggested collaborator was approved/
+rejected). No dedicated permission gates `GET /notifications/mine` -- it is
+self-scoped by construction (`recipient_user_id`), same pattern as
+`/commissions/mine` and `/network/mine`.
+
+Trigger points (all fire from inside the same DB transaction as the event
+itself, via a plain `db.add(...)` -- no commit until the caller's own
+commit, same convention as `audit_service.record()`):
+`contracts/service.py::create_contract()`, `support/service.py::
+create_ticket()`, `network/router.py::create_agent()`/`recruit_agent()`
+(both PENDING_APPROVAL creation paths), and
+`commissions/services/run_calculation.py::run_calculation_for_contract()`
+(one COMMISSION_EARNED notification per beneficiary that has a linked
+`user_id`, skipping agents with no login).
+
+The frontend polls `GET /notifications/mine` every 25s (no WebSockets --
+not worth the complexity for a low-volume internal tool) and maps each
+notification `type` to a sidebar nav item via that item's own
+`notificationTypes` array (`app-shell.tsx`), so an unread dot only ever
+lights up the ONE nav entry actually relevant to it (e.g.
+`PROMOTER_APPROVAL_REQUESTED` only lights up "Anagrafiche Promoter", never
+"Tutti i Contratti").
+
+## 8. ER diagram (core slice)
 
 ```mermaid
 erDiagram

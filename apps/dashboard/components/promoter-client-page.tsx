@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "azienda",
     label: "La mia Azienda",
+    notificationTypes: ["PROMOTER_APPROVED", "PROMOTER_REJECTED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
@@ -65,6 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "commissions",
     label: "Movimenti Provvigioni",
+    notificationTypes: ["COMMISSION_EARNED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3v-6m-3 6v-1m6-13H9a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2z" />
@@ -86,6 +88,59 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+  },
+];
+
+const QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
+  {
+    key: "network",
+    label: "Rete Commerciale",
+    description: "Vedi il tuo albero, fino a 12 livelli",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: "products",
+    label: "Prodotti da Condividere",
+    description: "Condividi un'offerta col tuo link",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
+    key: "commissions",
+    label: "Movimenti Provvigioni",
+    description: "Estratto conto dettagliato",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 7h6m0 10v-3m-3 3v-6m-3 6v-1m6-13H9a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    key: "simulator",
+    label: "Simulatore Provvigioni",
+    description: "Simula un'ipotesi sul prossimo contratto",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+      </svg>
+    ),
+  },
+  {
+    key: "support",
+    label: "Supporto",
+    description: "Hai bisogno di aiuto? Apri un ticket",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
       </svg>
     ),
   },
@@ -182,6 +237,30 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
           {activeTab === "azienda" && (
             <div className="space-y-6">
               <SectionBanner image="energy" alt="La mia Azienda" />
+
+              {/* Quick-access section shortcuts, same pattern as the admin
+                  Panoramica -- makes the rest of the promoter area one click
+                  away instead of only reachable via the sidebar. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {QUICK_LINKS.map((link) => (
+                  <button
+                    key={link.key}
+                    onClick={() => setActiveTab(link.key as typeof activeTab)}
+                    className="group flex flex-col items-start gap-3 p-4 rounded-2xl border border-white/5 light:border-slate-200 bg-gradient-to-br from-slate-900/60 to-slate-900/20 light:from-white light:to-slate-50 hover:border-orange-500/40 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-200 cursor-pointer text-left"
+                  >
+                    <span className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                      {link.icon}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-white light:text-slate-900 truncate">
+                        {link.label}
+                      </span>
+                      <span className="block text-[11px] text-slate-500 truncate">{link.description}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
               <PromoterAziendaPanel agentId={me.id} />
             </div>
           )}

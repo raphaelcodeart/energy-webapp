@@ -19,7 +19,8 @@ from app.domains.commissions.models import (
     Rank,
 )
 from app.domains.contracts.models import Contract
-from app.domains.network.models import NetworkSnapshotNode
+from app.domains.network.models import AgentProfile, NetworkSnapshotNode
+from app.domains.notifications import service as notifications_service
 
 RULE_VERSION = "2026.1-placeholder"  # see docs/open-questions.md #1
 
@@ -176,6 +177,14 @@ async def run_calculation_for_contract(
         raise
 
     today = datetime.now(UTC).date()
+    beneficiary_ids = {uuid.UUID(s.beneficiary_agent_id) for s in steps}
+    user_id_by_agent = dict(
+        (
+            await db.execute(
+                select(AgentProfile.id, AgentProfile.user_id).where(AgentProfile.id.in_(beneficiary_ids))
+            )
+        ).all()
+    )
     for order, step in enumerate(steps):
         db.add(
             CommissionCalculationStep(
@@ -212,6 +221,14 @@ async def run_calculation_for_contract(
                     ),
                 )
             )
+            beneficiary_user_id = user_id_by_agent.get(uuid.UUID(step.beneficiary_agent_id))
+            if beneficiary_user_id is not None:
+                await notifications_service.notify_user(
+                    db, organization_id=organization_id, user_id=beneficiary_user_id,
+                    type_="COMMISSION_EARNED", entity_type="contract", entity_id=contract_id,
+                    title=f"Nuova provvigione: {step.gross_amount_cents / 100:.2f} EUR",
+                    body=step.explanation,
+                )
 
     try:
         await db.commit()

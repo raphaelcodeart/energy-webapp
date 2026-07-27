@@ -13,6 +13,7 @@ from app.domains.contracts.state_machine import assert_transition_allowed, event
 from app.domains.customers.models import SupplyPoint
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
+from app.domains.notifications import service as notifications_service
 from app.domains.outbox import service as outbox_service
 
 # Statuses that represent "the contract's term is running" -- entering one of
@@ -148,6 +149,12 @@ async def create_contract(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="contract.created", entity_type="contract", entity_id=str(contract.id),
         new_value={"status": "DRAFT"},
+    )
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="CONTRACT_CREATED", entity_type="contract", entity_id=contract.id,
+        title="Nuovo contratto creato", body=f"Contratto {contract.id} in stato Bozza.",
+        exclude_user_id=actor_user_id,
     )
     await db.commit()
     await db.refresh(contract)
