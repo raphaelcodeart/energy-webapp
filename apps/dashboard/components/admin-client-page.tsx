@@ -43,6 +43,30 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: "Respinta",
 };
 
+// Mirrors apps/api/app/domains/contracts/state_machine.py::ALLOWED_TRANSITIONS
+// exactly -- the dropdown below must only ever offer transitions the backend
+// will actually accept. Real bug fixed here: it used to list every status
+// unconditionally, so picking anything the state machine didn't allow from
+// the contract's current status (e.g. DRAFT -> ACTIVE) always 400'd with
+// "Cannot transition contract from X to Y" -- confusing since the UI never
+// hinted which choices were valid.
+const CONTRACT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["SUBMITTED", "REJECTED"],
+  SUBMITTED: ["DOCUMENTS_PENDING", "UNDER_REVIEW", "REJECTED"],
+  DOCUMENTS_PENDING: ["UNDER_REVIEW", "REJECTED"],
+  UNDER_REVIEW: ["APPROVED", "REJECTED", "DOCUMENTS_PENDING"],
+  APPROVED: ["PAYMENT_PENDING", "REJECTED"],
+  PAYMENT_PENDING: ["PAID", "REJECTED"],
+  PAID: ["ACTIVATION_PENDING"],
+  ACTIVATION_PENDING: ["ACTIVE"],
+  ACTIVE: ["SUSPENDED", "CANCELLED", "EXPIRED", "RENEWED"],
+  SUSPENDED: ["ACTIVE", "CANCELLED"],
+  REJECTED: [],
+  CANCELLED: [],
+  EXPIRED: ["RENEWED", "CANCELLED"],
+  RENEWED: ["SUSPENDED", "CANCELLED", "EXPIRED", "RENEWED"],
+};
+
 const NAV_ITEMS: NavItem[] = [
   {
     key: "overview",
@@ -177,13 +201,15 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     setTransitionNotes("");
     setTransitionError(null);
 
-    // Choose sensible default transition based on current status
-    if (contract.status === "DRAFT") setTargetStatus("SUBMITTED");
-    else if (contract.status === "SUBMITTED") setTargetStatus("UNDER_REVIEW");
-    else if (contract.status === "UNDER_REVIEW") setTargetStatus("APPROVED");
-    else if (contract.status === "APPROVED") setTargetStatus("ACTIVE");
-    else setTargetStatus("REJECTED");
+    // Default to the first status-machine-allowed transition that ISN'T a
+    // rejection/cancellation, so the form opens pre-selected on the "happy
+    // path" forward step rather than defaulting to REJECTED.
+    const allowed = CONTRACT_ALLOWED_TRANSITIONS[contract.status] ?? [];
+    const forwardStep = allowed.find((s) => s !== "REJECTED" && s !== "CANCELLED");
+    setTargetStatus(forwardStep ?? allowed[0] ?? "");
   };
+
+  const availableTargets = selectedContract ? CONTRACT_ALLOWED_TRANSITIONS[selectedContract.status] ?? [] : [];
 
   const handleExecuteTransition = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -455,6 +481,20 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
               <ContractDocumentsPanel contractId={selectedContract.id} isStaff />
             </div>
 
+            {availableTargets.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-sm text-slate-400 light:text-slate-500 text-center">
+                Questo contratto ha raggiunto uno stato finale ({STATUS_LABELS[selectedContract.status] ?? selectedContract.status}) e non può essere transizionato ulteriormente.
+                <div className="flex justify-center mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedContract(null)}
+                    className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer"
+                  >
+                    Chiudi
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={handleExecuteTransition} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 block">Seleziona Stato di Destinazione</label>
@@ -463,10 +503,13 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                   onChange={(e) => setTargetStatus(e.target.value)}
                   className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
                 >
-                  {Object.entries(STATUS_LABELS).map(([code, label]) => (
-                    <option key={code} value={code} className="bg-slate-950 light:bg-white">{label} ({code})</option>
+                  {availableTargets.map((code) => (
+                    <option key={code} value={code} className="bg-slate-950 light:bg-white">{STATUS_LABELS[code] ?? code} ({code})</option>
                   ))}
                 </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Solo le transizioni valide da &quot;{STATUS_LABELS[selectedContract.status] ?? selectedContract.status}&quot; sono elencate qui.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -515,6 +558,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}
