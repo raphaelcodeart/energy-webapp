@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/config";
 
 export default function ForgotPasswordPage() {
-  const [organizationId, setOrganizationId] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -19,7 +19,7 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/public/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: organizationId, email }),
+        body: JSON.stringify({ organization_id: DEFAULT_ORGANIZATION_ID, email }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -64,15 +64,8 @@ export default function ForgotPasswordPage() {
               <div>
                 <h2 className="text-xl font-semibold text-white/90 light:text-slate-800">Password dimenticata</h2>
                 <p className="text-sm text-slate-400 light:text-slate-500 mt-1">
-                  Inserisci il tuo ID organizzazione e la tua email: ti invieremo un link per reimpostare la password.
+                  Inserisci la tua email: ti invieremo un link per reimpostare la password.
                 </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider">ID Organizzazione</label>
-                <input required value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}
-                  placeholder="Inserisci il codice UUID dell'organizzazione"
-                  className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500" />
               </div>
 
               <div className="space-y-1">

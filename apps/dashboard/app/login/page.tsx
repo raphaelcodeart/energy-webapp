@@ -5,12 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/config";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -22,7 +22,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, organizationId }),
+        body: JSON.stringify({ email, password, organizationId: DEFAULT_ORGANIZATION_ID }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -83,20 +83,6 @@ export default function LoginPage() {
           className="glass-card rounded-2xl p-8 space-y-5"
         >
           <h2 className="text-xl font-semibold text-white/90 light:text-slate-800">Accedi alla tua area riservata</h2>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="organizationId">
-              ID Organizzazione
-            </label>
-            <input
-              id="organizationId"
-              className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              placeholder="Inserisci il codice UUID dell'organizzazione"
-              required
-            />
-          </div>
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="email">
@@ -170,7 +156,7 @@ export default function LoginPage() {
             Area Demo & Test
           </h3>
           <p className="text-slate-400 light:text-slate-500 text-xs mb-4">
-            Usa l&apos;ID Organizzazione stampato dal seed backend. Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
+            Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
           </p>
           <div className="grid grid-cols-3 gap-2">
             <button

@@ -4,6 +4,32 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 18 — 2026-07-27 — Hide Organization ID from login/forgot-password
+
+- User asked what the "ID Organizzazione" field on login/forgot-password and
+  the UUIDs shown elsewhere actually are, whether they're needed, and
+  whether the platform is really one organization per reseller company or
+  one per individual promoter. Answer: the data model is genuinely
+  multi-tenant (`organizations` table, `User` has a
+  `UniqueConstraint("organization_id", "email")` -- deliberately allows the
+  same email across different orgs), but only ONE organization ("Lial
+  Energy Demo") exists today, confirmed live against the database. An
+  organization is a whole reseller company that could license this
+  platform, never an individual promoter -- promoters are just agents
+  inside one org's network.
+- Given that today there is exactly one org and no near-term plan for a
+  second, hardcoding it in the frontend was the lowest-friction fix with no
+  backend/security change. Added `apps/dashboard/lib/config.ts` exporting
+  `DEFAULT_ORGANIZATION_ID`; removed the "ID Organizzazione" field from
+  `login/page.tsx` and `forgot-password/page.tsx`, both now silently send
+  the constant. The backend endpoints are untouched -- they still require
+  `organization_id` in the request body, so multi-tenant capability is
+  fully preserved. If a second organization is ever onboarded, this
+  shortcut must be reverted in favor of an org picker or server-side
+  resolution from the email (noted directly in `config.ts`'s comment).
+  Verified live with Playwright: both pages render with no Organization ID
+  field, a real login and a real forgot-password submission both succeed.
+
 ## Session 17 — 2026-07-28 — In-app notifications, promoter suggest-then-approve workflow, promoter dashboard quick-links, rebuilt commission statement
 
 - **New promoter approval workflow**: `POST /network/agents` (admin,
