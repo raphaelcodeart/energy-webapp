@@ -25,7 +25,7 @@ export type SectionImageKey = keyof typeof SECTION_IMAGES;
 
 export function SectionBanner({ image, alt }: { image: SectionImageKey; alt: string }) {
   return (
-    <div className="relative h-20 sm:h-24 rounded-2xl overflow-hidden mb-6 border border-white/5 light:border-slate-200">
+    <div className="relative h-32 sm:h-44 rounded-2xl overflow-hidden mb-6 border border-white/5 light:border-slate-200">
       {/* eslint-disable-next-line @next/next/no-img-element -- external, unoptimized decorative image; next/image would require remote-pattern config for a source that varies by section */}
       <img src={SECTION_IMAGES[image]} alt={alt} className="w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-slate-950/40 to-transparent light:from-white/70 light:via-white/30" />

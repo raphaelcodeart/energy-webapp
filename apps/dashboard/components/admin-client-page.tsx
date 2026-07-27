@@ -274,11 +274,6 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         activeKey={activeTab}
         onNavigate={(key) => setActiveTab(key as typeof activeTab)}
         headerTitle="Pannello Amministrativo"
-        headerSubtitle={
-          <>
-            Organizzazione: <span className="font-mono text-xs text-amber-400">{organizationId}</span>
-          </>
-        }
       >
         {activeTab === "overview" && (
           <>
