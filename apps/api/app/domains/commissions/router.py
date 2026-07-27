@@ -8,11 +8,15 @@ from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.domains.commissions.models import CommissionMovement, Rank
 from app.domains.commissions.schemas import (
+    CommissionLevelTotalsRead,
+    CommissionMovementDetailRead,
     CommissionMovementRead,
+    CommissionPaymentRequest,
     RankRead,
     SimulateRequest,
     SimulationStepRead,
 )
+from app.domains.commissions.services import admin_ledger
 from app.domains.commissions.simulations.simulate import simulate_for_contract
 from app.domains.network.models import AgentProfile
 
@@ -82,3 +86,52 @@ async def simulate(
         )
         for s in steps
     ]
+
+
+@router.get("/movements", response_model=list[CommissionMovementDetailRead])
+async def list_commission_movements(
+    agent_id: uuid.UUID | None = None,
+    status_filter: str | None = None,
+    contract_id: uuid.UUID | None = None,
+    current_user: CurrentUser = Depends(require_permission("commissions.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommissionMovementDetailRead]:
+    """Org-wide commission ledger with full traceability -- which contract,
+    which customer, which promoter, from how many network levels below the
+    producer, at what rank, and the exact calculation breakdown. Gated on
+    commissions.approve (admin-tier only): unlike commissions.read_branch
+    (also held by TEAM_LEADER/PROMOTER for their OWN branch), this endpoint
+    is org-wide with no branch restriction, so it must not be reachable by a
+    promoter-tier role."""
+    rows = await admin_ledger.get_commission_movements(
+        db, organization_id=current_user.organization_id, agent_id=agent_id, status=status_filter, contract_id=contract_id
+    )
+    return [CommissionMovementDetailRead(**row) for row in rows]
+
+
+@router.get("/movements/by-level", response_model=list[CommissionLevelTotalsRead])
+async def get_commission_totals_by_level(
+    current_user: CurrentUser = Depends(require_permission("commissions.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommissionLevelTotalsRead]:
+    rows = await admin_ledger.get_commission_totals_by_level(db, organization_id=current_user.organization_id)
+    return [CommissionLevelTotalsRead(**row) for row in rows]
+
+
+@router.patch("/movements/{movement_id}/pay", response_model=CommissionMovementRead)
+async def pay_commission_movement(
+    movement_id: uuid.UUID,
+    payload: CommissionPaymentRequest,
+    current_user: CurrentUser = Depends(require_permission("commissions.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> CommissionMovementRead:
+    try:
+        movement = await admin_ledger.mark_movement_paid(
+            db, organization_id=current_user.organization_id, movement_id=movement_id,
+            actor_user_id=current_user.user_id, note=payload.note,
+        )
+    except admin_ledger.CommissionPaymentError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if movement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Commission movement not found")
+    return CommissionMovementRead.model_validate(movement)

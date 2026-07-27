@@ -11,7 +11,9 @@ import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
+import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
 import { SectionBanner } from "@/components/section-banner";
+import { downloadCsv } from "@/lib/csv-export";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
@@ -66,6 +68,21 @@ const CONTRACT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
   EXPIRED: ["RENEWED", "CANCELLED"],
   RENEWED: ["SUSPENDED", "CANCELLED", "EXPIRED", "RENEWED"],
 };
+
+// Virtual, combined filter values -- mirror the groupings the Panoramica KPI
+// cards use (reports/service.py PENDING_APPROVAL_STATUSES, and "Respinti /
+// cessati" which sums REJECTED+CANCELLED), so clicking a KPI card lands on
+// exactly the set of rows that produced that number.
+const PENDING_APPROVAL_STATUSES = new Set([
+  "DRAFT", "SUBMITTED", "DOCUMENTS_PENDING", "UNDER_REVIEW", "APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING",
+]);
+const REJECTED_CANCELLED_STATUSES = new Set(["REJECTED", "CANCELLED"]);
+
+function contractMatchesStatusFilter(status: string, filter: string): boolean {
+  if (filter === "PENDING_APPROVAL") return PENDING_APPROVAL_STATUSES.has(status);
+  if (filter === "REJECTED_CANCELLED") return REJECTED_CANCELLED_STATUSES.has(status);
+  return status === filter;
+}
 
 const NAV_ITEMS: NavItem[] = [
   {
@@ -140,6 +157,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "commissions",
+    label: "Provvigioni",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
@@ -149,7 +175,13 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions">("overview");
+  // Filters set by clicking a KPI card on Panoramica, consumed once by the
+  // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
+  // Contratti" with statusFilter pre-set to ACTIVE.
+  const [pendingCustomerActiveOnly, setPendingCustomerActiveOnly] = useState(false);
+  const [pendingPromoterStatusFilter, setPendingPromoterStatusFilter] = useState<string | null>(null);
+  const [pendingCommissionStatusFilter, setPendingCommissionStatusFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState<string>("ALL");
@@ -181,7 +213,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       (customerNameById.get(c.customer_id) ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.customer_id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || c.status === statusFilter;
+    const matchesStatus = statusFilter === "ALL" || contractMatchesStatusFilter(c.status, statusFilter);
     const matchesYear = yearFilter === "ALL" || new Date(c.created_at).getFullYear().toString() === yearFilter;
     return matchesSearch && matchesStatus && matchesYear;
   });
@@ -251,6 +283,17 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     setTimeout(() => setActiveTab("list"), 1500);
   };
 
+  const handleExportContractsCsv = () => {
+    downloadCsv(
+      `contratti_${new Date().toISOString().slice(0, 10)}`,
+      ["ID Contratto", "Cliente", "Prodotto", "Punto di Fornitura", "Stato", "IBAN", "Creato il", "Attivato il", "Scadenza"],
+      filteredContracts.map((c) => [
+        c.id, customerNameById.get(c.customer_id) ?? c.customer_id, c.product_name ?? "", c.supply_point_label ?? "",
+        STATUS_LABELS[c.status] ?? c.status, c.iban ?? "", c.created_at, c.activated_at ?? "", c.expires_at ?? "",
+      ])
+    );
+  };
+
   const getStatusBadgeColor = (status: string) => {
     switch (status.toUpperCase()) {
       case "ACTIVE":
@@ -278,7 +321,15 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         {activeTab === "overview" && (
           <>
             <SectionBanner image="energy" alt="Panoramica" />
-            <AdminOverviewPanel onNavigate={(key) => setActiveTab(key as typeof activeTab)} />
+            <AdminOverviewPanel
+              onNavigate={(key, filter) => {
+                setActiveTab(key as typeof activeTab);
+                if (key === "list") setStatusFilter(filter ?? "ALL");
+                if (key === "customers") setPendingCustomerActiveOnly(filter === "ACTIVE");
+                if (key === "promoters") setPendingPromoterStatusFilter(filter ?? null);
+                if (key === "commissions") setPendingCommissionStatusFilter(filter ?? null);
+              }}
+            />
           </>
         )}
 
@@ -324,10 +375,24 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                   className="w-full sm:w-44 rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
                 >
                   <option value="ALL">Tutti</option>
+                  <option value="PENDING_APPROVAL">In attesa di approvazione</option>
+                  <option value="REJECTED_CANCELLED">Respinti o cessati</option>
                   {Object.entries(STATUS_LABELS).map(([code, label]) => (
                     <option key={code} value={code}>{label}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                <button
+                  onClick={handleExportContractsCsv}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Esporta CSV
+                </button>
               </div>
 
               <div className="w-full sm:w-auto flex items-center gap-2">
@@ -420,13 +485,13 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         {activeTab === "customers" && (
           <div className="space-y-6">
             <SectionBanner image="customers" alt="Clienti" />
-            <AdminCustomersPanel />
+            <AdminCustomersPanel initialActiveOnly={pendingCustomerActiveOnly} />
           </div>
         )}
         {activeTab === "promoters" && (
           <div className="space-y-6">
             <SectionBanner image="network" alt="Promoter" />
-            <AdminPromotersPanel />
+            <AdminPromotersPanel initialStatusFilter={pendingPromoterStatusFilter ?? undefined} />
           </div>
         )}
         {activeTab === "products" && (
@@ -445,6 +510,12 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           <div className="space-y-6">
             <SectionBanner image="support" alt="Ticket di Supporto" />
             <AdminTicketsPanel />
+          </div>
+        )}
+        {activeTab === "commissions" && (
+          <div className="space-y-6">
+            <SectionBanner image="commissions" alt="Provvigioni" />
+            <AdminCommissionsPanel initialStatusFilter={pendingCommissionStatusFilter ?? undefined} />
           </div>
         )}
       </AppShell>

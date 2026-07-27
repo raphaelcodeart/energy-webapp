@@ -145,6 +145,41 @@ ascendant is only credited the marginal amount their rank adds over what has alr
 been recognized below them. See `commission-engine-specification.md` for the full
 algorithm including the 33% cap and Energia Circolare handling.
 
+## Commission payment tracking (added Session 16)
+
+`commission_movements.status`/`paid_date` existed since the very first migration
+but nothing ever set anything other than `ACCRUED` -- the admin dashboard's
+"Provvigioni pagate" KPI always showed €0,00 because there was no code path
+that could ever produce a `PAID` row. `PATCH
+/commissions/movements/{id}/pay` (admin-tier only, `commissions.approve`)
+is the missing write path: transitions one movement `ACCRUED -> PAID`, stamps
+`paid_date`, and writes an audit row. Re-paying an already-`PAID` movement is
+rejected (`CommissionPaymentError`), not silently accepted -- this is a
+manual "I sent the bank transfer" confirmation per movement, not a batch
+payroll run; there is no bulk-pay-everything-for-this-promoter action yet
+(a reasonable next iteration once real payout batching requirements exist).
+
+### Admin commission traceability (`GET /commissions/movements`)
+
+Every `CommissionMovement` already had a matching `CommissionCalculationStep`
+row (contract → calculation → per-beneficiary step, computed at activation
+time by `run_calculation_for_contract`) carrying `rank_at_calculation`,
+`base_amount_cents`, `already_distributed_cents`,
+`entrepreneurial_difference_cents`, and a human-readable `explanation` string
+-- none of it was ever exposed through any endpoint before this. The new
+endpoint (admin-tier only -- it is org-wide, unlike `commissions.read_branch`
+which `TEAM_LEADER`/`PROMOTER` also hold for their own branch, so it cannot
+reuse that permission) joins all of this together per movement: which
+contract, which customer, which promoter earned it, their depth below the
+contract's producer (`network_snapshot_nodes.depth`, frozen at activation --
+0 is the producer themselves), their rank AT calculation time vs. their rank
+NOW, and the full breakdown of how the amount was derived. Surfaced in the
+admin "Provvigioni" tab (`admin-commissions-panel.tsx`) as an expandable
+ledger row per movement, plus `GET /commissions/movements/by-level`
+(`commissions/services/admin_ledger.py::get_commission_totals_by_level`) for
+the per-network-level rollup (contracts / revenue / commission generated at
+each depth).
+
 ## Regola del 33%
 
 No single first-level branch under a beneficiary may contribute more than

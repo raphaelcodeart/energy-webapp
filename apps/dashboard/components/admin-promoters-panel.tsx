@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoUpload } from "@/components/photo-upload";
 import { AdminPromoterNetworkModal } from "@/components/admin-promoter-network-modal";
+import { downloadCsv } from "@/lib/csv-export";
 import type { AgentListItemRead, RankRead } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -42,7 +43,7 @@ function AgentAvatar({ url, size = 36 }: { url: string | null; size?: number }) 
   );
 }
 
-export function AdminPromotersPanel() {
+export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilter?: string } = {}) {
   const queryClient = useQueryClient();
   const { data: agents, error: loadError } = useQuery({
     queryKey: ["admin", "agents"],
@@ -54,6 +55,7 @@ export function AdminPromotersPanel() {
   });
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? "ALL");
 
   const [displayName, setDisplayName] = useState("");
   const [promoterCode, setPromoterCode] = useState("");
@@ -139,9 +141,22 @@ export function AdminPromotersPanel() {
 
   const filtered = (agents ?? []).filter(
     (a) =>
-      a.display_name.toLowerCase().includes(search.toLowerCase()) ||
-      a.promoter_code.toLowerCase().includes(search.toLowerCase())
+      (statusFilter === "ALL" || a.status === statusFilter) &&
+      (a.display_name.toLowerCase().includes(search.toLowerCase()) ||
+        a.promoter_code.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const handleExportCsv = () => {
+    downloadCsv(
+      `promoter_${new Date().toISOString().slice(0, 10)}`,
+      ["ID", "Nome", "Codice Promoter", "Qualifica", "Sponsor", "Stato", "Iscritto il"],
+      filtered.map((a) => [
+        a.id, a.display_name, a.promoter_code, a.rank_code ?? "",
+        a.direct_parent_agent_id ? nameById.get(a.direct_parent_agent_id) ?? a.direct_parent_agent_id : "Radice",
+        a.status, a.joined_at,
+      ])
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -158,12 +173,33 @@ export function AdminPromotersPanel() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer shrink-0"
-        >
-          + Nuovo Promoter
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-xl glass-input px-3 py-2 text-xs bg-slate-900 light:bg-white focus:border-orange-500"
+          >
+            <option value="ALL">Tutti gli stati</option>
+            <option value="ACTIVE">Solo attivi</option>
+            <option value="SUSPENDED">Solo sospesi</option>
+            <option value="TERMINATED">Solo cessati</option>
+          </select>
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            CSV
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer"
+          >
+            + Nuovo Promoter
+          </button>
+        </div>
       </div>
 
       {loadError && <p className="text-sm text-rose-400">Impossibile caricare la rete commerciale.</p>}

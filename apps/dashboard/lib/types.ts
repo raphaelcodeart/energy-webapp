@@ -28,6 +28,39 @@ export type CommissionMovementRead = {
   effective_date: string;
 };
 
+export type CommissionMovementDetailRead = {
+  id: string;
+  contract_id: string;
+  customer_id: string;
+  customer_name: string;
+  product_name: string;
+  value_cents: number;
+  agent_id: string;
+  agent_name: string;
+  agent_promoter_code: string;
+  agent_current_rank_code: string | null;
+  producer_agent_id: string;
+  producer_name: string;
+  depth_from_producer: number | null;
+  movement_type: string;
+  rank_at_calculation: string | null;
+  base_amount_cents: number | null;
+  already_distributed_cents: number | null;
+  entrepreneurial_difference_cents: number | null;
+  amount_cents: number;
+  explanation: string | null;
+  status: string;
+  effective_date: string;
+  paid_date: string | null;
+};
+
+export type CommissionLevelTotalsRead = {
+  depth: number;
+  contracts: number;
+  value_cents: number;
+  commission_cents: number;
+};
+
 export type BranchMemberRead = {
   agent_id: string;
   depth: number;
