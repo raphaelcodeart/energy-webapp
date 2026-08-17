@@ -29,6 +29,11 @@ WORKDIR /app
 COPY --from=builder --chown=node:node /repo/apps/dashboard/.next/standalone ./
 COPY --from=builder --chown=node:node /repo/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=builder --chown=node:node /repo/apps/dashboard/public ./apps/dashboard/public
+# Next's standalone output-file-tracing occasionally prunes packages that
+# Turbopack injects implicitly (e.g. @swc/helpers) rather than via a
+# statically visible import, leaving an empty directory and a MODULE_NOT_FOUND
+# at runtime. Overlay the full, untraced pnpm store on top to fill any gaps.
+COPY --from=deps --chown=node:node /repo/node_modules/.pnpm ./node_modules/.pnpm
 
 USER node
 ENV NODE_ENV=production

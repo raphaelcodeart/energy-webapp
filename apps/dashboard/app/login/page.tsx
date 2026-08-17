@@ -24,16 +24,23 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, organizationId: DEFAULT_ORGANIZATION_ID }),
       });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         setError(body.error ?? "Login fallito");
         return;
       }
-      // Redirect to the appropriate dashboard based on email prefix as a heuristic,
-      // or simply promoter. The server will restrict dashboard access based on roles.
-      if (email.includes("admin") || email.includes("super")) {
+      // Redirect based on the roles the API actually granted this user (see
+      // /api/auth/login), not a guess from the email address -- a customer
+      // signed up via a promoter's invite link has no "customer" in their
+      // address and was landing on /promoter, which 403s for their role.
+      const roles: string[] = body.roles ?? [];
+      const ADMIN_ROLES = [
+        "SUPER_ADMIN", "ORGANIZATION_ADMIN", "ADMIN",
+        "BACK_OFFICE_OPERATOR", "ACCOUNTING_OPERATOR", "SALES_MANAGER",
+      ];
+      if (roles.some((r) => ADMIN_ROLES.includes(r))) {
         router.push("/admin");
-      } else if (email.includes("customer")) {
+      } else if (roles.includes("CUSTOMER")) {
         router.push("/customer");
       } else {
         router.push("/promoter");

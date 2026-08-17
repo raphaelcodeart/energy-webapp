@@ -30,5 +30,23 @@ export async function POST(request: NextRequest) {
 
   await setSession({ accessToken, refreshToken, organizationId, email });
 
-  return NextResponse.json({ ok: true });
+  // The access token already carries the roles the API assigned at login
+  // (see auth/service.py:authenticate); read them back out of its payload so
+  // the client can route to the right dashboard instead of guessing from the
+  // email address (which broke for real customers whose address doesn't
+  // happen to contain the word "customer").
+  const roles = decodeRolesFromAccessToken(accessToken);
+
+  return NextResponse.json({ ok: true, roles });
+}
+
+function decodeRolesFromAccessToken(accessToken: string): string[] {
+  try {
+    const payload = accessToken.split(".")[1] ?? "";
+    const json = Buffer.from(payload, "base64url").toString("utf-8");
+    const { roles } = JSON.parse(json) as { roles?: string[] };
+    return roles ?? [];
+  } catch {
+    return [];
+  }
 }
