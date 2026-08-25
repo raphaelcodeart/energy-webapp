@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
+import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
@@ -133,11 +134,20 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "promoter-application",
+    label: "Lavora con noi",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-8a4 4 0 11-8 0 4 4 0 018 0zm6 3a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support">("products");
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -369,6 +379,12 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
             title="Supporto & Assistenza"
             subtitle="Apri un ticket per problemi tecnici, fatturazione o domande sul tuo contratto: un operatore ti risponderà qui."
           />
+        </div>
+      )}
+
+      {activeTab === "promoter-application" && (
+        <div className="space-y-6">
+          <CustomerPromoterApplicationCard />
         </div>
       )}
     </AppShell>

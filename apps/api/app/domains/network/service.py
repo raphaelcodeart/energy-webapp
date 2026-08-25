@@ -25,6 +25,10 @@ class CycleError(NetworkError):
     pass
 
 
+class DuplicateApplicationError(NetworkError):
+    pass
+
+
 async def _get_active_ancestors(
     db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, int]]:
@@ -147,6 +151,77 @@ async def create_agent(
     await db.commit()
     await db.refresh(agent)
     return agent
+
+
+async def get_own_agent_profile(
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID
+) -> AgentProfile | None:
+    """Any authenticated user's own AgentProfile, regardless of RBAC
+    permissions -- used by the self-service 'lavora con noi' flow, which a
+    plain CUSTOMER (no network.* permission) must be able to call to see
+    their own application status. Distinct from GET /network/mine, which is
+    gated by network.read_branch."""
+    stmt = select(AgentProfile).where(
+        AgentProfile.organization_id == organization_id, AgentProfile.user_id == user_id
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+def _generate_promoter_code(display_name: str) -> str:
+    """Best-effort human-readable code (initials + random suffix) for
+    self-service applications, where -- unlike POST /agents and
+    /agents/recruit -- there is no admin/promoter typing one in by hand.
+    Uniqueness within the org is enforced by the DB's own uq_agent_promoter_code
+    constraint, not guessed here."""
+    import re
+    import secrets
+
+    slug = re.sub(r"[^A-Z0-9]", "", display_name.upper())[:6] or "PROMO"
+    return f"{slug}-{secrets.token_hex(3).upper()}"
+
+
+async def apply_as_promoter(
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID, display_name: str
+) -> AgentProfile:
+    """Self-service 'Lavora con noi': an existing CUSTOMER asks to also become
+    a PROMOTER. Reuses create_agent() with parent_agent_id=None (this is not a
+    recruit -- see POST /agents/recruit for that) and status=PENDING_APPROVAL,
+    the same suggest-then-approve workflow as the admin/promoter creation
+    routes; approve_agent() is what actually grants the PROMOTER role.
+
+    get_own_agent_profile() assumes at most one AgentProfile per user_id, so a
+    reapply after a TERMINATED (rejected) application resets that same row
+    in place rather than calling create_agent() again -- a second row would
+    make get_own_agent_profile()'s scalar_one_or_none() raise, and would
+    orphan a second, disconnected network_nodes row for the same person."""
+    existing = await get_own_agent_profile(db, organization_id=organization_id, user_id=user_id)
+    if existing is not None:
+        if existing.status in ("PENDING_APPROVAL", "ACTIVE"):
+            raise DuplicateApplicationError(f"Existing application/profile is {existing.status}")
+        existing.status = "PENDING_APPROVAL"
+        existing.display_name = display_name
+        existing.approved_by_user_id = None
+        existing.approved_at = None
+        existing.rejection_reason = None
+        await audit_service.record(
+            db, organization_id=organization_id, actor_user_id=user_id,
+            action="network.agent_reapplied", entity_type="agent_profile", entity_id=str(existing.id),
+            previous_value={"status": "TERMINATED"}, new_value={"status": "PENDING_APPROVAL"},
+        )
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    return await create_agent(
+        db,
+        organization_id=organization_id,
+        display_name=display_name,
+        promoter_code=_generate_promoter_code(display_name),
+        parent_agent_id=None,
+        actor_user_id=user_id,
+        user_id=user_id,
+        status="PENDING_APPROVAL",
+    )
 
 
 async def move_agent(
@@ -421,6 +496,17 @@ async def approve_agent(
     agent.status = "ACTIVE"
     agent.approved_by_user_id = actor_user_id
     agent.approved_at = utcnow()
+
+    # An approved agent tied to a real user account also becomes a PROMOTER,
+    # in addition to whatever roles (e.g. CUSTOMER) it already holds --
+    # assign_role() is idempotent and a no-op for admin-created agents that
+    # have no user_id.
+    if agent.user_id is not None:
+        from app.domains.rbac import service as rbac_service
+
+        await rbac_service.assign_role(
+            db, user_id=agent.user_id, organization_id=organization_id, role_code="PROMOTER"
+        )
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
@@ -812,7 +898,18 @@ async def create_snapshot_for_contract(
     db: AsyncSession, *, organization_id: uuid.UUID, producer_agent_id: uuid.UUID, reason: str = "contract_activation"
 ) -> NetworkSnapshot:
     """Freezes the producer's current ancestor chain (with each ancestor's rank at
-    this moment) into an immutable snapshot. Called once, at contract activation."""
+    this moment) into an immutable snapshot. Called once, at contract activation.
+
+    Only agents who are ACTIVE at this exact moment are frozen into the chain --
+    a SUSPENDED/TERMINATED agent, or one still PENDING_APPROVAL, is not a real,
+    confirmed promoter and must not keep collecting entrepreneurial-difference
+    commissions from a downline they no longer (or don't yet) actively belong to.
+    _get_active_ancestors() only checks that the closure edge is structurally
+    current (effective_to IS NULL) -- it says nothing about the agent's own
+    status, which never gets touched by a status change (only move_agent()
+    rewrites closure rows), so without this filter a terminated ancestor stays
+    in every future descendant's chain forever. This only affects snapshots
+    created from now on; already-frozen historical snapshots are untouched."""
     from app.domains.network.models import (
         AgentProfile as _AgentProfile,  # local import, avoid cycle at module load
     )
@@ -824,22 +921,24 @@ async def create_snapshot_for_contract(
     await db.flush()
 
     agent_ids = [a for a, _ in ancestors]
-    rank_rows = (
+    agent_rows = (
         await db.execute(
-            select(_AgentProfile.id, _AgentProfile.current_rank_id).where(
+            select(_AgentProfile.id, _AgentProfile.current_rank_id, _AgentProfile.status).where(
                 _AgentProfile.id.in_(agent_ids)
             )
         )
     ).all()
-    rank_by_agent = {row[0]: row[1] for row in rank_rows}
+    rank_by_active_agent = {row[0]: row[1] for row in agent_rows if row[2] == "ACTIVE"}
 
     for ancestor_id, depth in ancestors:
+        if ancestor_id not in rank_by_active_agent:
+            continue
         db.add(
             NetworkSnapshotNode(
                 snapshot_id=snapshot.id,
                 ancestor_agent_id=ancestor_id,
                 depth=depth,
-                rank_id_at_snapshot=rank_by_agent.get(ancestor_id),
+                rank_id_at_snapshot=rank_by_active_agent[ancestor_id],
             )
         )
 

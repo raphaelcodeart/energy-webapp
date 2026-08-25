@@ -20,7 +20,7 @@ from tests.test_commission_engine_integration import (
 @pytest.mark.asyncio
 async def test_get_commission_movements_includes_full_traceability(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
     await process_pending_outbox_events(db)
 
@@ -44,7 +44,7 @@ async def test_get_commission_movements_includes_full_traceability(db, organizat
 @pytest.mark.asyncio
 async def test_get_commission_movements_filters_by_agent_and_status(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
     await process_pending_outbox_events(db)
 
@@ -64,7 +64,7 @@ async def test_get_commission_movements_filters_by_agent_and_status(db, organiza
 @pytest.mark.asyncio
 async def test_mark_movement_paid_transitions_status_and_is_idempotent_against_double_payment(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
     await process_pending_outbox_events(db)
 
@@ -87,7 +87,7 @@ async def test_mark_movement_paid_transitions_status_and_is_idempotent_against_d
 @pytest.mark.asyncio
 async def test_commission_totals_by_level_aggregates_correctly(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
     await process_pending_outbox_events(db)
 

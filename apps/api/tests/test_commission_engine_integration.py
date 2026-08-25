@@ -16,7 +16,7 @@ from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.customers.models import Address, Customer, SupplyPoint
 from app.domains.network import service as network_service
-from app.domains.network.models import NetworkSnapshot
+from app.domains.network.models import AgentProfile, NetworkSnapshot, NetworkSnapshotNode
 from app.domains.organizations.models import Organization
 from app.domains.outbox import service as outbox_service
 from app.domains.outbox.models import DomainOutbox
@@ -41,7 +41,7 @@ async def _make_actor(db, organization_id):
 
 async def _setup_contract_ready_to_activate(db, organization_id, actor_user_id):
     """Builds: producer (S1) -> sponsor (S2), a product, a customer + supply point,
-    and a DRAFT contract. Returns the contract."""
+    and a DRAFT contract. Returns (contract, sponsor)."""
     s1 = Rank(
         organization_id=organization_id, code="S1", name="Seller 1", level=1,
         personal_token_cents=4000, valid_from=NOW, rule_version="test",
@@ -93,7 +93,7 @@ async def _setup_contract_ready_to_activate(db, organization_id, actor_user_id):
         product_version_id=product_version.id, producer_agent_id=producer.id,
         actor_user_id=actor_user_id, correlation_id=str(uuid.uuid4()),
     )
-    return contract
+    return contract, sponsor
 
 
 async def _advance_to_active(db, organization_id, contract, actor_user_id):
@@ -108,7 +108,7 @@ async def _advance_to_active(db, organization_id, contract, actor_user_id):
 @pytest.mark.asyncio
 async def test_activation_generates_expected_commission_movements(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
 
     processed = await process_pending_outbox_events(db)
@@ -126,7 +126,7 @@ async def test_activation_generates_expected_commission_movements(db, organizati
 @pytest.mark.asyncio
 async def test_reprocessing_outbox_does_not_duplicate_movements(db, organization_id):
     actor_user_id = await _make_actor(db, organization_id)
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     await _advance_to_active(db, organization_id, contract, actor_user_id)
 
     first_count = await process_pending_outbox_events(db)
@@ -151,7 +151,7 @@ async def test_commission_calculation_is_scoped_to_its_organization(db):
     await db.refresh(org_b)
 
     actor_user_id = await _make_actor(db, org_a.id)
-    contract_a = await _setup_contract_ready_to_activate(db, org_a.id, actor_user_id)
+    contract_a, _sponsor = await _setup_contract_ready_to_activate(db, org_a.id, actor_user_id)
     await _advance_to_active(db, org_a.id, contract_a, actor_user_id)
     await process_pending_outbox_events(db)
 
@@ -246,7 +246,7 @@ async def test_dispatch_isolates_failing_event_from_others(db, organization_id):
     ))
     await db.commit()
 
-    contract = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+    contract, _sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
     contract = await _advance_to_active(db, organization_id, contract, actor_user_id)
 
     processed = await process_pending_outbox_events(db)
@@ -294,7 +294,7 @@ async def test_concurrent_calculation_race_is_handled_by_db_constraint():
         await setup_session.refresh(org)
 
         actor_user_id = await _make_actor(setup_session, org.id)
-        contract = await _setup_contract_ready_to_activate(setup_session, org.id, actor_user_id)
+        contract, _sponsor = await _setup_contract_ready_to_activate(setup_session, org.id, actor_user_id)
         contract = await _advance_to_active(setup_session, org.id, contract, actor_user_id)
 
         event = (await setup_session.execute(
@@ -339,3 +339,65 @@ async def test_concurrent_calculation_race_is_handled_by_db_constraint():
         await verify_session.close()
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_terminated_ancestor_excluded_from_commission_chain(db, organization_id):
+    """An ancestor who was TERMINATED (e.g. rejected, or offboarded via the admin
+    status edit) before this contract activates is not a real, currently-active
+    promoter and must not be frozen into the snapshot or paid -- see
+    network/service.py::create_snapshot_for_contract. Without the fix this test
+    guards, _get_active_ancestors() only checks that the closure edge is
+    structurally current (never touched by a status change), so a terminated
+    sponsor would still collect the entrepreneurial difference forever."""
+    actor_user_id = await _make_actor(db, organization_id)
+    contract, sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+
+    sponsor_row = await db.get(AgentProfile, sponsor.id)
+    sponsor_row.status = "TERMINATED"
+    await db.commit()
+
+    await _advance_to_active(db, organization_id, contract, actor_user_id)
+    await process_pending_outbox_events(db)
+
+    movements = (await db.execute(
+        select(CommissionMovement).where(CommissionMovement.contract_id == contract.id)
+    )).scalars().all()
+    # Only the producer's own PERSONAL_TOKEN -- the terminated sponsor gets nothing.
+    assert len(movements) == 1
+    assert movements[0].amount_cents == 4000
+    assert movements[0].agent_id != sponsor.id
+
+    contract_row = await db.get(Contract, contract.id)
+    snapshot_nodes = (await db.execute(
+        select(NetworkSnapshotNode).where(NetworkSnapshotNode.snapshot_id == contract_row.network_snapshot_id)
+    )).scalars().all()
+    # The terminated sponsor isn't even frozen into the snapshot, not merely
+    # zero-amount -- excluded from the chain entirely. The lone movement's
+    # beneficiary (asserted above to be the producer, not the sponsor) must be
+    # the only node in the frozen chain too.
+    producer_agent_id = movements[0].agent_id
+    assert {n.ancestor_agent_id for n in snapshot_nodes} == {producer_agent_id}
+
+
+@pytest.mark.asyncio
+async def test_pending_approval_ancestor_excluded_from_commission_chain(db, organization_id):
+    """A still-PENDING_APPROVAL agent is a suggestion, not a confirmed promoter --
+    the same exclusion must apply if a descendant was recruited under them and
+    later produces an activating contract before the suggestion is approved."""
+    actor_user_id = await _make_actor(db, organization_id)
+    contract, sponsor = await _setup_contract_ready_to_activate(db, organization_id, actor_user_id)
+
+    sponsor_row = await db.get(AgentProfile, sponsor.id)
+    sponsor_row.status = "PENDING_APPROVAL"
+    await db.commit()
+
+    await _advance_to_active(db, organization_id, contract, actor_user_id)
+    await process_pending_outbox_events(db)
+
+    movements = (await db.execute(
+        select(CommissionMovement).where(CommissionMovement.contract_id == contract.id)
+    )).scalars().all()
+    assert len(movements) == 1
+    assert movements[0].amount_cents == 4000
+    assert movements[0].agent_id != sponsor.id

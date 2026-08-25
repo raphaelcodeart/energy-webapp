@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser, require_permission
+from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.core.storage import UploadValidationError, upload_media
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
@@ -20,6 +20,7 @@ from app.domains.network.schemas import (
     BranchSummaryRead,
     MoveAgentRequest,
     OrganizationNetworkLevelsRead,
+    PromoterApplicationRequest,
     RankProgressRead,
     RecruitRequest,
 )
@@ -107,7 +108,78 @@ async def get_my_agent_profile(
         photo_url=agent.photo_url,
         current_rank_id=agent.current_rank_id,
         rank_code=rank_code,
+        rejection_reason=agent.rejection_reason,
     )
+
+
+@router.get("/agents/me", response_model=AgentProfileRead | None)
+async def get_my_promoter_application(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AgentProfileRead | None:
+    """Self-service: lets ANY authenticated user (no network.* permission
+    required, unlike GET /mine) check whether they already have a 'lavora con
+    noi' application/agent profile and its status. Powers the customer-area
+    'Lavora con noi' card's four states (none / pending / rejected / active)."""
+    agent = await network_service.get_own_agent_profile(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
+    if agent is None:
+        return None
+    return AgentProfileRead.model_validate(agent)
+
+
+@router.post("/agents/apply", response_model=AgentProfileRead, status_code=status.HTTP_201_CREATED)
+async def apply_as_promoter(
+    payload: PromoterApplicationRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AgentProfileRead:
+    """'Lavora con noi': any existing CUSTOMER can request to also become a
+    PROMOTER. Deliberately not permission-gated like the other /agents routes
+    (a plain CUSTOMER holds no network.* permission) -- this IS the
+    self-service entry point. Created PENDING_APPROVAL, same
+    suggest-then-approve workflow as POST /agents and /agents/recruit; only
+    approve_agent() actually grants the PROMOTER role."""
+    if "CUSTOMER" not in current_user.roles:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only customers can apply to become a promoter")
+
+    display_name = payload.display_name
+    if not display_name:
+        from app.domains.customers.models import Company, Customer, CustomerProfile
+        from app.domains.customers.service import display_name_for
+
+        customer = (
+            await db.execute(
+                select(Customer).where(
+                    Customer.organization_id == current_user.organization_id,
+                    Customer.user_id == current_user.user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if customer is not None:
+            profile = await db.get(CustomerProfile, customer.id)
+            company = await db.get(Company, customer.id)
+            display_name = display_name_for(customer.kind, profile, company)
+    display_name = display_name or "Promoter"
+
+    try:
+        agent = await network_service.apply_as_promoter(
+            db, organization_id=current_user.organization_id,
+            user_id=current_user.user_id, display_name=display_name,
+        )
+    except network_service.DuplicateApplicationError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    await notifications_service.notify_roles(
+        db, organization_id=current_user.organization_id, roles=notifications_service.APPROVAL_NOTIFY_ROLES,
+        type_="PROMOTER_APPROVAL_REQUESTED", entity_type="agent_profile", entity_id=agent.id,
+        title=f"Nuova richiesta 'Lavora con noi': {agent.display_name}",
+        body=f"Cliente esistente -- codice {agent.promoter_code} in attesa di approvazione.",
+        exclude_user_id=current_user.user_id,
+    )
+    await db.commit()
+    return AgentProfileRead.model_validate(agent)
 
 
 @router.get("/agents/{agent_id}/branch", response_model=list[BranchMemberRead])

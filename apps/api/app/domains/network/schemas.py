@@ -15,6 +15,7 @@ class AgentProfileRead(BaseModel):
     photo_url: str | None = None
     current_rank_id: uuid.UUID | None
     rank_code: str | None = None
+    rejection_reason: str | None = None
 
 
 class RankProgressRead(BaseModel):
@@ -135,6 +136,12 @@ class RecruitRequest(BaseModel):
     display_name: str
     promoter_code: str
     current_rank_id: uuid.UUID | None = None
+
+
+class PromoterApplicationRequest(BaseModel):
+    # Optional: if omitted, the backend derives it from the caller's existing
+    # Customer profile (see POST /agents/apply).
+    display_name: str | None = None
 
 
 class AgentUpdateRequest(BaseModel):
