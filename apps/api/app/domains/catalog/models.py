@@ -50,6 +50,12 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     commission_plan_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("commission_plan_versions.id"), nullable=True
     )
+    # {rank_code: personal_token_cents} -- the personal gettone a producer/ancestor
+    # earns for THIS specific product, overriding Rank.personal_token_cents (which
+    # stays as the org-wide fallback for a rank not listed here). This is what lets
+    # e.g. "Luce Energia Circolare" pay a different token per rank than "Luce
+    # Standard" -- see commissions/services/run_calculation.py::_build_chain.
+    commission_tokens: Mapped[dict] = mapped_column(JSONB, default=dict)
     required_documents: Mapped[dict] = mapped_column(JSONB, default=dict)
     terms_version: Mapped[str] = mapped_column(String(32), default="1.0")
     valid_from: Mapped[datetime] = mapped_column()

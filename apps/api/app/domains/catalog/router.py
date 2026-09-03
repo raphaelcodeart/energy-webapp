@@ -79,6 +79,23 @@ async def update_product(
     return ProductRead.model_validate(product)
 
 
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_product(
+    product_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("products.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    try:
+        result = await catalog_service.delete_product(
+            db, organization_id=current_user.organization_id, product_id=product_id,
+            actor_user_id=current_user.user_id,
+        )
+    except catalog_service.ProductDeletionError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+
+
 @router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
 async def create_product(
     payload: ProductCreate,

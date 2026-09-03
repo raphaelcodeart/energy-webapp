@@ -17,6 +17,17 @@ export type ContractRead = {
   iban: string | null;
 };
 
+export type ContractStatusHistoryRead = {
+  id: string;
+  from_status: string | null;
+  to_status: string;
+  actor_user_id: string;
+  actor_name: string;
+  reason: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type CommissionMovementRead = {
   id: string;
   agent_id: string;
@@ -92,6 +103,7 @@ export type AgentProfileRead = {
   current_rank_id: string | null;
   rank_code: string | null;
   rejection_reason: string | null;
+  is_blacklisted: boolean;
 };
 
 export type SimulationStepRead = {
@@ -110,6 +122,14 @@ export type RankRead = {
   personal_token_cents: number;
 };
 
+export type RankEvaluationChangeRead = {
+  agent_id: string;
+  display_name: string;
+  previous_rank_code: string | null;
+  new_rank_code: string;
+  direction: "PROMOTED" | "DEMOTED";
+};
+
 export type CustomerRead = {
   id: string;
   organization_id: string;
@@ -121,6 +141,7 @@ export type CustomerRead = {
   pec: string | null;
   photo_url: string | null;
   display_name: string;
+  created_at: string;
 };
 
 export type AddressRead = {
@@ -153,6 +174,8 @@ export type CustomerDetailRead = CustomerRead & {
 export type AgentListItemRead = {
   id: string;
   display_name: string;
+  first_name: string | null;
+  last_name: string | null;
   promoter_code: string;
   status: string;
   photo_url: string | null;
@@ -161,6 +184,30 @@ export type AgentListItemRead = {
   direct_parent_agent_id: string | null;
   joined_at: string;
   rejection_reason: string | null;
+  email: string | null;
+  is_blacklisted: boolean;
+};
+
+export type RootPromoterCreateResponse = {
+  agent_id: string;
+  display_name: string;
+  promoter_code: string;
+  personal_link: string;
+  email: string;
+  temporary_password: string;
+};
+
+export type DocumentationPostRead = {
+  id: string;
+  title: string;
+  body: string | null;
+  audience: "CUSTOMER" | "PROMOTER" | "BOTH";
+  status: "PUBLISHED" | "ARCHIVED";
+  image_url: string | null;
+  pdf_url: string | null;
+  pdf_filename: string | null;
+  video_url: string | null;
+  created_at: string;
 };
 
 export type ProductVersionRead = {
@@ -175,6 +222,7 @@ export type ProductVersionRead = {
   billing_period: string;
   vat_percentage: number | null;
   contract_duration_months: number | null;
+  commission_tokens: Record<string, number>;
   valid_from: string;
   valid_to: string | null;
   status: string;
@@ -252,6 +300,7 @@ export type PromoterCodeRead = {
   code: string;
   personal_link: string;
   status: string;
+  promoter_display_name: string | null;
 };
 
 export type BranchAgentSummaryRead = {

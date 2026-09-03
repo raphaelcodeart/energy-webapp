@@ -20,6 +20,10 @@ class ProductVersionRead(BaseModel):
     billing_period: str
     vat_percentage: float | None
     contract_duration_months: int | None
+    # {rank_code: personal_token_cents} -- this product's per-rank gettone
+    # override. A rank code missing from this dict falls back to that rank's
+    # org-wide Rank.personal_token_cents at calculation time.
+    commission_tokens: dict[str, int]
     valid_from: datetime
     valid_to: datetime | None
     status: str
@@ -43,6 +47,7 @@ class ProductVersionRead(BaseModel):
             billing_period=version.billing_period,
             vat_percentage=tax_configuration.get("vat_percentage"),
             contract_duration_months=version.contract_duration_months,
+            commission_tokens=version.commission_tokens or {},
             valid_from=version.valid_from,
             valid_to=version.valid_to,
             status=version.status,
@@ -90,6 +95,7 @@ class ProductCreate(BaseModel):
     billing_period: str = "MONTHLY"
     vat_percentage: float | None = None
     contract_duration_months: int | None = 12
+    commission_tokens: dict[str, int] = {}
 
     @field_validator("product_type")
     @classmethod
@@ -110,6 +116,7 @@ class ProductVersionCreate(BaseModel):
     billing_period: str = "MONTHLY"
     vat_percentage: float | None = None
     contract_duration_months: int | None = 12
+    commission_tokens: dict[str, int] = {}
 
 
 class ProductVersionUpdate(BaseModel):
@@ -121,6 +128,7 @@ class ProductVersionUpdate(BaseModel):
     recurring_fee_cents: int | None = None
     vat_percentage: float | None = None
     contract_duration_months: int | None = None
+    commission_tokens: dict[str, int] | None = None
     status: str | None = None
 
 

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
@@ -12,6 +12,11 @@ from app.domains.catalog.schemas import (
     ProductVersionCreate,
     ProductVersionUpdate,
 )
+from app.domains.contracts.models import Contract
+
+
+class ProductDeletionError(Exception):
+    """Raised when a product can't be deleted -- see delete_product()."""
 
 
 async def list_products(db: AsyncSession, *, organization_id: uuid.UUID) -> list[Product]:
@@ -93,6 +98,7 @@ async def create_product(
         billing_period=payload.billing_period,
         tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         contract_duration_months=payload.contract_duration_months,
+        commission_tokens=payload.commission_tokens,
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -135,6 +141,7 @@ async def add_product_version(
         billing_period=payload.billing_period,
         tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         contract_duration_months=payload.contract_duration_months,
+        commission_tokens=payload.commission_tokens,
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -186,6 +193,8 @@ async def update_product_version(
         version.tax_configuration = {**(version.tax_configuration or {}), "vat_percentage": payload.vat_percentage}
     if payload.contract_duration_months is not None:
         version.contract_duration_months = payload.contract_duration_months
+    if payload.commission_tokens is not None:
+        version.commission_tokens = payload.commission_tokens
     if payload.status is not None:
         version.status = payload.status
 
@@ -198,6 +207,42 @@ async def update_product_version(
     await db.commit()
     await db.refresh(version)
     return version
+
+
+async def delete_product(
+    db: AsyncSession, *, organization_id: uuid.UUID, product_id: uuid.UUID, actor_user_id: uuid.UUID
+) -> bool | None:
+    """Hard-deletes a product and every one of its versions. Returns None if the
+    product doesn't exist in this org (-> router 404), raises
+    ProductDeletionError if any version has ever been sold (-> router 400) --
+    a contract's product_version_id must keep pointing at real pricing/token
+    data forever, so a product with sales history can only be status=RETIRED
+    via update_product(), never deleted."""
+    product = await db.get(Product, product_id)
+    if product is None or product.organization_id != organization_id:
+        return None
+
+    version_ids_stmt = select(ProductVersion.id).where(ProductVersion.product_id == product_id)
+    version_ids = list((await db.execute(version_ids_stmt)).scalars().all())
+
+    if version_ids:
+        contract_count = (
+            await db.execute(select(func.count()).select_from(Contract).where(Contract.product_version_id.in_(version_ids)))
+        ).scalar_one()
+        if contract_count > 0:
+            raise ProductDeletionError(
+                "Impossibile eliminare: questo prodotto ha contratti associati. Puoi solo disattivarlo."
+            )
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="product.deleted", entity_type="product", entity_id=str(product_id),
+        previous_value={"code": product.code, "status": product.status},
+    )
+    await db.execute(delete(ProductVersion).where(ProductVersion.product_id == product_id))
+    await db.delete(product)
+    await db.commit()
+    return True
 
 
 async def update_product(
