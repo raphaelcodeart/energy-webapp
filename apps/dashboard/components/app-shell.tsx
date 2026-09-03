@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AreaSwitcher, useDualRoleAreas } from "@/components/area-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { NotificationRead } from "@/lib/types";
 
@@ -225,6 +227,8 @@ function UserMenu({ email, roleLabel }: { email?: string; roleLabel: string }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const { hasBothRoles, isCustomerArea } = useDualRoleAreas();
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -247,6 +251,18 @@ function UserMenu({ email, roleLabel }: { email?: string; roleLabel: string }) {
             <p className="truncate text-sm font-semibold text-white light:text-slate-900">{email}</p>
             <p className="truncate text-xs text-slate-400 light:text-slate-500">{roleLabel}</p>
           </div>
+          {hasBothRoles && (
+            <Link
+              href={isCustomerArea ? "/promoter" : "/customer"}
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-200 light:text-slate-700 hover:bg-white/5 light:hover:bg-slate-50 transition cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              {isCustomerArea ? "Passa a modalità promoter" : "Passa a modalità cliente"}
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-400 light:text-rose-600 hover:bg-white/5 light:hover:bg-slate-50 transition cursor-pointer"
@@ -382,6 +398,7 @@ export function AppShell({
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+          <AreaSwitcher />
           <NotificationBell onOpenNotification={handleOpenNotification} />
           <ThemeToggle />
           <UserMenu email={email} roleLabel={roleLabel} />
