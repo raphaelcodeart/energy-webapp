@@ -13,8 +13,8 @@ from app.domains.auth.schemas import RegisterRequest
 from app.domains.customers.models import Customer, CustomerProfile
 from app.domains.network import service as network_service
 from app.domains.rbac.models import Role
-from app.domains.referral.models import CustomerAttribution, PromoterCode
 from app.domains.referral import service as referral_service
+from app.domains.referral.models import CustomerAttribution, PromoterCode
 from app.domains.users.models import User
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -29,7 +29,7 @@ async def _make_customer_role(db, organization_id):
 
 async def _make_promoter_with_code(db, organization_id):
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Referring Promoter",
+        db, organization_id=organization_id, first_name="Referring", last_name="Promoter",
         promoter_code=f"REF-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     promoter_code = await referral_service.get_or_create_promoter_code(
@@ -113,7 +113,7 @@ async def test_registration_rejects_duplicate_email(db, organization_id):
 async def test_registration_rejects_expired_referral_code(db, organization_id):
     await _make_customer_role(db, organization_id)
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Expired Promoter",
+        db, organization_id=organization_id, first_name="Expired", last_name="Promoter",
         promoter_code=f"EXP-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     expired_code = PromoterCode(
@@ -140,7 +140,7 @@ async def test_registration_rejects_expired_referral_code(db, organization_id):
 @pytest.mark.asyncio
 async def test_get_or_create_promoter_code_is_idempotent(db, organization_id):
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Idempotent Promoter",
+        db, organization_id=organization_id, first_name="Idempotent", last_name="Promoter",
         promoter_code=f"IDM-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     first = await referral_service.get_or_create_promoter_code(db, organization_id=organization_id, agent_id=agent.id)

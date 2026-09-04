@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,7 +18,14 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    # Denormalized "first last" kept for the many existing read paths
+    # (contracts, notifications, branch views, reports, ...) that only ever
+    # needed one string to show -- always derived from first_name/last_name
+    # by the write paths (network/service.py create_agent/update_agent), never
+    # edited independently.
     display_name: Mapped[str] = mapped_column(String(255))
+    first_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     promoter_code: Mapped[str] = mapped_column(String(32))
     # ACTIVE / SUSPENDED / TERMINATED / PENDING_APPROVAL (added Session 17 --
     # both the admin's "+ Nuovo Promoter" and a promoter's own "recruit" now
@@ -39,6 +46,11 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # A promoter an admin has explicitly blacklisted (worse than a plain
+    # deactivation, see network/router.py deactivate_agent) -- if they ever
+    # re-apply via "lavora con noi", apply_as_promoter() sends them through the
+    # manual PENDING_APPROVAL/approve flow instead of auto-activating.
+    is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class NetworkNode(UUIDPKMixin, TimestampMixin, Base):

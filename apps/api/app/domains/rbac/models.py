@@ -28,12 +28,13 @@ PERMISSIONS = [
     "contracts.review", "contracts.approve", "contracts.activate",
     "network.read_branch", "network.manage", "network.recruit", "network.approve",
     "commissions.read_own", "commissions.read_branch", "commissions.simulate",
-    "commissions.approve", "commission_adjustments.create",
+    "commissions.approve", "commissions.evaluate_ranks", "commission_adjustments.create",
     "payments.manage", "documents.download", "reports.export", "reports.read",
     "audit.read", "settings.manage",
     "products.read", "products.manage",
     "tickets.create", "tickets.respond", "tickets.delete",
     "documents.upload", "documents.review",
+    "documentation.manage",
 ]
 
 # Default role -> permission grants for the demo/seed environment. Real deployments
@@ -51,7 +52,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "commission_adjustments.create", "payments.manage", "documents.download",
         "reports.export", "reports.read", "audit.read", "settings.manage",
         "products.read", "products.manage", "tickets.respond", "tickets.delete",
-        "documents.upload", "documents.review",
+        "documents.upload", "documents.review", "documentation.manage",
     ],
     "BACK_OFFICE_OPERATOR": [
         "customers.read", "customers.create", "customers.update",

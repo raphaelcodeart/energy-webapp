@@ -1,8 +1,8 @@
 import uuid
 from collections.abc import Callable
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import cast, Date, func, select
+from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.audit.models import AuditLog
@@ -131,7 +131,7 @@ async def get_dashboard_summary(
         active_customers=active_customers,
         period_new_contracts=period_new_contracts,
         period_new_commissions_cents=int(period_new_commissions_cents),
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -156,7 +156,7 @@ async def _stale_status_items(
         )
         .subquery()
     )
-    threshold = datetime.now(timezone.utc) - timedelta(days=threshold_days)
+    threshold = datetime.now(UTC) - timedelta(days=threshold_days)
     stmt = (
         select(Contract.id, Contract.customer_id, Contract.status, latest_transition.c.created_at)
         .join(latest_transition, latest_transition.c.contract_id == Contract.id)
@@ -170,7 +170,7 @@ async def _stale_status_items(
         .limit(50)
     )
     rows = (await db.execute(stmt)).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         AttentionItem(
             contract_id=contract_id,
@@ -269,7 +269,7 @@ async def get_commissions_timeseries(
 
 def _last_n_months(rows: list[tuple[date, int]], months: int) -> list[TimeseriesPoint]:
     by_period = {period: int(value) for period, value in rows}
-    today = datetime.now(timezone.utc).date().replace(day=1)
+    today = datetime.now(UTC).date().replace(day=1)
     points: list[TimeseriesPoint] = []
     for i in range(months - 1, -1, -1):
         year = today.year + (today.month - 1 - i) // 12

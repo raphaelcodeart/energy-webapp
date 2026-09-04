@@ -9,6 +9,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.core.security import hash_password
 from app.domains.auth import service as auth_service
 from app.domains.auth.schemas import RegisterRequest
 from app.domains.customers.models import Customer
@@ -17,7 +18,6 @@ from app.domains.rbac.models import Role
 from app.domains.referral import service as referral_service
 from app.domains.referral.models import AttributionCorrection, CustomerAttribution
 from app.domains.users.models import User
-from app.core.security import hash_password
 
 
 async def _make_customer_role(db, organization_id):
@@ -27,9 +27,10 @@ async def _make_customer_role(db, organization_id):
     return role
 
 
-async def _make_promoter_with_code(db, organization_id, *, name="Promoter"):
+async def _make_promoter_with_code(db, organization_id, *, name="Default Promoter"):
+    first_name, last_name = name.split(" ", 1)
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name=name,
+        db, organization_id=organization_id, first_name=first_name, last_name=last_name,
         promoter_code=f"REF-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     promoter_code = await referral_service.get_or_create_promoter_code(

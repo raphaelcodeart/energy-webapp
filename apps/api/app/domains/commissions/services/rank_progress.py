@@ -12,6 +12,7 @@ same placeholder (see docs/business-rules.md#rank-promotion-progress-placeholder
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +39,17 @@ class RankProgress:
     group_volume_threshold_cents: int
 
 
-async def _volume_for_agents(db: AsyncSession, *, agent_ids: list[uuid.UUID]) -> int:
+async def volume_for_agents(
+    db: AsyncSession,
+    *,
+    agent_ids: list[uuid.UUID],
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> int:
+    """Sum of contract value (product base price) on ACTIVE/RENEWED contracts
+    produced by agent_ids. Cumulative ("lifetime") by default (since/until both
+    None, the only mode get_rank_progress() below uses); rank_evaluation.py
+    passes a calendar-month window instead -- same query, different bounds."""
     if not agent_ids:
         return 0
     stmt = (
@@ -51,6 +62,10 @@ async def _volume_for_agents(db: AsyncSession, *, agent_ids: list[uuid.UUID]) ->
             Contract.status.in_(VOLUME_STATUSES),
         )
     )
+    if since is not None:
+        stmt = stmt.where(Contract.activated_at >= since)
+    if until is not None:
+        stmt = stmt.where(Contract.activated_at < until)
     return int((await db.execute(stmt)).scalar_one())
 
 
@@ -74,14 +89,14 @@ async def get_rank_progress(db: AsyncSession, *, organization_id: uuid.UUID, age
         )
         next_rank = (await db.execute(next_stmt)).scalar_one_or_none()
 
-    personal_volume_cents = await _volume_for_agents(db, agent_ids=[agent_id])
+    personal_volume_cents = await volume_for_agents(db, agent_ids=[agent_id])
 
     # Group volume = this agent's entire downline INCLUDING themselves --
     # get_branch() already returns the root at depth 0, same descendant
     # lookup get_branch_summary()/get_branch_contracts() use.
     branch = await network_service.get_branch(db, organization_id=organization_id, root_agent_id=agent_id)
     branch_agent_ids = [row["agent_id"] for row in branch] or [agent_id]
-    group_volume_cents = await _volume_for_agents(db, agent_ids=branch_agent_ids)
+    group_volume_cents = await volume_for_agents(db, agent_ids=branch_agent_ids)
 
     return RankProgress(
         current_rank_code=current_rank.code if current_rank else None,

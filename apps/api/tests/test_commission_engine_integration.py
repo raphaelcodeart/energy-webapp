@@ -54,11 +54,11 @@ async def _setup_contract_ready_to_activate(db, organization_id, actor_user_id):
     await db.flush()
 
     sponsor = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Sponsor", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Sponsor", last_name="Tester", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s2.id,
     )
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Producer", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Producer", last_name="Tester", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
         parent_agent_id=sponsor.id, current_rank_id=s1.id,
     )
 

@@ -14,7 +14,6 @@ from app.domains.catalog.models import Product, ProductVersion
 from app.domains.contracts import service as contract_service
 from app.domains.customers.models import Address, Customer, SupplyPoint
 from app.domains.network import service as network_service
-
 from tests.test_commission_engine_integration import _make_actor
 
 
@@ -55,7 +54,7 @@ async def _make_contract_to_active(db, organization_id, *, duration_months=12):
     customer, supply_point = await _make_customer_and_supply_point(db, organization_id)
     product_version = await _make_product_version(db, organization_id, duration_months=duration_months)
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Renewal Agent",
+        db, organization_id=organization_id, first_name="Renewal", last_name="Agent",
         promoter_code=f"RA-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     contract = await contract_service.create_contract(

@@ -3,6 +3,7 @@
 import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoUpload } from "@/components/photo-upload";
+import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
 import type { AgentListItemRead, ContractRead, CustomerDetailRead, CustomerRead } from "@/lib/types";
 
@@ -150,7 +151,7 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ new_agent_id: reassignAgentId, reason: reassignReason }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setReassignSuccess(true);
       setReassignAgentId("");
       setReassignReason("");
@@ -207,7 +208,7 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
           company_name: PRIVATE_LIKE.has(editingCustomer.kind) ? null : editCompanyName,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setEditingCustomer(null);
       await queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
     } catch (err: any) {
@@ -250,7 +251,7 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
           company_name: PRIVATE_LIKE.has(kind) ? null : companyName,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setShowCreate(false);
       setEmail("");
       setPhone("");
@@ -352,7 +353,11 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                 filtered.map((c) => (
                   <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
                     <td className="py-4 px-6"><CustomerAvatar url={c.photo_url} /></td>
-                    <td className="py-4 px-6 font-medium text-white light:text-slate-900">{c.display_name}</td>
+                    <td className="py-4 px-6">
+                      <p className="font-medium text-white light:text-slate-900">{c.display_name}</p>
+                      <p className="text-[10px] text-slate-500">{c.email}</p>
+                      <p className="text-[10px] text-slate-500">Iscritto: {new Date(c.created_at).toLocaleDateString("it-IT")}</p>
+                    </td>
                     <td className="py-4 px-6">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
                         {KIND_LABELS[c.kind] ?? c.kind}

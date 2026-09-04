@@ -15,6 +15,7 @@ from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
 from app.domains.notifications import service as notifications_service
 from app.domains.outbox import service as outbox_service
+from app.domains.users.models import User
 
 # Statuses that represent "the contract's term is running" -- entering one of
 # these (re)starts the clock on activated_at/expires_at. Renewing a lapsed
@@ -75,6 +76,48 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "supply_point_label": supply_point_labels.get(c.supply_point_id),
         }
         result.append(row)
+    return result
+
+
+async def get_status_history(db: AsyncSession, *, contract_id: uuid.UUID) -> list[dict]:
+    """Full audit trail of every status change for one contract (who, when,
+    from/to, why) -- backs the "click the status badge" history popup. Actor
+    display name prefers the agent's display_name (how they're known
+    everywhere else in the app) and falls back to their login email for a
+    pure back-office user with no AgentProfile row."""
+    stmt = (
+        select(ContractStatusHistory)
+        .where(ContractStatusHistory.contract_id == contract_id)
+        .order_by(ContractStatusHistory.created_at.asc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    if not rows:
+        return []
+
+    user_ids = {r.actor_user_id for r in rows}
+    users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()}
+    agents_by_user = {
+        a.user_id: a
+        for a in (
+            await db.execute(select(AgentProfile).where(AgentProfile.user_id.in_(user_ids)))
+        ).scalars()
+    }
+
+    result = []
+    for r in rows:
+        agent = agents_by_user.get(r.actor_user_id)
+        user = users.get(r.actor_user_id)
+        actor_name = agent.display_name if agent else (user.email if user else "—")
+        result.append({
+            "id": r.id,
+            "from_status": r.from_status,
+            "to_status": r.to_status,
+            "actor_user_id": r.actor_user_id,
+            "actor_name": actor_name,
+            "reason": r.reason,
+            "notes": r.notes,
+            "created_at": r.created_at,
+        })
     return result
 
 

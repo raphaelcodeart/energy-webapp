@@ -19,6 +19,7 @@ from app.core.security import (
 from app.domains.audit import service as audit_service
 from app.domains.auth.models import PasswordResetToken, Session
 from app.domains.auth.schemas import RegisterRequest
+from app.domains.organizations.models import Organization
 from app.domains.rbac.service import get_roles_for_user
 from app.domains.users.models import User
 
@@ -58,12 +59,17 @@ async def authenticate(
         # Still do a hash-verify against a dummy hash to keep response timing similar
         # regardless of whether the account exists (mitigates timing-based enumeration).
         verify_password(password, "$argon2id$v=19$m=65536,t=3,p=4$" + "0" * 22 + "$" + "0" * 43)
-        await audit_service.record(
-            db, organization_id=organization_id, actor_user_id=None,
-            action="login.failed", entity_type="user", entity_id=email,
-            reason="unknown_email", ip_address=ip_address, user_agent=user_agent,
-        )
-        await db.commit()
+        # audit_log.organization_id is a real FK -- a bogus/stale organization_id
+        # (e.g. a client still pointing at a demo org that got re-seeded with a new
+        # id) must not crash the audit write with an unhandled IntegrityError; skip
+        # it rather than fail the whole login attempt over a logging side effect.
+        if await db.get(Organization, organization_id) is not None:
+            await audit_service.record(
+                db, organization_id=organization_id, actor_user_id=None,
+                action="login.failed", entity_type="user", entity_id=email,
+                reason="unknown_email", ip_address=ip_address, user_agent=user_agent,
+            )
+            await db.commit()
         raise AuthenticationError(GENERIC_AUTH_ERROR)
 
     if user.locked_until and user.locked_until > datetime.now(UTC):

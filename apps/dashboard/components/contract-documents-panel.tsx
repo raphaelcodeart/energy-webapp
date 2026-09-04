@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { friendlyApiError } from "@/lib/api-error";
 
 type DocumentRead = {
   id: string;
@@ -87,7 +88,7 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
       formData.append("document_type", documentType);
       formData.append("file", file);
       const res = await fetch(`/api/proxy/contracts/${contractId}/documents`, { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       await refresh();
     } catch (err: any) {
       setUploadError(`${DOCUMENT_TYPE_LABELS[documentType] ?? documentType}: caricamento fallito.`);
@@ -112,7 +113,7 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus, review_note: reviewNote || null }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setReviewingId(null);
       setReviewNote("");
       await refresh();

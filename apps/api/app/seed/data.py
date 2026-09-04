@@ -6,6 +6,8 @@ commissions those activations generate. See docs/implementation-progress.md."""
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+
 from app.core.db import AsyncSessionLocal
 from app.core.security import hash_password
 from app.domains.catalog.models import Product, ProductVersion
@@ -30,6 +32,20 @@ from app.seed.ranks import RANK_SEED, RULE_VERSION
 
 FIXED_NOW = datetime(2026, 7, 25, tzinfo=UTC)
 
+# Placeholder per-rank gettone (personal token) ladder for the two commercial
+# formulas the client actually sells -- "Standard" and "Energia Circolare" --
+# see docs/business-rules.md#commission-per-product-tokens. Only S1/S2/TL1/MD5
+# come from the client's own worked example (40/45/50/80 EUR for Standard,
+# exactly double -- 80/90/100/160 EUR -- for Energia Circolare); every other
+# rank is linearly interpolated between those anchors and MUST be reviewed/
+# adjusted by the client via the product edit screen before this goes live.
+STANDARD_TOKENS_CENTS = {
+    "S1": 4000, "S2": 4500, "S3": 4750,
+    "TL1": 5000, "TL2": 5375, "TL3": 5750, "TL4": 6125,
+    "MD1": 6500, "MD2": 6875, "MD3": 7250, "MD4": 7625, "MD5": 8000,
+}
+CIRCULAR_TOKENS_CENTS = {code: cents * 2 for code, cents in STANDARD_TOKENS_CENTS.items()}
+
 
 async def run() -> None:
     async with AsyncSessionLocal() as db:
@@ -38,11 +54,20 @@ async def run() -> None:
         await db.flush()
         org_id = org.id
 
-        permissions_by_code: dict[str, Permission] = {}
+        # permissions has no organization_id -- it's a single global catalog shared
+        # by every org, and data migrations (e.g. 0011, 0012, 0013) already insert
+        # some codes into it (idempotently, via ON CONFLICT DO NOTHING) before this
+        # script ever runs. Look up what's already there first so re-seeding a
+        # migrated database doesn't crash on a duplicate-code UniqueViolation.
+        existing_permissions = (
+            await db.execute(select(Permission).where(Permission.code.in_(PERMISSIONS)))
+        ).scalars().all()
+        permissions_by_code: dict[str, Permission] = {p.code: p for p in existing_permissions}
         for code in PERMISSIONS:
-            perm = Permission(code=code, description="")
-            db.add(perm)
-            permissions_by_code[code] = perm
+            if code not in permissions_by_code:
+                perm = Permission(code=code, description="")
+                db.add(perm)
+                permissions_by_code[code] = perm
         await db.flush()
 
         roles_by_code: dict[str, Role] = {}
@@ -123,6 +148,7 @@ async def run() -> None:
             rank_code: str, parent_id: uuid.UUID | None, promoter_code: str, login_email: str | None = None
         ) -> uuid.UUID:
             display_name = next(name_iter)
+            first_name, _, last_name = display_name.partition(" ")
             promoter_user_id = None
             if login_email is not None:
                 promoter_user = make_user(login_email, "DemoPass123!", ["PROMOTER"])
@@ -138,7 +164,8 @@ async def run() -> None:
             agent = await network_service.create_agent(
                 db,
                 organization_id=org_id,
-                display_name=display_name,
+                first_name=first_name,
+                last_name=last_name,
                 promoter_code=promoter_code,
                 parent_agent_id=parent_id,
                 joined_at=FIXED_NOW - timedelta(days=180),
@@ -185,29 +212,38 @@ async def run() -> None:
         b8 = await new_agent("S1", b7, "S1-B08")
         b9 = await new_agent("S1", b7, "S1-B09")
 
-        # --- Catalog ---
-        elec_product = Product(organization_id=org_id, code="LUCE-STD", energy_type="ELECTRICITY", customer_type="PRIVATE")
-        gas_product = Product(organization_id=org_id, code="GAS-STD", energy_type="GAS", customer_type="PRIVATE")
-        circolare_product = Product(organization_id=org_id, code="ENERGIA-CIRCOLARE", energy_type="DUAL_FUEL", customer_type="PMI")
-        db.add_all([elec_product, gas_product, circolare_product])
+        # --- Catalog: exactly the 4 packages the network actually sells --
+        # Luce/Gas, each in "Standard" or "Energia Circolare" formula. The
+        # formula is what carries the different gettone ladder (commission_
+        # tokens), not a separate field -- see catalog/models.py::ProductVersion.
+        luce_std_product = Product(organization_id=org_id, code="LUCE-STD", energy_type="ELECTRICITY", customer_type="PRIVATE")
+        luce_circ_product = Product(organization_id=org_id, code="LUCE-CIRCOLARE", energy_type="ELECTRICITY", customer_type="PRIVATE")
+        gas_std_product = Product(organization_id=org_id, code="GAS-STD", energy_type="GAS", customer_type="PRIVATE")
+        gas_circ_product = Product(organization_id=org_id, code="GAS-CIRCOLARE", energy_type="GAS", customer_type="PRIVATE")
+        db.add_all([luce_std_product, luce_circ_product, gas_std_product, gas_circ_product])
         await db.flush()
 
-        elec_version = ProductVersion(
-            product_id=elec_product.id, version_label="1.0", name="Luce Semplice",
+        luce_std_version = ProductVersion(
+            product_id=luce_std_product.id, version_label="1.0", name="Luce Standard",
             base_price_cents=1800, recurring_fee_cents=300, commission_plan_version_id=plan_version.id,
-            valid_from=FIXED_NOW,
+            commission_tokens=STANDARD_TOKENS_CENTS, valid_from=FIXED_NOW,
         )
-        gas_version = ProductVersion(
-            product_id=gas_product.id, version_label="1.0", name="Gas Semplice",
-            base_price_cents=2200, recurring_fee_cents=300, commission_plan_version_id=plan_version.id,
-            valid_from=FIXED_NOW,
+        luce_circ_version = ProductVersion(
+            product_id=luce_circ_product.id, version_label="1.0", name="Luce Energia Circolare",
+            base_price_cents=2200, recurring_fee_cents=400, commission_plan_version_id=plan_version.id,
+            commission_tokens=CIRCULAR_TOKENS_CENTS, valid_from=FIXED_NOW,
         )
-        circolare_version = ProductVersion(
-            product_id=circolare_product.id, version_label="1.0", name="Energia Circolare PMI",
-            base_price_cents=5000, recurring_fee_cents=800, commission_plan_version_id=plan_version.id,
-            valid_from=FIXED_NOW,
+        gas_std_version = ProductVersion(
+            product_id=gas_std_product.id, version_label="1.0", name="Gas Standard",
+            base_price_cents=2000, recurring_fee_cents=300, commission_plan_version_id=plan_version.id,
+            commission_tokens=STANDARD_TOKENS_CENTS, valid_from=FIXED_NOW,
         )
-        db.add_all([elec_version, gas_version, circolare_version])
+        gas_circ_version = ProductVersion(
+            product_id=gas_circ_product.id, version_label="1.0", name="Gas Energia Circolare",
+            base_price_cents=2400, recurring_fee_cents=400, commission_plan_version_id=plan_version.id,
+            commission_tokens=CIRCULAR_TOKENS_CENTS, valid_from=FIXED_NOW,
+        )
+        db.add_all([luce_std_version, luce_circ_version, gas_std_version, gas_circ_version])
         await db.commit()
 
         # --- Customers, supply points, contracts ---
@@ -296,11 +332,11 @@ async def run() -> None:
                     break
             return contract
 
-        await create_and_advance(cust1, sp1, elec_version.id, a5_producer, "ACTIVE")
-        await create_and_advance(cust2, sp2, gas_version.id, b3_producer, "ACTIVE")
-        await create_and_advance(cust3, sp3, circolare_version.id, a9, "DRAFT")
-        await create_and_advance(cust1, sp1, gas_version.id, b8, "REJECTED")
-        await create_and_advance(cust2, sp2, elec_version.id, b9, "CANCELLED")
+        await create_and_advance(cust1, sp1, luce_std_version.id, a5_producer, "ACTIVE")
+        await create_and_advance(cust2, sp2, gas_std_version.id, b3_producer, "ACTIVE")
+        await create_and_advance(cust3, sp3, luce_circ_version.id, a9, "DRAFT")
+        await create_and_advance(cust1, sp1, gas_std_version.id, b8, "REJECTED")
+        await create_and_advance(cust2, sp2, luce_std_version.id, b9, "CANCELLED")
 
         processed = await process_pending_outbox_events(db)
         print(f"Seed complete. Processed {processed} outbox event(s) -> commissions generated.")

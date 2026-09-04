@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_db
+from app.core.db import get_db, utcnow
 from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.domains.commissions.models import CommissionMovement, Rank
 from app.domains.commissions.schemas import (
@@ -12,11 +13,16 @@ from app.domains.commissions.schemas import (
     CommissionMovementDetailRead,
     CommissionMovementRead,
     CommissionPaymentRequest,
+    RankEvaluationChangeRead,
     RankRead,
     SimulateRequest,
     SimulationStepRead,
 )
 from app.domains.commissions.services import admin_ledger
+from app.domains.commissions.services.rank_evaluation import (
+    previous_calendar_month,
+    run_monthly_rank_evaluation,
+)
 from app.domains.commissions.simulations.simulate import simulate_for_contract
 from app.domains.network.models import AgentProfile
 
@@ -140,6 +146,37 @@ async def get_commission_totals_by_level(
     return [CommissionLevelTotalsRead(**row) for row in rows]
 
 
+@router.post("/rank-evaluation/run", response_model=list[RankEvaluationChangeRead])
+async def run_rank_evaluation(
+    month: str | None = None,
+    current_user: CurrentUser = Depends(require_permission("commissions.evaluate_ranks")),
+    db: AsyncSession = Depends(get_db),
+) -> list[RankEvaluationChangeRead]:
+    """Manual trigger for the same evaluation the monthly Celery Beat job runs
+    automatically (see celery_app.py::run_monthly_rank_evaluation_task) --
+    promotes/demotes every ACTIVE agent in the caller's org to match their
+    production in the target month. `month` (YYYY-MM) defaults to the calendar
+    month just closed, same default the automatic job uses."""
+    if month is not None:
+        try:
+            window_start = datetime.strptime(month, "%Y-%m").replace(tzinfo=utcnow().tzinfo)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "month must be in YYYY-MM format") from exc
+        window_end = (
+            window_start.replace(year=window_start.year + 1, month=1)
+            if window_start.month == 12
+            else window_start.replace(month=window_start.month + 1)
+        )
+    else:
+        window_start, window_end = previous_calendar_month(utcnow())
+
+    changes = await run_monthly_rank_evaluation(
+        db, organization_id=current_user.organization_id, window_start=window_start, window_end=window_end,
+        actor_user_id=current_user.user_id, source="MANUAL",
+    )
+    return [RankEvaluationChangeRead(**vars(c)) for c in changes]
+
+
 @router.patch("/movements/{movement_id}/pay", response_model=CommissionMovementRead)
 async def pay_commission_movement(
     movement_id: uuid.UUID,
@@ -157,3 +194,23 @@ async def pay_commission_movement(
     if movement is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Commission movement not found")
     return CommissionMovementRead.model_validate(movement)
+
+
+@router.patch("/contracts/{contract_id}/pay-all", response_model=list[CommissionMovementRead])
+async def pay_all_commission_movements_for_contract(
+    contract_id: uuid.UUID,
+    payload: CommissionPaymentRequest,
+    current_user: CurrentUser = Depends(require_permission("commissions.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommissionMovementRead]:
+    """Manual mode: settle every beneficiary's commission for this contract
+    immediately, in one action, instead of clicking "Segna come pagata" once
+    per row. There is no monthly payment batch that would otherwise "restart"
+    or duplicate these -- a contract's commissions are calculated exactly once,
+    at activation (see docs/commission-engine-specification.md#trigger); this
+    only changes when the ledger rows are marked PAID, never the amounts."""
+    movements = await admin_ledger.pay_all_for_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id,
+        actor_user_id=current_user.user_id, note=payload.note,
+    )
+    return [CommissionMovementRead.model_validate(m) for m in movements]

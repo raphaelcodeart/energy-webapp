@@ -9,6 +9,7 @@ import { BranchVisualizer } from "@/components/branch-visualizer";
 import { MyCommissions } from "@/components/my-commissions";
 import { CommissionSimulator } from "@/components/commission-simulator";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
+import { DocumentationFeed } from "@/components/documentation-feed";
 import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
 import { SectionBanner } from "@/components/section-banner";
@@ -91,6 +92,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "documentation",
+    label: "Documentazione",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ];
 
 const QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
@@ -147,7 +157,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
 ];
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation">("azienda");
   const router = useRouter();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
 
@@ -331,6 +341,13 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
                 title="Supporto"
                 subtitle="Hai bisogno di aiuto dall'amministrazione? Apri un ticket: lo vedrai qui appena ricevi risposta."
               />
+            </div>
+          )}
+
+          {activeTab === "documentation" && (
+            <div className="space-y-6">
+              <SectionBanner image="documentation" alt="Documentazione" />
+              <DocumentationFeed />
             </div>
           )}
         </div>

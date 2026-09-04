@@ -12,6 +12,7 @@ from app.domains.contracts.schemas import (
     ContractCreate,
     ContractIbanUpdate,
     ContractRead,
+    ContractStatusHistoryRead,
     ContractTransitionRequest,
 )
 from app.domains.contracts.service import InvalidProducerAgentError
@@ -123,6 +124,20 @@ async def get_contract(
     )
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])
+
+
+@router.get("/{contract_id}/status-history", response_model=list[ContractStatusHistoryRead])
+async def get_contract_status_history(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("contracts.read")),
+    db: AsyncSession = Depends(get_db),
+) -> list[ContractStatusHistoryRead]:
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    await _assert_own_contract_or_staff(db, current_user=current_user, contract=contract)
+    rows = await contract_service.get_status_history(db, contract_id=contract_id)
+    return [ContractStatusHistoryRead(**row) for row in rows]
 
 
 @router.patch("/{contract_id}/iban", response_model=ContractRead)

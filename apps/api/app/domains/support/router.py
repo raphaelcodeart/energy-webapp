@@ -10,7 +10,6 @@ from app.domains.support.schemas import (
     TicketCreate,
     TicketDetailRead,
     TicketMessageCreate,
-    TicketMessageRead,
     TicketRead,
     TicketStatusUpdate,
 )

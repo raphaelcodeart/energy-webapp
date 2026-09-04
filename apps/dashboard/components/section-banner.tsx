@@ -19,6 +19,10 @@ export const SECTION_IMAGES = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Piggy-bank-968302.jpg/1920px-Piggy-bank-968302.jpg",
   support:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Reception_Desk.jpg/1280px-Reception_Desk.jpg",
+  // Bundled locally (apps/dashboard/public/images/), not hotlinked -- picked
+  // deliberately over a Commons hotlink for this one so it never depends on
+  // Wikimedia's availability/URL structure.
+  documentation: "/images/documentation-header.jpg",
 } as const;
 
 export type SectionImageKey = keyof typeof SECTION_IMAGES;

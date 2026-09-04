@@ -7,14 +7,13 @@ import uuid
 
 import pytest
 
+from app.core.db import utcnow
+from app.domains.catalog.models import Product, ProductVersion
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.service import InvalidProducerAgentError
+from app.domains.customers.models import Address, Customer, SupplyPoint
 from app.domains.network import service as network_service
 from app.domains.organizations.models import Organization
-from app.domains.catalog.models import Product, ProductVersion
-from app.domains.customers.models import Address, Customer, SupplyPoint
-from app.core.db import utcnow
-
 from tests.test_commission_engine_integration import _make_actor
 
 
@@ -72,7 +71,7 @@ async def test_create_contract_rejects_producer_from_another_organization(db, or
     await db.refresh(other_org)
 
     foreign_agent = await network_service.create_agent(
-        db, organization_id=other_org.id, display_name="Foreign Agent",
+        db, organization_id=other_org.id, first_name="Foreign", last_name="Agent",
         promoter_code=f"FA-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
 
@@ -95,7 +94,7 @@ async def test_create_contract_rejects_non_active_producer(db, organization_id):
     product_version = await _make_product_version(db, organization_id)
 
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Suspended Agent",
+        db, organization_id=organization_id, first_name="Suspended", last_name="Agent",
         promoter_code=f"SA-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     agent.status = "SUSPENDED"
@@ -116,7 +115,7 @@ async def test_create_contract_accepts_valid_active_producer(db, organization_id
     product_version = await _make_product_version(db, organization_id)
 
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Valid Agent",
+        db, organization_id=organization_id, first_name="Valid", last_name="Agent",
         promoter_code=f"VA-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
 

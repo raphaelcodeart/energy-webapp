@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { getSession, refreshSession, type Session } from "@/lib/session";
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
+
+/** True only for this app's own "your access token is bad/expired" 401 --
+ * never for a permission (403) or a business-rule 401 from elsewhere -- so a
+ * refresh is attempted exactly when it can actually help. See core/deps.py's
+ * get_current_user for where these three strings come from. */
+async function isExpiredTokenResponse(apiRes: Response): Promise<boolean> {
+  if (apiRes.status !== 401) return false;
+  const body = await apiRes.clone().text().catch(() => "");
+  return /Invalid or expired token|Missing bearer token|Wrong token type/.test(body);
+}
 
 /**
  * Same-origin proxy for client components that need TanStack Query's
@@ -16,10 +26,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { path } = await params;
   const search = request.nextUrl.search;
-  const apiRes = await fetch(`${API_INTERNAL_URL}/api/${path.join("/")}${search}`, {
+  const url = `${API_INTERNAL_URL}/api/${path.join("/")}${search}`;
+
+  let apiRes = await fetch(url, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
     cache: "no-store",
   });
+
+  if (await isExpiredTokenResponse(apiRes)) {
+    const refreshed: Session | null = await refreshSession(session);
+    if (refreshed) {
+      apiRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${refreshed.accessToken}` },
+        cache: "no-store",
+      });
+    }
+  }
 
   const body = await apiRes.text();
   return new NextResponse(body, {
@@ -49,16 +71,35 @@ async function proxyWithBody(
   const search = request.nextUrl.search;
   const requestContentType = request.headers.get("content-type") ?? "";
   const isMultipart = requestContentType.startsWith("multipart/form-data");
+  // Read the incoming body exactly once -- request.text()/arrayBuffer() can't
+  // be replayed, but a possible retry-after-refresh below needs the same
+  // bytes sent twice.
+  const requestBody = isMultipart ? await request.arrayBuffer() : await request.text().catch(() => undefined);
 
-  const apiRes = await fetch(`${API_INTERNAL_URL}/api/${path.join("/")}${search}`, {
+  const url = `${API_INTERNAL_URL}/api/${path.join("/")}${search}`;
+  const upstreamHeaders = (token: string) => ({
+    Authorization: `Bearer ${token}`,
+    "Content-Type": isMultipart ? requestContentType : "application/json",
+  });
+
+  let apiRes = await fetch(url, {
     method,
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-      "Content-Type": isMultipart ? requestContentType : "application/json",
-    },
-    body: isMultipart ? await request.arrayBuffer() : await request.text().catch(() => undefined),
+    headers: upstreamHeaders(session.accessToken),
+    body: requestBody,
     cache: "no-store",
   });
+
+  if (await isExpiredTokenResponse(apiRes)) {
+    const refreshed: Session | null = await refreshSession(session);
+    if (refreshed) {
+      apiRes = await fetch(url, {
+        method,
+        headers: upstreamHeaders(refreshed.accessToken),
+        body: requestBody,
+        cache: "no-store",
+      });
+    }
+  }
 
   const body = await apiRes.text();
   const headers = { "Content-Type": apiRes.headers.get("content-type") ?? "application/json" };

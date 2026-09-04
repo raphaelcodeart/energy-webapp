@@ -36,6 +36,10 @@ venv/
 infrastructure/postgres/data/
 infrastructure/minio/data/
 
+# Backups produced by scripts/backup.sh (real data -- pg_dump, MinIO exports).
+# Never commit these; the portable, data-free artifact is docs/database-schema.sql.
+backups/
+
 # Let's Encrypt certificates/private keys and certbot state -- generated
 # per-server by scripts/renew-cert.sh, NEVER commit private keys.
 certbot/

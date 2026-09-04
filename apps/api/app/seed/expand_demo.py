@@ -40,25 +40,25 @@ from app.domains.audit import models as _audit_models  # noqa: F401
 from app.domains.auth import models as _auth_models  # noqa: F401
 from app.domains.catalog.models import Product, ProductVersion
 from app.domains.commissions import models as _commissions_models  # noqa: F401
+from app.domains.commissions.models import Rank
+from app.domains.commissions.tasks.dispatch import process_pending_outbox_events
 from app.domains.contracts import models as _contracts_models  # noqa: F401
+from app.domains.contracts import service as contract_service
 from app.domains.customers import models as _customers_models  # noqa: F401
+from app.domains.customers import service as customer_service
+from app.domains.customers.schemas import CustomerCreate, SupplyPointCreate
 from app.domains.documents import models as _documents_models  # noqa: F401
+from app.domains.documents import service as documents_service
 from app.domains.network import models as _network_models  # noqa: F401
+from app.domains.network import service as network_service
+from app.domains.network.models import AgentProfile
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
+from app.domains.referral.models import PromoterCode
 from app.domains.support import models as _support_models  # noqa: F401
 from app.domains.users import models as _users_models  # noqa: F401
-from app.domains.commissions.models import Rank
-from app.domains.commissions.tasks.dispatch import process_pending_outbox_events
-from app.domains.contracts import service as contract_service
-from app.domains.customers import service as customer_service
-from app.domains.customers.schemas import CustomerCreate, SupplyPointCreate
-from app.domains.documents import service as documents_service
-from app.domains.network import service as network_service
-from app.domains.network.models import AgentProfile
-from app.domains.referral.models import PromoterCode
 from app.domains.users.models import User
 
 ORG_ID = uuid.UUID("0b0b6a89-e09d-4581-80cd-e8457f287b9e")
@@ -218,8 +218,9 @@ async def run() -> None:
             else:
                 parent_id = resolved[parent_key]
 
+            first_name, last_name = display_name.split(" ", 1)
             agent = await network_service.create_agent(
-                db, organization_id=ORG_ID, display_name=display_name, promoter_code=promoter_code,
+                db, organization_id=ORG_ID, first_name=first_name, last_name=last_name, promoter_code=promoter_code,
                 parent_agent_id=parent_id, joined_at=ANCHOR - timedelta(days=RNG.randint(10, 300)),
                 actor_user_id=admin.id, current_rank_id=ranks[rank_code].id,
             )

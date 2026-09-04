@@ -79,6 +79,13 @@ agent_profiles
     §6 in server-migration-guide.md and core/storage.py. Same "name
     prominent, id small below" spirit -- a person recognizes a face faster
     than a promoter code),
+  first_name, last_name nullable (added Session 20 -- display_name is now
+    derived "first last", never edited directly; create_agent()/
+    update_agent() take first_name/last_name, not display_name),
+  is_blacklisted boolean default false (added Session 20 -- set via the
+    admin "Blacklist" action; the ONLY case where self-service "lavora con
+    noi" re-application falls back to the old manual PENDING_APPROVAL flow
+    instead of auto-activating, see business-rules.md),
   joined_at
 
 network_nodes
@@ -314,6 +321,28 @@ commission_adjustments / commission_offsets / commission_reversals
   approved_by nullable, created_at
 ```
 
+**Automatic monthly rank evaluation (added Session 20)**:
+`commissions/services/rank_evaluation.py` writes `agent_rank_history` (and,
+through it, `network_nodes.current_rank_id`) on its own schedule, distinct
+from every other write path above which only happens as a side effect of a
+contract event. Once a month (Celery Beat, day 1 at 02:00 UTC) it recomputes
+every ACTIVE agent's personal+group volume for the calendar month that just
+closed and re-decides their rank against the `ranks` ladder — promoting or
+**demoting** in a single step, with no rolling average. `calculation_source`
+is `AUTOMATIC` for the scheduled run and `MANUAL` for an admin-triggered one
+(`POST /commissions/rank-evaluation/run`). See `business-rules.md
+§Automatic monthly rank evaluation` for the full rationale and
+`docs/open-questions.md` for why the thresholds themselves are still
+placeholders.
+
+`product_versions.commission_tokens` (jsonb dict, default `{}`, added
+Session 20) lets one product override the org-wide
+`ranks.personal_token_cents` on a per-rank-code basis (e.g.
+`{"S1": 5000}`) for contracts on that product — `run_calculation.py`/
+`simulate.py` look up the producing agent's rank code in this dict first,
+falling back to the rank's own `personal_token_cents` when the key is
+absent.
+
 ## 6. Support tickets (added Session 12)
 
 ```
@@ -357,7 +386,11 @@ same transaction) can be permanently deleted via `tickets.delete`
 notifications
   id, organization_id, recipient_user_id, created_at,
   type (CONTRACT_CREATED / TICKET_CREATED / PROMOTER_APPROVAL_REQUESTED /
-    PROMOTER_APPROVED / PROMOTER_REJECTED / COMMISSION_EARNED),
+    PROMOTER_APPROVED / PROMOTER_REJECTED / COMMISSION_EARNED /
+    RANK_CHANGED / RANK_EVALUATION_COMPLETED -- last two added Session 20,
+    fired by commissions/services/rank_evaluation.py: RANK_CHANGED to the
+    individual agent being promoted/demoted, RANK_EVALUATION_COMPLETED as a
+    roles-fanout summary to staff once a monthly run finishes),
   entity_type, entity_id (what the notification is ABOUT -- e.g. "contract"
     + a contract's uuid -- so the frontend can navigate to it),
   title, body nullable,
@@ -394,7 +427,32 @@ lights up the ONE nav entry actually relevant to it (e.g.
 `PROMOTER_APPROVAL_REQUESTED` only lights up "Anagrafiche Promoter", never
 "Tutti i Contratti").
 
-## 8. ER diagram (core slice)
+## 8. Documentation / news feed (added Session 20)
+
+```
+documentation_posts
+  id, organization_id, created_by_user_id,
+  title, body nullable (plain text, not HTML/markdown -- rendered with
+    whitespace preserved),
+  audience (CUSTOMER / PROMOTER / BOTH -- no "internal staff" option, this
+    feed is for the two customer-facing roles only),
+  status (PUBLISHED / ARCHIVED -- soft-hide, same pattern as
+    AgentProfile.status; a real DELETE is a separate, permanent admin action),
+  image_url / pdf_url / pdf_filename / video_url, all nullable and
+    independent -- a post can be text-only or carry any combination,
+  created_at, updated_at
+```
+
+Admin-authored posts (announcements, training material) published to one or
+both dashboards, gated by `documentation.manage` (same permission tier as
+`products.manage`: `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN`). Read-only for
+customers/promoters — `documentation-feed.tsx` filters client-side to
+`PUBLISHED` posts matching the viewer's own role. Attachments live in the
+public `lial-media` bucket (marketing material, not the sensitive-document
+workflow in §4/`documents`), uploaded via
+`core/storage.py::upload_documentation_attachment()`.
+
+## 9. ER diagram (core slice)
 
 ```mermaid
 erDiagram

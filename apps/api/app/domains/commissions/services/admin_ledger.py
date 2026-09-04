@@ -7,11 +7,11 @@ already had a PAID state in the schema; nothing ever set it -- see
 docs/business-rules.md#commission-payment-tracking)."""
 
 import uuid
-from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import utcnow
 from app.domains.audit import service as audit_service
 from app.domains.catalog.models import ProductVersion
 from app.domains.commissions.models import CommissionCalculationStep, CommissionMovement, Rank
@@ -191,6 +191,37 @@ async def get_commission_totals_by_level(db: AsyncSession, *, organization_id: u
     ]
 
 
+async def pay_all_for_contract(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, actor_user_id: uuid.UUID, note: str | None = None
+) -> list[CommissionMovement]:
+    """Manual "settle now" for every beneficiary of one contract at once --
+    marks every PAYABLE movement (across the whole beneficiary chain, not just
+    the producer) PAID in a single transaction, instead of admin clicking
+    "Segna come pagata" once per row. Does not touch, and is unaffected by, the
+    monthly rank-evaluation job: that only realigns an agent's rank going
+    forward, it never re-triggers or re-amounts a contract's commission
+    calculation (see docs/commission-engine-specification.md#trigger)."""
+    stmt = select(CommissionMovement).where(
+        CommissionMovement.organization_id == organization_id,
+        CommissionMovement.contract_id == contract_id,
+        CommissionMovement.status.in_(PAYABLE_STATUSES),
+    )
+    movements = list((await db.execute(stmt)).scalars().all())
+    today = utcnow().date()
+    for movement in movements:
+        previous_status = movement.status
+        movement.status = "PAID"
+        movement.paid_date = today
+        await audit_service.record(
+            db, organization_id=organization_id, actor_user_id=actor_user_id,
+            action="commission.movement_paid", entity_type="commission_movement", entity_id=str(movement.id),
+            previous_value={"status": previous_status}, new_value={"status": "PAID", "paid_date": today.isoformat()},
+            reason=note,
+        )
+    await db.commit()
+    return movements
+
+
 async def mark_movement_paid(
     db: AsyncSession, *, organization_id: uuid.UUID, movement_id: uuid.UUID, actor_user_id: uuid.UUID, note: str | None = None
 ) -> CommissionMovement | None:
@@ -202,7 +233,7 @@ async def mark_movement_paid(
 
     previous_status = movement.status
     movement.status = "PAID"
-    movement.paid_date = date.today()
+    movement.paid_date = utcnow().date()
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,

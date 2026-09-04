@@ -9,7 +9,6 @@ from sqlalchemy import select
 from app.domains.commissions.models import CommissionMovement
 from app.domains.commissions.services import admin_ledger
 from app.domains.commissions.tasks.dispatch import process_pending_outbox_events
-
 from tests.test_commission_engine_integration import (
     _advance_to_active,
     _make_actor,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { friendlyApiError } from "@/lib/api-error";
 
 interface PhotoUploadProps {
   currentUrl: string | null;
@@ -35,7 +36,7 @@ export function PhotoUpload({ currentUrl, uploadPath, onUploaded, alt, size = 96
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`/api/proxy/${uploadPath}`, { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       const updated = await res.json();
       const newUrl: string | undefined = updated.photo_url ?? updated.image_url;
       if (newUrl) onUploaded(newUrl);

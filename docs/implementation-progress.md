@@ -4,6 +4,192 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 20 — 2026-08-17 to 2026-09-04 — Go-live wipe, root promoter creation, self-service promoter activation, per-rank commission tokens, automatic monthly rank evaluation
+
+Catch-up entry covering several working sessions that shipped without a
+matching write-up here (commits `2ee7367`..`d5c52d7`, plus this session's
+uncommitted work) — `business-rules.md` and `docs/server-migration-guide.md`
+already had some of this, this consolidates it into the session log.
+
+- **Login redirect + dashboard build fix (2026-08-17, `2ee7367`)**: post-login
+  redirect now routes by the user's real role (from the login response), not
+  a guess based on the email string. Also fixed a dashboard Docker build
+  crash loop: Next's standalone output-file tracing was pruning
+  `@swc/helpers` (injected by Turbopack, not a static import), causing
+  `MODULE_NOT_FOUND` at container start on every fresh build — worth
+  remembering if a future `docker compose build dashboard` crash-loops with
+  that exact error (see `docs/server-migration-guide.md §8` for the running
+  list of already-solved deployment bugs).
+- **Go-live data wipe (2026-08-26)**: all demo/test data removed (contracts,
+  customers, network, commissions, notifications, audit log, referral data,
+  a stray test-artifact tenant) ahead of onboarding real Lial Energy users.
+  Kept: the org, RBAC roles/permissions, ranks + commission plan, product
+  catalog. The two real admin logins (`admin@lialenergy.it`,
+  `superadmin@lialenergy.it`) had their passwords rotated that day. This is
+  also the point after which `app.seed`/`app.seed.expand_demo` (§4.4/4.7 of
+  the migration guide) should be treated as dev/staging-only, never run
+  against the real org again.
+- **Self-service "lavora con noi" promoter application (`b314fb9`,
+  2026-08-25)**: a customer can request to become a promoter from their own
+  dashboard; per explicit business decision this now **auto-activates**
+  immediately (ACTIVE, rank S1, placed under whoever's referral link they
+  registered through) instead of the old suggest-then-approve
+  (PENDING_APPROVAL) flow. The only path still requiring manual admin
+  approval is an agent an admin has explicitly **blacklisted**
+  (`agent_profiles.is_blacklisted`, migration `0016`) re-applying. Admin
+  promoter panel gained "Disattiva"/"Blacklist" (on ACTIVE agents) and
+  "Riattiva"/"Rimuovi blacklist" (on TERMINATED/SUSPENDED) actions;
+  `update_agent()` now syncs the PROMOTER role automatically on every status
+  change — any future code touching `AgentProfile.status` directly would
+  silently break that sync.
+- **New "root promoter" creation endpoint**: registration is invite-only by
+  design (every signup needs an existing promoter's referral code), which
+  left no way to create the first, parentless promoter for a brand-new
+  independent network branch. `POST /api/network/agents/root`
+  (`network.approve`-gated) creates a login + ACTIVE root `AgentProfile` +
+  working referral link in one step, exposed as "+ Promoter Radice" in the
+  admin Promoter panel — use this (not "+ Nuovo Promoter") whenever a new
+  root branch is needed.
+- **Session reliability fixes**: access tokens expire in 15 minutes; silent
+  refresh was missing, so any proxied call could 401 mid-task. `lib/session.ts`
+  `refreshSession()` plus the `[...path]` proxy route now auto-refresh and
+  retry once transparently using the 30-day refresh token embedded in the
+  session cookie. Separately, raw backend JSON error bodies (`{"detail":...}`)
+  were being shown verbatim in the UI; `lib/api-error.ts`
+  (`friendlyApiError`/`translateErrorDetail`) is now wired into every
+  fetch-based component — extend its `KNOWN_MESSAGES`/`PERMISSION_LABELS`
+  maps when a new backend error string needs a friendlier phrasing, don't
+  show `res.text()`/`.detail` raw.
+- **Documentation/news feed**: new `documentation` domain — admin-authored
+  posts (title, text, optional image/PDF/video-link attachment) published to
+  CUSTOMER, PROMOTER, or BOTH, gated by `documentation.manage` (same tier as
+  `products.manage`). Admin UI: "Documentazione" tab; read-only
+  `documentation-feed.tsx` shared by customer/promoter dashboards, own
+  "Documentazione" nav tab. Attachments live in the public `lial-media`
+  bucket (marketing/training material, not sensitive documents). New table:
+  `documentation_posts` (migration `0015`).
+  `apps/dashboard/public/images/documentation-header.jpg` is a deliberately
+  bundled local asset (not hotlinked like every other `SectionBanner` image).
+- **Promoter name split**: `agent_profiles` gained `first_name`/`last_name`
+  (migration `0017`) — every promoter form used to be a single "Nome e
+  Cognome" field, matching how `customers` already worked was requested
+  explicitly. `display_name` is now a derived "first last" string, never
+  edited directly; `create_agent()`/`update_agent()` take `first_name`/
+  `last_name`, not `display_name` (a real, recurring source of stale test
+  helpers — see the bug fixed this session below). Any new
+  promoter-name-touching form/endpoint must collect the two fields
+  separately.
+- **Customer/promoter dual-role UX**: a person can hold both CUSTOMER and
+  PROMOTER roles at once. `GET /api/auth/me` returns LIVE roles from the DB
+  (deliberately not the access token's own baked-in roles, which lag up to
+  15 minutes behind an auto-activation). `AreaSwitcher`, mounted in the
+  persistent app header, polls this and renders an "Area Cliente / Area
+  Promoter" toggle only when both roles are present; `d5c52d7` (2026-09-03)
+  added a second entry point for the same switch in the account dropdown
+  menu, sharing the same `useDualRoleAreas` hook so both stay in sync
+  without a re-login.
+- **Per-rank commission tokens on products (`9583914`, 2026-09-03)**:
+  `ProductVersion.commission_tokens` (migration `0014`) lets a product
+  override the org-wide personal gettone per rank, editable from the admin
+  product form. Admin catalog panel also gained "duplica" (prefills a new
+  product from an existing one, including its fee/token overrides) and
+  "delete" (confirmation modal, server-refused if the product already has
+  contracts).
+- **Automatic monthly rank evaluation (this session, uncommitted as of
+  2026-09-04)**: new `commissions/services/rank_evaluation.py` — a strict,
+  single-calendar-month re-evaluation of every ACTIVE agent's rank
+  (promotes AND demotes, unlike the cumulative/promotion-only
+  `rank_progress.py` display), run automatically by Celery Beat on day 1 of
+  each month at 02:00 UTC, or on demand via `POST
+  /commissions/rank-evaluation/run` (`commissions.evaluate_ranks`, migration
+  `0013`). Every change is recorded in `agent_rank_history` and `audit_log`,
+  and the affected agent gets a notification. See
+  `business-rules.md §Automatic monthly rank evaluation` for the full
+  design rationale (placeholder thresholds, same caveat as the rest of the
+  career plan — `docs/open-questions.md`).
+- **Real bug, found and fixed while verifying the above**: the new
+  `tests/test_rank_evaluation.py` (and, once run, nine pre-existing test
+  files: `test_branch_summary`, `test_commission_engine_integration`,
+  `test_contract_renewal`, `test_network_isolation`, `test_registration`,
+  `test_documents`, `test_contract_producer_validation`,
+  `test_notifications_and_approval`, `test_rank_progress`,
+  `test_promoter_reassignment`) all called
+  `network_service.create_agent(display_name=...)`, a signature removed by
+  the promoter name-split refactor above. Because the API container image
+  has no `pytest` baked in and there is no CI, this had silently broken 52
+  of the suite's tests for over a week without anyone noticing. Fixed by
+  updating every call site to `first_name`/`last_name`; full suite now
+  passes (105/105). **Action item**: `pytest`/the `dev` extra should be
+  either baked into a dedicated test image or run in CI so this class of
+  regression is caught immediately instead of by accident during an
+  unrelated feature session — tracked as an open gap, not fixed this
+  session.
+- **`docs/database-schema.sql` regenerated (2026-09-04)**: the previous dump
+  predated the `documents`, `notifications`, and now `documentation_posts`
+  tables (49 tables total, up from the 46 the guide previously described) —
+  it was stale independently of this session's own changes. Now dumped with
+  `--no-owner --no-privileges` for portability across servers with a
+  different Postgres username, regenerable via the new `scripts/dump-schema.sh`.
+- **Multi-agent code review + real bugs fixed (2026-09-04)**: a full review of
+  this session's diff (`/code-review high`) surfaced several real,
+  independently-confirmed issues, all fixed and covered by new tests
+  (`tests/test_promoter_self_service.py`):
+  - **Approval-gate bypass**: `PATCH /network/agents/{id}` is gated on
+    `network.manage`, which a plain `ADMIN` holds (deliberately not
+    `network.approve` -- see `docs/security-model.md`). Nothing stopped that
+    ADMIN from setting `status=ACTIVE` on their own `PENDING_APPROVAL`
+    suggestion through this endpoint, silently granting themselves the
+    PROMOTER role for it and completely bypassing the dedicated
+    `network.approve`-gated `approve_agent()`. Fixed: `update_agent()` now
+    refuses a `PENDING_APPROVAL -> ACTIVE` transition
+    (`AgentApprovalError`, 400) -- only `approve_agent()` may perform it.
+    Reactivating a SUSPENDED/TERMINATED agent ("Riattiva") is unaffected,
+    still allowed under plain `network.manage`.
+  - **Suspension bypass via self-service reapply**: `apply_as_promoter()`'s
+    duplicate-application guard only special-cased `is_blacklisted`; an
+    agent an admin set to SUSPENDED (a real, reachable status via the agent
+    edit form's "Stato" dropdown -- distinct from the "Disattiva"/"Blacklist"
+    buttons, which both use TERMINATED) could silently self-reactivate by
+    just reapplying through "Lavora con noi," undoing the admin's suspension
+    with zero admin involvement. Fixed: SUSPENDED now routes through the
+    same manual PENDING_APPROVAL path as blacklisted. TERMINATED reapplying
+    still auto-reactivates, unchanged -- that's the intended "Disattiva"
+    behavior.
+  - **`app.seed.expand_demo` crash**: same `create_agent(display_name=...)`
+    signature drift as the test files above, in the actual demo-expansion
+    seed script this time -- `python -m app.seed.expand_demo` (the
+    documented workflow, `server-migration-guide.md §4.4`) would have raised
+    `TypeError` on its very first agent. Fixed the same way.
+  - **Documentation image/PDF upload cross-contamination**:
+    `set_post_image()`/`set_post_pdf()` both called
+    `upload_documentation_attachment()` against the SAME combined
+    images-or-PDF allow-list, so a PDF uploaded through the image slot (or
+    vice versa) was accepted and stored in the wrong URL field, silently
+    breaking the feed's `<img>` rendering. Fixed: the function now takes an
+    explicit `allowed_content_types` per call site (images-only for
+    `image_url`, PDF-only for `pdf_url`).
+  - **Audit trail gap**: `update_agent()`'s audit record captured
+    `status`/`current_rank_id` but silently dropped `is_blacklisted` --
+    blacklisting/un-blacklisting a promoter left no trace of *that specific
+    change* in `audit_log`. Fixed: both are now included in
+    `previous_value`/`new_value`.
+  - **Wasted round-trips**: `pay_all_for_contract()` (new this session)
+    looped a `db.refresh()` per movement after commit, unnecessary since the
+    app's session factory already runs `expire_on_commit=False` -- removed.
+  - **Known limitations documented, not fixed this session** (lower
+    severity/probability, would need a larger refactor across many
+    `create_agent()` callers to address safely): `create_root_promoter_with_login()`
+    and `apply_as_promoter()`'s reactivation branch each call functions that
+    commit internally *before* a later step (PromoterCode row / audit
+    record) that could still fail -- a failure there leaves a real,
+    already-committed login without its one-time password ever having been
+    returned, or without the PROMOTER role granted. `rank_evaluation.py`
+    issues several unbatched queries per agent (fine at current org size,
+    would need batching before an org reaches hundreds of active agents).
+    `apply_as_promoter`'s floor rank is hardcoded to code `"S1"` rather than
+    derived from the ladder -- same category as the other rank-table
+    placeholders in `docs/open-questions.md`.
+
 ## Session 19 — 2026-07-27 — Ticket search/filter, delete-when-resolved, and a proxy 204 bug found along the way
 
 - **Ticket search & filter**: `AdminTicketsPanel` gained a free-text search

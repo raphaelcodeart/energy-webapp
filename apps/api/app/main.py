@@ -21,6 +21,8 @@ from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.contracts.router import router as contracts_router
 from app.domains.customers import models as _customers_models  # noqa: F401
 from app.domains.customers.router import router as customers_router
+from app.domains.documentation import models as _documentation_models  # noqa: F401
+from app.domains.documentation.router import router as documentation_router
 from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.documents.router import router as documents_router
 from app.domains.network import models as _network_models  # noqa: F401
@@ -69,6 +71,7 @@ app.include_router(reports_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
+app.include_router(documentation_router, prefix="/api")
 
 
 @app.on_event("startup")

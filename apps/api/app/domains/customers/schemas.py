@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
@@ -16,6 +17,7 @@ class CustomerRead(BaseModel):
     pec: str | None
     photo_url: str | None
     display_name: str
+    created_at: datetime
 
 
 class CustomerCreate(BaseModel):

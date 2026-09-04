@@ -8,11 +8,13 @@ calculations; it never re-derives the formulas.
 commissions/
   models.py         # ORM: plans, rule versions, calculations, steps, movements
   schemas.py        # Pydantic I/O contracts
-  repositories/      # persistence for plans, calculations, movements
-  services/          # orchestration: run_calculation(), post_movements()
+  services/          # orchestration: run_calculation() (also admin_ledger.py --
+                     # traceability/payment tracking; rank_progress.py --
+                     # cumulative "next rank" display; rank_evaluation.py --
+                     # monthly automatic promote/demote, added Session 20,
+                     # see business-rules.md §Automatic monthly rank evaluation)
   calculators/       # pure functions: personal token, entrepreneurial difference
   policies/          # branch_cap (33% rule), eligibility
-  evaluators/        # rank evaluation from production totals
   explainers/        # turn a calculation into a human-readable explanation string
   simulations/       # read-only simulate() entrypoint, never writes movements
   tasks/             # Celery task wrappers around services/
@@ -45,17 +47,22 @@ For a given `contract_id`:
 1.  load product_version, commission_plan_version, network_snapshot for contract
 2.  producer = network_snapshot chain depth 0 (the contract's producer_agent_id)
 3.  producer_rank = producer's rank_id_at_snapshot
-4.  base_amount_cents = producer_rank.personal_token_cents
+4.  base_amount_cents = product_version.commission_tokens[producer_rank.code]
+      if that key exists (added Session 20 -- a product can override the
+      org-wide gettone per rank, e.g. "Energia Circolare" pays a different
+      token than "Standard" for the same rank), else producer_rank.personal_token_cents
 5.  already_distributed_cents = base_amount_cents
 6.  emit step: producer receives base_amount_cents (movement_type = PERSONAL_TOKEN)
 7.  for each ascendant in network_snapshot ordered by depth ascending (nearest first):
-8.      ascendant_rank = ascendant's rank_id_at_snapshot
+8.      ascendant_rank = ascendant's rank_id_at_snapshot, ascendant_token_cents =
+          same product-override-then-fallback resolution as step 4, applied
+          per chain member (not just the producer)
 9.      eligible_amount = apply_branch_cap(ascendant, contract, policies.branch_cap)
-10.     if ascendant_rank.personal_token_cents > already_distributed_cents:
-11.         diff = ascendant_rank.personal_token_cents - already_distributed_cents
+10.     if ascendant_token_cents > already_distributed_cents:
+11.         diff = ascendant_token_cents - already_distributed_cents
 12.         diff = min(diff, eligible_amount)             # 33% rule may reduce it
 13.         emit step: ascendant receives diff (movement_type = ENTREPRENEURIAL_DIFFERENCE)
-14.         already_distributed_cents = ascendant_rank.personal_token_cents
+14.         already_distributed_cents = ascendant_token_cents
 15.     else:
 16.         emit step: ascendant receives 0, explanation "already covered by lower rank"
 17. apply any personal_bonus rules (product/plan-specific, additive, own movement_type = PERSONAL_BONUS)

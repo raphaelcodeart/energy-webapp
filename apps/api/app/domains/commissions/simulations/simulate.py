@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.catalog.models import ProductVersion
 from app.domains.commissions.calculators.entrepreneurial_difference import (
     CalculationStep,
     ChainMember,
@@ -27,7 +28,9 @@ async def simulate_for_contract(
     if contract is None or contract.network_snapshot_id is None:
         raise ValueError("Contract has no network snapshot to simulate against")
 
-    chain = await _build_chain(db, network_snapshot_id=contract.network_snapshot_id)
+    chain = await _build_chain(
+        db, network_snapshot_id=contract.network_snapshot_id, product_version_id=contract.product_version_id
+    )
 
     if rank_overrides:
         organization_id = contract.organization_id
@@ -36,6 +39,8 @@ async def simulate_for_contract(
             Rank.organization_id == organization_id, Rank.code.in_(override_codes)
         )
         ranks_by_code = {r.code: r for r in (await db.execute(ranks_stmt)).scalars().all()}
+        product_version = await db.get(ProductVersion, contract.product_version_id)
+        product_tokens: dict = (product_version.commission_tokens or {}) if product_version else {}
         new_chain = []
         for member in chain:
             override_code = rank_overrides.get(member.agent_id)
@@ -45,7 +50,7 @@ async def simulate_for_contract(
                     ChainMember(
                         agent_id=member.agent_id,
                         rank_code=rank.code,
-                        personal_token_cents=rank.personal_token_cents,
+                        personal_token_cents=product_tokens.get(rank.code, rank.personal_token_cents),
                         depth=member.depth,
                     )
                 )

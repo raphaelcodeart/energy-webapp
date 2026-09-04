@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
+import { translateErrorDetail } from "@/lib/api-error";
 import type { PromoterCodeRead } from "@/lib/types";
 
 const KIND_LABELS: Record<string, string> = {
@@ -77,7 +78,7 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Registrazione non riuscita.");
+        throw new Error(body.detail ? translateErrorDetail(body.detail) : "Registrazione non riuscita.");
       }
       setSuccess(true);
       setTimeout(() => router.push("/login"), 2500);
@@ -123,7 +124,9 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
           <div className="glass-card rounded-2xl p-8">
             <div className="mb-6 text-center">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                Sei stato invitato da un promoter Lial Energy
+                {promoterCode.promoter_display_name
+                  ? `Invitato da ${promoterCode.promoter_display_name}`
+                  : "Sei stato invitato da un promoter Lial Energy"}
               </span>
               {productName && (
                 <div className="mt-3">

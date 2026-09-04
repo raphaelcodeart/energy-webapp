@@ -67,3 +67,14 @@ class ContractTransitionRequest(BaseModel):
     to_status: str
     reason: str | None = None
     notes: str | None = None
+
+
+class ContractStatusHistoryRead(BaseModel):
+    id: uuid.UUID
+    from_status: str | None
+    to_status: str
+    actor_user_id: uuid.UUID
+    actor_name: str
+    reason: str | None
+    notes: str | None
+    created_at: datetime

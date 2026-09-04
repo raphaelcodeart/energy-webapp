@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ async def dashboard_summary(
     current_user: CurrentUser = Depends(require_permission("reports.read")),
     db: AsyncSession = Depends(get_db),
 ) -> DashboardSummary:
-    to_ = period_to or datetime.now(timezone.utc).date()
+    to_ = period_to or datetime.now(UTC).date()
     from_ = period_from or (to_ - timedelta(days=30))
     return await service.get_dashboard_summary(db, current_user.organization_id, from_, to_)
 

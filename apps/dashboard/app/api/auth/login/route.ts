@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setSession } from "@/lib/session";
+import { friendlyApiError } from "@/lib/api-error";
+import { decodeRolesFromAccessToken, setSession } from "@/lib/session";
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:8000";
 
@@ -18,8 +19,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (!apiRes.ok) {
-    const detail = await apiRes.text();
-    return NextResponse.json({ error: detail || "Login failed" }, { status: apiRes.status });
+    const message = await friendlyApiError(apiRes, "Accesso non riuscito. Riprova.");
+    return NextResponse.json({ error: message }, { status: apiRes.status });
   }
 
   const setCookieHeader = apiRes.headers.get("set-cookie") ?? "";
@@ -38,15 +39,4 @@ export async function POST(request: NextRequest) {
   const roles = decodeRolesFromAccessToken(accessToken);
 
   return NextResponse.json({ ok: true, roles });
-}
-
-function decodeRolesFromAccessToken(accessToken: string): string[] {
-  try {
-    const payload = accessToken.split(".")[1] ?? "";
-    const json = Buffer.from(payload, "base64url").toString("utf-8");
-    const { roles } = JSON.parse(json) as { roles?: string[] };
-    return roles ?? [];
-  } catch {
-    return [];
-  }
 }

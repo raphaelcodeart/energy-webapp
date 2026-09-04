@@ -49,7 +49,7 @@ async def _make_user_with_role(db, organization_id, *, role_code: str, email: st
 async def test_new_agent_is_pending_approval_not_active(db, organization_id):
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Suggested Agent",
+        db, organization_id=organization_id, first_name="Suggested", last_name="Agent",
         promoter_code=f"SUG-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
         actor_user_id=admin.id, status="PENDING_APPROVAL",
     )
@@ -62,7 +62,7 @@ async def test_approve_agent_activates_it_and_is_idempotent_against_double_appro
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     super_admin = await _make_user_with_role(db, organization_id, role_code="SUPER_ADMIN")
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Pending Agent",
+        db, organization_id=organization_id, first_name="Pending", last_name="Agent",
         promoter_code=f"PEND-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
         actor_user_id=admin.id, status="PENDING_APPROVAL",
     )
@@ -85,7 +85,7 @@ async def test_reject_agent_terminates_with_reason(db, organization_id):
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     super_admin = await _make_user_with_role(db, organization_id, role_code="SUPER_ADMIN")
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Rejected Agent",
+        db, organization_id=organization_id, first_name="Rejected", last_name="Agent",
         promoter_code=f"REJ-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
         actor_user_id=admin.id, status="PENDING_APPROVAL",
     )
@@ -177,7 +177,7 @@ async def test_creating_a_contract_notifies_staff(db, organization_id):
     await db.commit()
 
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Notif Producer", promoter_code=f"NP-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
+        db, organization_id=organization_id, first_name="Notif", last_name="Producer", promoter_code=f"NP-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
 
     await contract_service.create_contract(

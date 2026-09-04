@@ -86,6 +86,23 @@
   service layer also independently refuses to delete anything not in
   `RESOLVED` status regardless of who's asking. See `business-rules.md
   §Support tickets §Search, filter, and deletion`.
+- `documentation.manage` (Session 20, migration `0015`): gates
+  create/edit/archive of `documentation_posts` (the admin news/training
+  feed). Same tier as `products.manage` --
+  `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN`. Reading the feed itself needs no
+  permission check beyond authentication -- it's self-filtered by the
+  viewer's own CUSTOMER/PROMOTER role against each post's `audience`.
+- `commissions.evaluate_ranks` (Session 20, migration `0013`): gates `POST
+  /commissions/rank-evaluation/run`, the manual trigger for the automatic
+  monthly rank promotion/demotion. Same narrow tier as `network.approve` --
+  `SUPER_ADMIN`/`ORGANIZATION_ADMIN` only, deliberately not plain `ADMIN`,
+  since a mistaken run can move real agents' ranks (and therefore future
+  commission amounts) in either direction. See `business-rules.md
+  §Automatic monthly rank evaluation`.
+- `network.approve` also now gates `POST /network/agents/root` (Session 20)
+  -- creating a parentless "root" promoter is treated as the same
+  sensitivity tier as approving a suggested agent, not the broader
+  `network.manage`.
 
 ## Multi-tenancy
 - Every tenant-scoped table carries `organization_id`. All repository queries filter on

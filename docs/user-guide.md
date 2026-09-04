@@ -91,6 +91,21 @@ Cosa non è ancora disponibile: acquisto/checkout diretto dallo shop (oggi la
 vetrina è consultabile, l'attivazione di un contratto passa dall'amministrazione
 o dal promoter), storico pagamenti/fatture.
 
+**Documentazione** — feed di sola lettura con annunci e materiale pubblicati
+dall'amministrazione (testo, e opzionalmente un'immagine, un PDF o un link
+video), specifici per i clienti o condivisi anche con i promoter.
+
+**Lavora con noi** — un cliente può candidarsi a diventare promoter
+direttamente dalla propria area (anche dalla scheda "Prodotti", con una
+card dedicata). L'attivazione è **immediata**: appena inviata la richiesta,
+il cliente diventa promoter attivo (qualifica iniziale S1), agganciato a chi
+lo ha originariamente invitato — non è più necessaria un'approvazione
+dell'amministrazione, salvo il caso in cui l'account sia stato messo in
+"blacklist" da un amministratore (in quel caso serve una nuova approvazione
+manuale). Chi ha sia il ruolo Cliente sia quello Promoter vede in cima
+all'intestazione (e nel menu account) un selettore **"Area Cliente / Area
+Promoter"** per passare dall'una all'altra senza fare logout.
+
 ### 3.2 Area Promoter (`/promoter`)
 
 Pensata per far gestire al promoter la propria rete **come una vera azienda**:
@@ -131,6 +146,19 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 - **Supporto** — apri un ticket verso l'amministrazione (es. per un chiarimento
   su una provvigione o un problema con un cliente) e segui la conversazione
   nella tua area finché non è risolto.
+- **Documentazione** — lo stesso feed di annunci/materiale che vede il
+  cliente, quando l'amministrazione lo pubblica anche (o solo) per i
+  promoter.
+
+Se hai anche un account Cliente collegato allo stesso login, in cima
+all'intestazione trovi lo stesso selettore **"Area Cliente / Area Promoter"**
+descritto nella sezione precedente.
+
+**Qualifica**: la tua qualifica (S1, S2, ... TL1, ... MD1, ...) non è solo
+una progressione — viene **ricalcolata ogni mese** confrontando il tuo
+fatturato personale e di gruppo del mese appena chiuso con le soglie della
+scala qualifiche: puoi tanto salire quanto **retrocedere** se un mese va a
+vuoto dopo un mese forte. Ricevi una notifica in-app quando succede.
 
 ### 3.3 Area Amministratore (`/admin`)
 
@@ -177,14 +205,36 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   senza rischiare di orfanizzare i suoi contratti, quindi non è stato aggiunto
   un pulsante che non farebbe nulla di sicuro.
 - **Anagrafiche Promoter** — foto profilo (o icona generica) per ogni agente;
-  tabella con qualifica e sponsor, e ora anche un'icona **Modifica**: nome,
-  foto, qualifica e stato (attivo/sospeso/cessato) sono modificabili (il
-  codice promoter no, è incorporato nei link di invito già condivisi).
+  tabella con qualifica e sponsor, e ora anche un'icona **Modifica**: nome
+  (nome e cognome separati), foto, qualifica e stato (attivo/sospeso/cessato)
+  sono modificabili (il codice promoter no, è incorporato nei link di invito
+  già condivisi). Pulsante **"+ Promoter Radice"** per creare un promoter
+  senza sponsor (l'inizio di un ramo di rete indipendente) — l'unico modo per
+  farlo, dato che la registrazione normale richiede sempre un link di
+  invito di qualcun altro. Su un promoter attivo: **Disattiva** (lo sospende,
+  può ricandidarsi liberamente) e **Blacklist** (come Disattiva, ma una sua
+  eventuale ricandidatura futura tornerà ad aver bisogno di
+  approvazione manuale, invece di riattivarsi da sola). Su un promoter
+  disattivato/in blacklist: **Riattiva** / **Rimuovi blacklist**. Pulsante
+  **"Valuta gradi ora"** avvia manualmente la stessa valutazione mensile
+  automatica delle qualifiche (promuove/retrocede ogni promoter attivo in
+  base al fatturato del mese) che gira comunque in automatico il giorno 1 di
+  ogni mese — utile per rieseguirla o vederne subito l'effetto.
 - **Prodotti & Marketplace** — catalogo con foto, prezzo, IVA; pulsante
   **Modifica** su ogni prodotto. Il tipo di prodotto non è più solo "contratto
   energia": puoi scegliere anche Digitale, Fisico o Abbonamento. La foto si
   può sia incollare come link sia **caricare direttamente un file** dalla
-  schermata di modifica, con anteprima di quella già presente.
+  schermata di modifica, con anteprima di quella già presente. La schermata
+  di modifica permette anche di impostare un **gettone provvigionale diverso
+  per grado specifico di questo prodotto** (in alternativa al valore standard
+  uguale per tutti i prodotti). Pulsanti **Duplica** (crea un nuovo prodotto
+  precompilato da uno esistente, inclusi eventuali gettoni personalizzati) ed
+  **Elimina** (con conferma; rifiutato se il prodotto ha già contratti
+  collegati).
+- **Documentazione** — crea/modifica/archivia annunci e materiale (testo, più
+  opzionalmente un'immagine, un PDF o un link video) da pubblicare per i
+  clienti, i promoter, o entrambi — visibili nella rispettiva scheda
+  "Documentazione" delle due aree.
 - **Rete Commerciale** — a differenza della vista del promoter (limitata al
   proprio ramo), qui vedi **l'intera organizzazione**: tutti i rami, con
   ricerca ed espandi/comprimi. Naviga livello per livello come nella vista

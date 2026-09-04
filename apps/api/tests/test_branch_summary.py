@@ -89,11 +89,11 @@ async def test_branch_summary_counts_contracts_and_commissions_per_agent(db, org
     await db.flush()
 
     sponsor = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Sponsor", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Sponsor", last_name="Tester", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Producer", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Producer", last_name="Tester", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
         parent_agent_id=sponsor.id, current_rank_id=s1.id,
     )
 
@@ -136,7 +136,7 @@ async def test_branch_summary_totals_distinguish_rejected_from_other_pending(db,
     await db.flush()
 
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Rejector", promoter_code=f"REJ-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Rejector", last_name="Tester", promoter_code=f"REJ-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     actor_user_id = await _make_actor(db, organization_id)
@@ -170,7 +170,7 @@ async def test_branch_contracts_links_customer_product_status_and_commission(db,
     await db.flush()
 
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Solo Producer", promoter_code=f"SOLO-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Solo", last_name="Producer", promoter_code=f"SOLO-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     actor_user_id = await _make_actor(db, organization_id)
@@ -202,7 +202,7 @@ async def test_branch_contracts_surfaces_latest_admin_note_for_problem_contracts
     await db.flush()
 
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Note Producer", promoter_code=f"NOTE-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Note", last_name="Producer", promoter_code=f"NOTE-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     actor_user_id = await _make_actor(db, organization_id)
@@ -230,15 +230,15 @@ async def test_organization_network_levels_counts_people_per_depth_from_their_ow
     none. Each agent's level is measured from ITS OWN top ancestor, not a
     single shared root -- there is no single root_agent_id for a whole org."""
     root_a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root A", promoter_code=f"RA-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Root", last_name="A", promoter_code=f"RA-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None,
     )
     child_a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Child A", promoter_code=f"CA-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Child", last_name="A", promoter_code=f"CA-{uuid.uuid4().hex[:8]}",
         parent_agent_id=root_a.id,
     )
     root_b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root B", promoter_code=f"RB-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Root", last_name="B", promoter_code=f"RB-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None,
     )
 

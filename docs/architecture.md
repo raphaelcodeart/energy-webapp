@@ -72,7 +72,8 @@ domain's ORM internals directly from a router.
 | `ranks` | qualifications / career plan, versioned thresholds | E |
 | `commissions` | plan versions, calculators, ledger, simulator | E |
 | `renewals` / `reversals` | renewal & storno events | E |
-| `notifications` | templated notifications via Celery | F |
+| `notifications` | in-app notifications (approvals, rank changes, tickets) | E (built) |
+| `documentation` | admin-authored news/training posts for customers & promoters | E (built) |
 | `reports` | aggregate reporting endpoints | F |
 | `ai` | pgvector ingestion, hybrid search, assistant | G |
 

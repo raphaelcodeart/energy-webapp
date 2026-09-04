@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { translateErrorDetail } from "@/lib/api-error";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/config";
 
 export default function ForgotPasswordPage() {
@@ -23,7 +24,7 @@ export default function ForgotPasswordPage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Richiesta non riuscita.");
+        throw new Error(body.detail ? translateErrorDetail(body.detail) : "Richiesta non riuscita.");
       }
       setSubmitted(true);
     } catch (err: any) {

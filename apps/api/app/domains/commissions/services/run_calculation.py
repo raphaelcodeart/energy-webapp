@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.audit import service as audit_service
+from app.domains.catalog.models import ProductVersion
 from app.domains.commissions.calculators.entrepreneurial_difference import (
     ChainMember,
     calculate_chain,
@@ -31,8 +32,16 @@ def _idempotency_key(contract_id: uuid.UUID, trigger_event_id: uuid.UUID, agent_
 
 
 async def _build_chain(
-    db: AsyncSession, *, network_snapshot_id: uuid.UUID
+    db: AsyncSession, *, network_snapshot_id: uuid.UUID, product_version_id: uuid.UUID
 ) -> list[ChainMember]:
+    """Personal token per chain member comes from the CONTRACT'S PRODUCT first
+    (ProductVersion.commission_tokens, keyed by rank code -- e.g. "Energia
+    Circolare" and "Standard" pay a different gettone for the same rank) and
+    only falls back to the org-wide Rank.personal_token_cents for a rank the
+    product hasn't configured a token for."""
+    product_version = await db.get(ProductVersion, product_version_id)
+    product_tokens: dict = (product_version.commission_tokens or {}) if product_version else {}
+
     stmt = (
         select(
             NetworkSnapshotNode.ancestor_agent_id,
@@ -49,7 +58,7 @@ async def _build_chain(
         ChainMember(
             agent_id=str(agent_id),
             rank_code=rank_code or "UNRANKED",
-            personal_token_cents=personal_token_cents or 0,
+            personal_token_cents=product_tokens.get(rank_code, personal_token_cents or 0),
             depth=depth,
         )
         for agent_id, depth, rank_code, personal_token_cents in rows
@@ -89,7 +98,9 @@ async def run_calculation_for_contract(
     if contract is None or contract.network_snapshot_id is None:
         raise ValueError("Contract has no network snapshot; cannot calculate commissions")
 
-    chain = await _build_chain(db, network_snapshot_id=contract.network_snapshot_id)
+    chain = await _build_chain(
+        db, network_snapshot_id=contract.network_snapshot_id, product_version_id=contract.product_version_id
+    )
     if not chain:
         # Producer (or its whole ancestor chain) resolved to nothing -- most
         # likely an agent that no longer exists or was removed from the

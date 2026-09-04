@@ -79,3 +79,11 @@ class RankRead(BaseModel):
     name: str
     level: int
     personal_token_cents: int
+
+
+class RankEvaluationChangeRead(BaseModel):
+    agent_id: uuid.UUID
+    display_name: str
+    previous_rank_code: str | None
+    new_rank_code: str
+    direction: str  # "PROMOTED" | "DEMOTED"

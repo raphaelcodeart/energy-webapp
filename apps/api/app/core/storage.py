@@ -34,6 +34,13 @@ settings = get_settings()
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB -- profile/product photos, not documents
 
+# Documentation/news feed attachments (see domains/documentation): admin-authored
+# marketing/training material meant to be freely downloadable by every promoter
+# or customer it's published to -- never sensitive like a KYC document -- so it
+# belongs in the public bucket too, just with PDFs allowed and a larger cap.
+ALLOWED_DOCUMENTATION_CONTENT_TYPES = ALLOWED_IMAGE_CONTENT_TYPES | {"application/pdf"}
+MAX_DOCUMENTATION_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB -- PDFs, not just photos
+
 _client = None
 
 
@@ -92,6 +99,33 @@ def upload_media(*, file_bytes: bytes, content_type: str, key_prefix: str) -> st
         raise UploadValidationError(f"Unsupported content type: {content_type}")
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise UploadValidationError("File too large (max 5 MB)")
+
+    extension = mimetypes.guess_extension(content_type) or ".bin"
+    key = f"{key_prefix}/{uuid.uuid4().hex}{extension}"
+
+    client = _get_client()
+    client.put_object(
+        Bucket=settings.s3_bucket_media, Key=key, Body=file_bytes, ContentType=content_type,
+    )
+    return f"{settings.public_app_base_url}/media/{key}"
+
+
+def upload_documentation_attachment(
+    *, file_bytes: bytes, content_type: str, key_prefix: str, allowed_content_types: set[str] | None = None
+) -> str:
+    """Like upload_media() but for the documentation/news feed (see
+    ALLOWED_DOCUMENTATION_CONTENT_TYPES docstring above) -- same public bucket
+    and nginx /media/ proxy, just images-or-PDF and a larger size cap.
+
+    allowed_content_types narrows the check for a specific call site (e.g. the
+    image slot must reject a PDF and vice versa) -- defaults to the full
+    images-or-PDF set when omitted, but every current caller
+    (set_post_image/set_post_pdf) passes its own narrower set explicitly."""
+    allowed = allowed_content_types if allowed_content_types is not None else ALLOWED_DOCUMENTATION_CONTENT_TYPES
+    if content_type not in allowed:
+        raise UploadValidationError(f"Unsupported content type: {content_type}")
+    if len(file_bytes) > MAX_DOCUMENTATION_UPLOAD_BYTES:
+        raise UploadValidationError("File too large (max 20 MB)")
 
     extension = mimetypes.guess_extension(content_type) or ".bin"
     key = f"{key_prefix}/{uuid.uuid4().hex}{extension}"

@@ -6,8 +6,10 @@ import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
+import { DocumentationFeed } from "@/components/documentation-feed";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
+import { friendlyApiError } from "@/lib/api-error";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
 
 function IbanEditor({ contractId, initialIban }: { contractId: string; initialIban: string | null }) {
@@ -26,7 +28,7 @@ function IbanEditor({ contractId, initialIban }: { contractId: string; initialIb
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ iban: value.replace(/\s/g, "").toUpperCase() }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setSaved(value.replace(/\s/g, "").toUpperCase());
       setEditing(false);
     } catch {
@@ -143,11 +145,20 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "documentation",
+    label: "Documentazione",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ];
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application">("products");
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -368,6 +379,7 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
       {activeTab === "products" && (
         <div className="space-y-6">
           <SectionBanner image="products" alt="Shop" />
+          <CustomerPromoterApplicationCard hideWhenActive />
           <CustomerProductsPanel />
         </div>
       )}
@@ -385,6 +397,13 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
       {activeTab === "promoter-application" && (
         <div className="space-y-6">
           <CustomerPromoterApplicationCard />
+        </div>
+      )}
+
+      {activeTab === "documentation" && (
+        <div className="space-y-6">
+          <SectionBanner image="documentation" alt="Documentazione" />
+          <DocumentationFeed />
         </div>
       )}
     </AppShell>

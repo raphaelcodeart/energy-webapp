@@ -2,7 +2,6 @@
 (identical outcome whether or not the email exists), the token is single-use
 and expires, and a successful reset revokes every existing session."""
 
-import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest

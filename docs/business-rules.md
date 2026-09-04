@@ -74,6 +74,36 @@ per-promoter "Apri Rete" drill-down (same shared component). An agent already
 at the top rank (no higher `level` exists for their `rule_version`) shows
 "qualifica massima raggiunta" instead of a bar.
 
+### Automatic monthly rank evaluation (PLACEHOLDER, added Session 20)
+
+Separate axis from the progress display above, and from the same unconfirmed
+placeholder thresholds: `commissions/services/rank_evaluation.py` actually
+**writes** `AgentProfile.current_rank_id`, both up and down, instead of just
+displaying progress toward it. Explicit user decisions behind this design,
+pending the real `Allegato_A_...Regolamento_Provvigionale.pdf`:
+
+- **Single-calendar-month window, uniform for every rank** -- not the
+  cumulative lifetime total `rank_progress.py` uses, and not a per-rank
+  rolling window via `evaluation_window_months` (still unused). Every ACTIVE
+  agent's personal and group volume is recomputed from scratch for one
+  month, and the rank ladder (`ranks` rows with `valid_to IS NULL` for the
+  org) is walked to find the highest rank whose thresholds are both met.
+- **Promotes AND demotes**: the rank is always realigned exactly to that
+  month's production in either direction -- an agent who produced nothing
+  that month can drop all the way back to the floor rank even after a strong
+  track record in prior months. There is no rolling average or grace period.
+- Celery Beat (`celery_app.py`, `monthly-rank-evaluation`) runs this on day 1
+  of each month at 02:00 UTC for every organization, evaluating the calendar
+  month that just closed (`previous_calendar_month()`). An admin holding
+  `commissions.evaluate_ranks` (SUPER_ADMIN/ORGANIZATION_ADMIN only, same
+  restriction as `network.approve`) can also trigger the identical logic on
+  demand via `POST /commissions/rank-evaluation/run` (optional `?month=
+  YYYY-MM`, the admin promoter panel's "Valuta gradi ora" button) -- useful
+  if the scheduled run needs to be re-run or previewed. Every change is
+  recorded in `agent_rank_history` (`calculation_source` AUTOMATIC or
+  MANUAL) and `audit_log`, and the affected agent gets an in-app
+  notification.
+
 ## Contract state machine
 
 ```

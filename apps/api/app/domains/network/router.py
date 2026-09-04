@@ -23,8 +23,11 @@ from app.domains.network.schemas import (
     PromoterApplicationRequest,
     RankProgressRead,
     RecruitRequest,
+    RootPromoterCreateRequest,
+    RootPromoterCreateResponse,
 )
 from app.domains.notifications import service as notifications_service
+from app.domains.referral.schemas import PromoterCodeRead
 
 router = APIRouter(prefix="/network", tags=["network"])
 
@@ -144,10 +147,10 @@ async def apply_as_promoter(
     if "CUSTOMER" not in current_user.roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only customers can apply to become a promoter")
 
-    display_name = payload.display_name
-    if not display_name:
+    first_name, last_name = payload.first_name, payload.last_name
+    if not first_name and not last_name:
         from app.domains.customers.models import Company, Customer, CustomerProfile
-        from app.domains.customers.service import display_name_for
+        from app.domains.customers.service import COMPANY_LIKE_KINDS
 
         customer = (
             await db.execute(
@@ -158,15 +161,20 @@ async def apply_as_promoter(
             )
         ).scalar_one_or_none()
         if customer is not None:
-            profile = await db.get(CustomerProfile, customer.id)
-            company = await db.get(Company, customer.id)
-            display_name = display_name_for(customer.kind, profile, company)
-    display_name = display_name or "Promoter"
+            if customer.kind in COMPANY_LIKE_KINDS:
+                company = await db.get(Company, customer.id)
+                first_name, last_name = (company.company_name if company else None), ""
+            else:
+                profile = await db.get(CustomerProfile, customer.id)
+                if profile is not None:
+                    first_name, last_name = profile.first_name, profile.last_name
+    first_name = first_name or "Promoter"
+    last_name = last_name or ""
 
     try:
         agent = await network_service.apply_as_promoter(
             db, organization_id=current_user.organization_id,
-            user_id=current_user.user_id, display_name=display_name,
+            user_id=current_user.user_id, first_name=first_name, last_name=last_name,
         )
     except network_service.DuplicateApplicationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -204,7 +212,9 @@ async def get_rank_progress(
     """How close this agent is to their next rank's promotion thresholds --
     placeholder feature, see commissions/services/rank_progress.py docstring.
     Same branch-ownership rule as /branch."""
-    from app.domains.commissions.services.rank_progress import get_rank_progress as compute_rank_progress
+    from app.domains.commissions.services.rank_progress import (
+        get_rank_progress as compute_rank_progress,
+    )
 
     await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
     progress = await compute_rank_progress(db, organization_id=current_user.organization_id, agent_id=agent_id)
@@ -270,6 +280,27 @@ async def list_agents(
     return [AgentListItemRead(**row) for row in rows]
 
 
+@router.get("/agents/{agent_id}/referral-link", response_model=PromoterCodeRead)
+async def get_agent_referral_link(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("network.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> PromoterCodeRead:
+    """Admin equivalent of GET /referral/mine (which only ever resolves the
+    CALLER's own link) -- lets the 'Promoter' management screen open ANY
+    agent's personal link, e.g. to hand it to them again if they lost it.
+    Same lazy get-or-create as the promoter's own dashboard."""
+    from app.domains.referral import service as referral_service
+
+    try:
+        promoter_code = await referral_service.get_or_create_promoter_code(
+            db, organization_id=current_user.organization_id, agent_id=agent_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found") from exc
+    return PromoterCodeRead.model_validate(promoter_code)
+
+
 @router.post("/agents", response_model=AgentProfileRead, status_code=status.HTTP_201_CREATED)
 async def create_agent(
     payload: AgentCreateRequest,
@@ -279,16 +310,46 @@ async def create_agent(
     """A plain ADMIN can only SUGGEST a new promoter -- created PENDING_APPROVAL,
     not usable (can't be a contract producer) until a network.approve-holder
     (SUPER_ADMIN/ORGANIZATION_ADMIN, the "amministratore principale") approves
-    it via PATCH /agents/{id}/approve. See AgentProfile.status docstring."""
+    it via PATCH /agents/{id}/approve. See AgentProfile.status docstring.
+
+    payload.customer_email optionally links this to an already-registered
+    customer's login (e.g. promoting someone referred by another promoter into
+    a promoter under that same sponsor) -- approve_agent() already grants the
+    PROMOTER role on top of their existing roles once approved, same as the
+    self-service 'lavora con noi' path."""
+    from app.domains.users.models import User
+
+    user_id = None
+    if payload.customer_email:
+        user = (
+            await db.execute(
+                select(User).where(
+                    User.organization_id == current_user.organization_id, User.email == payload.customer_email
+                )
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found")
+        existing_agent = await network_service.get_own_agent_profile(
+            db, organization_id=current_user.organization_id, user_id=user.id
+        )
+        if existing_agent is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"This user already has a promoter profile ({existing_agent.status})"
+            )
+        user_id = user.id
+
     try:
         agent = await network_service.create_agent(
             db,
             organization_id=current_user.organization_id,
-            display_name=payload.display_name,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
             promoter_code=payload.promoter_code,
             parent_agent_id=payload.parent_agent_id,
             current_rank_id=payload.current_rank_id,
             actor_user_id=current_user.user_id,
+            user_id=user_id,
             status="PENDING_APPROVAL",
         )
     except network_service.NetworkError as exc:
@@ -305,6 +366,41 @@ async def create_agent(
     return AgentProfileRead.model_validate(agent)
 
 
+@router.post("/agents/root", response_model=RootPromoterCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_root_promoter(
+    payload: RootPromoterCreateRequest,
+    current_user: CurrentUser = Depends(require_permission("network.approve")),
+    db: AsyncSession = Depends(get_db),
+) -> RootPromoterCreateResponse:
+    """Bootstraps a brand-new, parentless network root with a ready-to-use
+    login and referral link in one step -- gated on network.approve
+    (SUPER_ADMIN/ORGANIZATION_ADMIN only) since it bypasses the normal
+    suggest-then-approve workflow entirely. See create_root_promoter_with_login
+    docstring for why this exists: registration is invite-only everywhere
+    else, so there is no other way to start a new independent branch."""
+    try:
+        agent, user, promoter_code_row, temporary_password = await network_service.create_root_promoter_with_login(
+            db,
+            organization_id=current_user.organization_id,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            email=payload.email,
+            promoter_code=payload.promoter_code,
+            actor_user_id=current_user.user_id,
+        )
+    except network_service.RootPromoterConflictError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    return RootPromoterCreateResponse(
+        agent_id=agent.id,
+        display_name=agent.display_name,
+        promoter_code=agent.promoter_code,
+        personal_link=promoter_code_row.personal_link,
+        email=user.email,
+        temporary_password=temporary_password,
+    )
+
+
 @router.patch("/agents/{agent_id}", response_model=AgentProfileRead)
 async def update_agent(
     agent_id: uuid.UUID,
@@ -312,15 +408,20 @@ async def update_agent(
     current_user: CurrentUser = Depends(require_permission("network.manage")),
     db: AsyncSession = Depends(get_db),
 ) -> AgentProfileRead:
-    agent = await network_service.update_agent(
-        db,
-        organization_id=current_user.organization_id,
-        agent_id=agent_id,
-        display_name=payload.display_name,
-        status_value=payload.status,
-        current_rank_id=payload.current_rank_id,
-        actor_user_id=current_user.user_id,
-    )
+    try:
+        agent = await network_service.update_agent(
+            db,
+            organization_id=current_user.organization_id,
+            agent_id=agent_id,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            status_value=payload.status,
+            current_rank_id=payload.current_rank_id,
+            actor_user_id=current_user.user_id,
+            is_blacklisted=payload.is_blacklisted,
+        )
+    except network_service.AgentApprovalError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if agent is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
     return AgentProfileRead.model_validate(agent)
@@ -373,7 +474,8 @@ async def recruit_agent(
         agent = await network_service.create_agent(
             db,
             organization_id=current_user.organization_id,
-            display_name=payload.display_name,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
             promoter_code=payload.promoter_code,
             parent_agent_id=own_agent_id,
             current_rank_id=payload.current_rank_id,

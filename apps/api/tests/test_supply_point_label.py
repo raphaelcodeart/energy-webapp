@@ -10,7 +10,6 @@ import pytest
 from app.domains.customers import service as customer_service
 from app.domains.customers.models import Customer
 from app.domains.customers.schemas import SupplyPointCreate, SupplyPointUpdate
-
 from tests.test_commission_engine_integration import _make_actor
 
 

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict nHtcFUse65bkOcAIhDrxeeah6aLv7ThcPnU93dMdBzpo7GLeq36kuUqntRaJgye
+\restrict cDyrzZvcv3ppsemBiH8A8zCftAClPguKic173s8H8ZOvn9kuCrQJ8HuVZtjvN4U
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -23,7 +23,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: addresses; Type: TABLE; Schema: public; Owner: lial
+-- Name: addresses; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.addresses (
@@ -39,10 +39,8 @@ CREATE TABLE public.addresses (
 );
 
 
-ALTER TABLE public.addresses OWNER TO lial;
-
 --
--- Name: agent_profiles; Type: TABLE; Schema: public; Owner: lial
+-- Name: agent_profiles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.agent_profiles (
@@ -51,18 +49,22 @@ CREATE TABLE public.agent_profiles (
     display_name character varying(255) NOT NULL,
     promoter_code character varying(32) NOT NULL,
     status character varying(32) NOT NULL,
+    photo_url character varying(1000),
     joined_at timestamp with time zone NOT NULL,
     current_rank_id uuid,
+    approved_by_user_id uuid,
+    approved_at timestamp with time zone,
+    rejection_reason character varying(500),
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    photo_url character varying(1000)
+    is_blacklisted boolean DEFAULT false NOT NULL,
+    first_name character varying(120),
+    last_name character varying(120)
 );
 
 
-ALTER TABLE public.agent_profiles OWNER TO lial;
-
 --
--- Name: agent_rank_history; Type: TABLE; Schema: public; Owner: lial
+-- Name: agent_rank_history; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.agent_rank_history (
@@ -80,10 +82,8 @@ CREATE TABLE public.agent_rank_history (
 );
 
 
-ALTER TABLE public.agent_rank_history OWNER TO lial;
-
 --
--- Name: alembic_version; Type: TABLE; Schema: public; Owner: lial
+-- Name: alembic_version; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.alembic_version (
@@ -91,10 +91,8 @@ CREATE TABLE public.alembic_version (
 );
 
 
-ALTER TABLE public.alembic_version OWNER TO lial;
-
 --
--- Name: attribution_corrections; Type: TABLE; Schema: public; Owner: lial
+-- Name: attribution_corrections; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.attribution_corrections (
@@ -110,10 +108,8 @@ CREATE TABLE public.attribution_corrections (
 );
 
 
-ALTER TABLE public.attribution_corrections OWNER TO lial;
-
 --
--- Name: audit_log; Type: TABLE; Schema: public; Owner: lial
+-- Name: audit_log; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.audit_log (
@@ -133,10 +129,8 @@ CREATE TABLE public.audit_log (
 );
 
 
-ALTER TABLE public.audit_log OWNER TO lial;
-
 --
--- Name: commission_adjustments; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_adjustments; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_adjustments (
@@ -151,10 +145,8 @@ CREATE TABLE public.commission_adjustments (
 );
 
 
-ALTER TABLE public.commission_adjustments OWNER TO lial;
-
 --
--- Name: commission_calculation_steps; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_calculation_steps; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_calculation_steps (
@@ -174,10 +166,8 @@ CREATE TABLE public.commission_calculation_steps (
 );
 
 
-ALTER TABLE public.commission_calculation_steps OWNER TO lial;
-
 --
--- Name: commission_calculations; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_calculations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_calculations (
@@ -195,10 +185,8 @@ CREATE TABLE public.commission_calculations (
 );
 
 
-ALTER TABLE public.commission_calculations OWNER TO lial;
-
 --
--- Name: commission_movements; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_movements; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_movements (
@@ -222,10 +210,8 @@ CREATE TABLE public.commission_movements (
 );
 
 
-ALTER TABLE public.commission_movements OWNER TO lial;
-
 --
--- Name: commission_offsets; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_offsets; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_offsets (
@@ -238,10 +224,8 @@ CREATE TABLE public.commission_offsets (
 );
 
 
-ALTER TABLE public.commission_offsets OWNER TO lial;
-
 --
--- Name: commission_plan_versions; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_plan_versions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_plan_versions (
@@ -255,10 +239,8 @@ CREATE TABLE public.commission_plan_versions (
 );
 
 
-ALTER TABLE public.commission_plan_versions OWNER TO lial;
-
 --
--- Name: commission_reversals; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_reversals; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_reversals (
@@ -273,10 +255,8 @@ CREATE TABLE public.commission_reversals (
 );
 
 
-ALTER TABLE public.commission_reversals OWNER TO lial;
-
 --
--- Name: commission_rule_versions; Type: TABLE; Schema: public; Owner: lial
+-- Name: commission_rule_versions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.commission_rule_versions (
@@ -290,10 +270,8 @@ CREATE TABLE public.commission_rule_versions (
 );
 
 
-ALTER TABLE public.commission_rule_versions OWNER TO lial;
-
 --
--- Name: companies; Type: TABLE; Schema: public; Owner: lial
+-- Name: companies; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.companies (
@@ -304,10 +282,8 @@ CREATE TABLE public.companies (
 );
 
 
-ALTER TABLE public.companies OWNER TO lial;
-
 --
--- Name: contract_attributions; Type: TABLE; Schema: public; Owner: lial
+-- Name: contract_attributions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.contract_attributions (
@@ -319,10 +295,8 @@ CREATE TABLE public.contract_attributions (
 );
 
 
-ALTER TABLE public.contract_attributions OWNER TO lial;
-
 --
--- Name: contract_events; Type: TABLE; Schema: public; Owner: lial
+-- Name: contract_events; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.contract_events (
@@ -334,10 +308,8 @@ CREATE TABLE public.contract_events (
 );
 
 
-ALTER TABLE public.contract_events OWNER TO lial;
-
 --
--- Name: contract_status_history; Type: TABLE; Schema: public; Owner: lial
+-- Name: contract_status_history; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.contract_status_history (
@@ -353,10 +325,8 @@ CREATE TABLE public.contract_status_history (
 );
 
 
-ALTER TABLE public.contract_status_history OWNER TO lial;
-
 --
--- Name: contracts; Type: TABLE; Schema: public; Owner: lial
+-- Name: contracts; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.contracts (
@@ -367,18 +337,17 @@ CREATE TABLE public.contracts (
     contract_attribution_id uuid,
     network_snapshot_id uuid,
     status character varying(32) NOT NULL,
-    id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
     notes character varying(2000),
+    iban character varying(34),
     activated_at timestamp with time zone,
-    expires_at timestamp with time zone
+    expires_at timestamp with time zone,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
 );
 
 
-ALTER TABLE public.contracts OWNER TO lial;
-
 --
--- Name: customer_attributions; Type: TABLE; Schema: public; Owner: lial
+-- Name: customer_attributions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.customer_attributions (
@@ -392,10 +361,8 @@ CREATE TABLE public.customer_attributions (
 );
 
 
-ALTER TABLE public.customer_attributions OWNER TO lial;
-
 --
--- Name: customer_profiles; Type: TABLE; Schema: public; Owner: lial
+-- Name: customer_profiles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.customer_profiles (
@@ -405,10 +372,8 @@ CREATE TABLE public.customer_profiles (
 );
 
 
-ALTER TABLE public.customer_profiles OWNER TO lial;
-
 --
--- Name: customers; Type: TABLE; Schema: public; Owner: lial
+-- Name: customers; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.customers (
@@ -419,17 +384,58 @@ CREATE TABLE public.customers (
     vat_number character varying(32),
     email character varying(255) NOT NULL,
     phone character varying(32),
-    id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
     pec character varying(255),
-    photo_url character varying(1000)
+    photo_url character varying(1000),
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
 );
 
 
-ALTER TABLE public.customers OWNER TO lial;
+--
+-- Name: documentation_posts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.documentation_posts (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    title character varying(200) NOT NULL,
+    body text,
+    audience character varying(16) DEFAULT 'BOTH'::character varying NOT NULL,
+    status character varying(16) DEFAULT 'PUBLISHED'::character varying NOT NULL,
+    image_url character varying(500),
+    pdf_url character varying(500),
+    pdf_filename character varying(255),
+    video_url character varying(500),
+    created_by_user_id uuid NOT NULL
+);
+
 
 --
--- Name: domain_outbox; Type: TABLE; Schema: public; Owner: lial
+-- Name: documents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.documents (
+    organization_id uuid NOT NULL,
+    contract_id uuid NOT NULL,
+    document_type character varying(32) NOT NULL,
+    original_filename character varying(255) NOT NULL,
+    storage_key character varying(500) NOT NULL,
+    content_type character varying(100) NOT NULL,
+    size_bytes bigint NOT NULL,
+    uploaded_by_user_id uuid NOT NULL,
+    uploaded_by_role character varying(32) NOT NULL,
+    status character varying(32) NOT NULL,
+    reviewed_by_user_id uuid,
+    reviewed_at timestamp with time zone,
+    review_note character varying(1000),
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: domain_outbox; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.domain_outbox (
@@ -442,10 +448,8 @@ CREATE TABLE public.domain_outbox (
 );
 
 
-ALTER TABLE public.domain_outbox OWNER TO lial;
-
 --
--- Name: network_assignment_history; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_assignment_history; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_assignment_history (
@@ -462,10 +466,8 @@ CREATE TABLE public.network_assignment_history (
 );
 
 
-ALTER TABLE public.network_assignment_history OWNER TO lial;
-
 --
--- Name: network_closure; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_closure; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_closure (
@@ -478,10 +480,8 @@ CREATE TABLE public.network_closure (
 );
 
 
-ALTER TABLE public.network_closure OWNER TO lial;
-
 --
--- Name: network_edges; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_edges; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_edges (
@@ -495,10 +495,8 @@ CREATE TABLE public.network_edges (
 );
 
 
-ALTER TABLE public.network_edges OWNER TO lial;
-
 --
--- Name: network_nodes; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_nodes; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_nodes (
@@ -513,10 +511,8 @@ CREATE TABLE public.network_nodes (
 );
 
 
-ALTER TABLE public.network_nodes OWNER TO lial;
-
 --
--- Name: network_snapshot_nodes; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_snapshot_nodes; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_snapshot_nodes (
@@ -527,10 +523,8 @@ CREATE TABLE public.network_snapshot_nodes (
 );
 
 
-ALTER TABLE public.network_snapshot_nodes OWNER TO lial;
-
 --
--- Name: network_snapshots; Type: TABLE; Schema: public; Owner: lial
+-- Name: network_snapshots; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.network_snapshots (
@@ -541,10 +535,26 @@ CREATE TABLE public.network_snapshots (
 );
 
 
-ALTER TABLE public.network_snapshots OWNER TO lial;
+--
+-- Name: notifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.notifications (
+    organization_id uuid NOT NULL,
+    recipient_user_id uuid NOT NULL,
+    type character varying(64) NOT NULL,
+    entity_type character varying(64) NOT NULL,
+    entity_id character varying(64) NOT NULL,
+    title character varying(255) NOT NULL,
+    body character varying(1000),
+    is_read boolean NOT NULL,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
 
 --
--- Name: organizations; Type: TABLE; Schema: public; Owner: lial
+-- Name: organizations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.organizations (
@@ -558,10 +568,8 @@ CREATE TABLE public.organizations (
 );
 
 
-ALTER TABLE public.organizations OWNER TO lial;
-
 --
--- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: lial
+-- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.password_reset_tokens (
@@ -574,10 +582,8 @@ CREATE TABLE public.password_reset_tokens (
 );
 
 
-ALTER TABLE public.password_reset_tokens OWNER TO lial;
-
 --
--- Name: permissions; Type: TABLE; Schema: public; Owner: lial
+-- Name: permissions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.permissions (
@@ -587,10 +593,8 @@ CREATE TABLE public.permissions (
 );
 
 
-ALTER TABLE public.permissions OWNER TO lial;
-
 --
--- Name: product_versions; Type: TABLE; Schema: public; Owner: lial
+-- Name: product_versions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.product_versions (
@@ -598,10 +602,12 @@ CREATE TABLE public.product_versions (
     version_label character varying(32) NOT NULL,
     name character varying(255) NOT NULL,
     description character varying(2000) NOT NULL,
+    image_url character varying(1000),
     base_price_cents bigint NOT NULL,
     initial_fee_cents bigint NOT NULL,
     recurring_fee_cents bigint NOT NULL,
     billing_period character varying(16) NOT NULL,
+    contract_duration_months integer,
     tax_configuration jsonb NOT NULL,
     commission_plan_version_id uuid,
     required_documents jsonb NOT NULL,
@@ -611,33 +617,28 @@ CREATE TABLE public.product_versions (
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    image_url character varying(1000),
-    contract_duration_months integer DEFAULT 12
+    commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
-ALTER TABLE public.product_versions OWNER TO lial;
-
 --
--- Name: products; Type: TABLE; Schema: public; Owner: lial
+-- Name: products; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.products (
     organization_id uuid NOT NULL,
     code character varying(64) NOT NULL,
+    product_type character varying(32) NOT NULL,
     energy_type character varying(16),
     customer_type character varying(32) NOT NULL,
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    product_type character varying(32) DEFAULT 'ENERGY_CONTRACT'::character varying NOT NULL
+    created_at timestamp with time zone NOT NULL
 );
 
 
-ALTER TABLE public.products OWNER TO lial;
-
 --
--- Name: promoter_codes; Type: TABLE; Schema: public; Owner: lial
+-- Name: promoter_codes; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.promoter_codes (
@@ -654,10 +655,8 @@ CREATE TABLE public.promoter_codes (
 );
 
 
-ALTER TABLE public.promoter_codes OWNER TO lial;
-
 --
--- Name: ranks; Type: TABLE; Schema: public; Owner: lial
+-- Name: ranks; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.ranks (
@@ -679,10 +678,8 @@ CREATE TABLE public.ranks (
 );
 
 
-ALTER TABLE public.ranks OWNER TO lial;
-
 --
--- Name: referral_events; Type: TABLE; Schema: public; Owner: lial
+-- Name: referral_events; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.referral_events (
@@ -695,10 +692,8 @@ CREATE TABLE public.referral_events (
 );
 
 
-ALTER TABLE public.referral_events OWNER TO lial;
-
 --
--- Name: referral_sessions; Type: TABLE; Schema: public; Owner: lial
+-- Name: referral_sessions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.referral_sessions (
@@ -711,10 +706,8 @@ CREATE TABLE public.referral_sessions (
 );
 
 
-ALTER TABLE public.referral_sessions OWNER TO lial;
-
 --
--- Name: role_permissions; Type: TABLE; Schema: public; Owner: lial
+-- Name: role_permissions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.role_permissions (
@@ -723,10 +716,8 @@ CREATE TABLE public.role_permissions (
 );
 
 
-ALTER TABLE public.role_permissions OWNER TO lial;
-
 --
--- Name: roles; Type: TABLE; Schema: public; Owner: lial
+-- Name: roles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.roles (
@@ -738,10 +729,8 @@ CREATE TABLE public.roles (
 );
 
 
-ALTER TABLE public.roles OWNER TO lial;
-
 --
--- Name: sessions; Type: TABLE; Schema: public; Owner: lial
+-- Name: sessions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.sessions (
@@ -756,15 +745,14 @@ CREATE TABLE public.sessions (
 );
 
 
-ALTER TABLE public.sessions OWNER TO lial;
-
 --
--- Name: supply_points; Type: TABLE; Schema: public; Owner: lial
+-- Name: supply_points; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.supply_points (
     organization_id uuid NOT NULL,
     customer_id uuid NOT NULL,
+    label character varying(255),
     energy_type character varying(16) NOT NULL,
     pod_code character varying(32),
     pdr_code character varying(32),
@@ -774,15 +762,12 @@ CREATE TABLE public.supply_points (
     actual_consumption bigint,
     provider_reference character varying(128),
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    label character varying(255)
+    created_at timestamp with time zone NOT NULL
 );
 
 
-ALTER TABLE public.supply_points OWNER TO lial;
-
 --
--- Name: ticket_messages; Type: TABLE; Schema: public; Owner: lial
+-- Name: ticket_messages; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.ticket_messages (
@@ -795,10 +780,8 @@ CREATE TABLE public.ticket_messages (
 );
 
 
-ALTER TABLE public.ticket_messages OWNER TO lial;
-
 --
--- Name: tickets; Type: TABLE; Schema: public; Owner: lial
+-- Name: tickets; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.tickets (
@@ -814,10 +797,8 @@ CREATE TABLE public.tickets (
 );
 
 
-ALTER TABLE public.tickets OWNER TO lial;
-
 --
--- Name: user_roles; Type: TABLE; Schema: public; Owner: lial
+-- Name: user_roles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.user_roles (
@@ -829,10 +810,8 @@ CREATE TABLE public.user_roles (
 );
 
 
-ALTER TABLE public.user_roles OWNER TO lial;
-
 --
--- Name: users; Type: TABLE; Schema: public; Owner: lial
+-- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.users (
@@ -848,10 +827,8 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO lial;
-
 --
--- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.alembic_version
@@ -859,7 +836,7 @@ ALTER TABLE ONLY public.alembic_version
 
 
 --
--- Name: addresses pk_addresses; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: addresses pk_addresses; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.addresses
@@ -867,7 +844,7 @@ ALTER TABLE ONLY public.addresses
 
 
 --
--- Name: agent_profiles pk_agent_profiles; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_profiles pk_agent_profiles; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_profiles
@@ -875,7 +852,7 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
--- Name: agent_rank_history pk_agent_rank_history; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_rank_history pk_agent_rank_history; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_rank_history
@@ -883,7 +860,7 @@ ALTER TABLE ONLY public.agent_rank_history
 
 
 --
--- Name: attribution_corrections pk_attribution_corrections; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections pk_attribution_corrections; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -891,7 +868,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: audit_log pk_audit_log; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: audit_log pk_audit_log; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_log
@@ -899,7 +876,7 @@ ALTER TABLE ONLY public.audit_log
 
 
 --
--- Name: commission_adjustments pk_commission_adjustments; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments pk_commission_adjustments; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -907,7 +884,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_calculation_steps pk_commission_calculation_steps; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculation_steps pk_commission_calculation_steps; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculation_steps
@@ -915,7 +892,7 @@ ALTER TABLE ONLY public.commission_calculation_steps
 
 
 --
--- Name: commission_calculations pk_commission_calculations; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations pk_commission_calculations; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -923,7 +900,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_movements pk_commission_movements; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements pk_commission_movements; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -931,7 +908,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_offsets pk_commission_offsets; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_offsets pk_commission_offsets; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_offsets
@@ -939,7 +916,7 @@ ALTER TABLE ONLY public.commission_offsets
 
 
 --
--- Name: commission_plan_versions pk_commission_plan_versions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_plan_versions pk_commission_plan_versions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_plan_versions
@@ -947,7 +924,7 @@ ALTER TABLE ONLY public.commission_plan_versions
 
 
 --
--- Name: commission_reversals pk_commission_reversals; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals pk_commission_reversals; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -955,7 +932,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_rule_versions pk_commission_rule_versions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_rule_versions pk_commission_rule_versions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_rule_versions
@@ -963,7 +940,7 @@ ALTER TABLE ONLY public.commission_rule_versions
 
 
 --
--- Name: companies pk_companies; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: companies pk_companies; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.companies
@@ -971,7 +948,7 @@ ALTER TABLE ONLY public.companies
 
 
 --
--- Name: contract_attributions pk_contract_attributions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_attributions pk_contract_attributions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_attributions
@@ -979,7 +956,7 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
--- Name: contract_events pk_contract_events; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_events pk_contract_events; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_events
@@ -987,7 +964,7 @@ ALTER TABLE ONLY public.contract_events
 
 
 --
--- Name: contract_status_history pk_contract_status_history; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_status_history pk_contract_status_history; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_status_history
@@ -995,7 +972,7 @@ ALTER TABLE ONLY public.contract_status_history
 
 
 --
--- Name: contracts pk_contracts; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts pk_contracts; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -1003,7 +980,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: customer_attributions pk_customer_attributions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_attributions pk_customer_attributions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_attributions
@@ -1011,7 +988,7 @@ ALTER TABLE ONLY public.customer_attributions
 
 
 --
--- Name: customer_profiles pk_customer_profiles; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_profiles pk_customer_profiles; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_profiles
@@ -1019,7 +996,7 @@ ALTER TABLE ONLY public.customer_profiles
 
 
 --
--- Name: customers pk_customers; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: customers pk_customers; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -1027,7 +1004,23 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: domain_outbox pk_domain_outbox; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: documentation_posts pk_documentation_posts; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documentation_posts
+    ADD CONSTRAINT pk_documentation_posts PRIMARY KEY (id);
+
+
+--
+-- Name: documents pk_documents; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT pk_documents PRIMARY KEY (id);
+
+
+--
+-- Name: domain_outbox pk_domain_outbox; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.domain_outbox
@@ -1035,7 +1028,7 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
--- Name: network_assignment_history pk_network_assignment_history; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history pk_network_assignment_history; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -1043,7 +1036,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_closure pk_network_closure; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_closure pk_network_closure; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_closure
@@ -1051,7 +1044,7 @@ ALTER TABLE ONLY public.network_closure
 
 
 --
--- Name: network_edges pk_network_edges; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_edges pk_network_edges; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_edges
@@ -1059,7 +1052,7 @@ ALTER TABLE ONLY public.network_edges
 
 
 --
--- Name: network_nodes pk_network_nodes; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_nodes pk_network_nodes; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_nodes
@@ -1067,7 +1060,7 @@ ALTER TABLE ONLY public.network_nodes
 
 
 --
--- Name: network_snapshot_nodes pk_network_snapshot_nodes; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshot_nodes pk_network_snapshot_nodes; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshot_nodes
@@ -1075,7 +1068,7 @@ ALTER TABLE ONLY public.network_snapshot_nodes
 
 
 --
--- Name: network_snapshots pk_network_snapshots; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshots pk_network_snapshots; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshots
@@ -1083,7 +1076,15 @@ ALTER TABLE ONLY public.network_snapshots
 
 
 --
--- Name: organizations pk_organizations; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: notifications pk_notifications; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT pk_notifications PRIMARY KEY (id);
+
+
+--
+-- Name: organizations pk_organizations; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.organizations
@@ -1091,7 +1092,7 @@ ALTER TABLE ONLY public.organizations
 
 
 --
--- Name: password_reset_tokens pk_password_reset_tokens; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: password_reset_tokens pk_password_reset_tokens; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.password_reset_tokens
@@ -1099,7 +1100,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: permissions pk_permissions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: permissions pk_permissions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.permissions
@@ -1107,7 +1108,7 @@ ALTER TABLE ONLY public.permissions
 
 
 --
--- Name: product_versions pk_product_versions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: product_versions pk_product_versions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_versions
@@ -1115,7 +1116,7 @@ ALTER TABLE ONLY public.product_versions
 
 
 --
--- Name: products pk_products; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: products pk_products; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.products
@@ -1123,7 +1124,7 @@ ALTER TABLE ONLY public.products
 
 
 --
--- Name: promoter_codes pk_promoter_codes; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: promoter_codes pk_promoter_codes; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.promoter_codes
@@ -1131,7 +1132,7 @@ ALTER TABLE ONLY public.promoter_codes
 
 
 --
--- Name: ranks pk_ranks; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: ranks pk_ranks; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ranks
@@ -1139,7 +1140,7 @@ ALTER TABLE ONLY public.ranks
 
 
 --
--- Name: referral_events pk_referral_events; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_events pk_referral_events; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_events
@@ -1147,7 +1148,7 @@ ALTER TABLE ONLY public.referral_events
 
 
 --
--- Name: referral_sessions pk_referral_sessions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_sessions pk_referral_sessions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_sessions
@@ -1155,7 +1156,7 @@ ALTER TABLE ONLY public.referral_sessions
 
 
 --
--- Name: role_permissions pk_role_permissions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: role_permissions pk_role_permissions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.role_permissions
@@ -1163,7 +1164,7 @@ ALTER TABLE ONLY public.role_permissions
 
 
 --
--- Name: roles pk_roles; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: roles pk_roles; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.roles
@@ -1171,7 +1172,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- Name: sessions pk_sessions; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: sessions pk_sessions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sessions
@@ -1179,7 +1180,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: supply_points pk_supply_points; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: supply_points pk_supply_points; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.supply_points
@@ -1187,7 +1188,7 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
--- Name: ticket_messages pk_ticket_messages; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: ticket_messages pk_ticket_messages; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ticket_messages
@@ -1195,7 +1196,7 @@ ALTER TABLE ONLY public.ticket_messages
 
 
 --
--- Name: tickets pk_tickets; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: tickets pk_tickets; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tickets
@@ -1203,7 +1204,7 @@ ALTER TABLE ONLY public.tickets
 
 
 --
--- Name: user_roles pk_user_roles; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: user_roles pk_user_roles; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -1211,7 +1212,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: users pk_users; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: users pk_users; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -1219,7 +1220,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: agent_profiles uq_agent_promoter_code; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_profiles uq_agent_promoter_code; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_profiles
@@ -1227,7 +1228,7 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
--- Name: commission_calculations uq_commission_calculations_contract_trigger; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations uq_commission_calculations_contract_trigger; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -1235,7 +1236,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_movements uq_commission_movements_idempotency_key; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements uq_commission_movements_idempotency_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -1243,7 +1244,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: customers uq_customers_user_id; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: customers uq_customers_user_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -1251,7 +1252,15 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: permissions uq_permissions_code; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: documents uq_documents_storage_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT uq_documents_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: permissions uq_permissions_code; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.permissions
@@ -1259,7 +1268,7 @@ ALTER TABLE ONLY public.permissions
 
 
 --
--- Name: ranks uq_ranks_org_code_version; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: ranks uq_ranks_org_code_version; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ranks
@@ -1267,7 +1276,7 @@ ALTER TABLE ONLY public.ranks
 
 
 --
--- Name: roles uq_roles_org_code; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: roles uq_roles_org_code; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.roles
@@ -1275,7 +1284,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- Name: user_roles uq_user_roles; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: user_roles uq_user_roles; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -1283,7 +1292,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: users uq_users_org_email; Type: CONSTRAINT; Schema: public; Owner: lial
+-- Name: users uq_users_org_email; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -1291,504 +1300,567 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: ix_addresses_customer_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_addresses_customer_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_addresses_customer_id ON public.addresses USING btree (customer_id);
 
 
 --
--- Name: ix_addresses_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_addresses_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_addresses_organization_id ON public.addresses USING btree (organization_id);
 
 
 --
--- Name: ix_agent_profiles_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_agent_profiles_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_agent_profiles_organization_id ON public.agent_profiles USING btree (organization_id);
 
 
 --
--- Name: ix_agent_rank_history_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_agent_rank_history_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_agent_rank_history_agent_id ON public.agent_rank_history USING btree (agent_id);
 
 
 --
--- Name: ix_agent_rank_history_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_agent_rank_history_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_agent_rank_history_organization_id ON public.agent_rank_history USING btree (organization_id);
 
 
 --
--- Name: ix_attribution_corrections_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_attribution_corrections_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_attribution_corrections_organization_id ON public.attribution_corrections USING btree (organization_id);
 
 
 --
--- Name: ix_audit_log_action; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_audit_log_action; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_audit_log_action ON public.audit_log USING btree (action);
 
 
 --
--- Name: ix_audit_log_correlation_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_audit_log_correlation_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_audit_log_correlation_id ON public.audit_log USING btree (correlation_id);
 
 
 --
--- Name: ix_audit_log_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_audit_log_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_audit_log_organization_id ON public.audit_log USING btree (organization_id);
 
 
 --
--- Name: ix_commission_adjustments_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_adjustments_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_adjustments_organization_id ON public.commission_adjustments USING btree (organization_id);
 
 
 --
--- Name: ix_commission_calculation_steps_calculation_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_calculation_steps_calculation_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_calculation_steps_calculation_id ON public.commission_calculation_steps USING btree (calculation_id);
 
 
 --
--- Name: ix_commission_calculations_contract_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_calculations_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_calculations_contract_id ON public.commission_calculations USING btree (contract_id);
 
 
 --
--- Name: ix_commission_calculations_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_calculations_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_calculations_organization_id ON public.commission_calculations USING btree (organization_id);
 
 
 --
--- Name: ix_commission_movements_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_movements_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_movements_agent_id ON public.commission_movements USING btree (agent_id);
 
 
 --
--- Name: ix_commission_movements_contract_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_movements_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_movements_contract_id ON public.commission_movements USING btree (contract_id);
 
 
 --
--- Name: ix_commission_movements_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_movements_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_movements_organization_id ON public.commission_movements USING btree (organization_id);
 
 
 --
--- Name: ix_commission_offsets_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_offsets_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_offsets_organization_id ON public.commission_offsets USING btree (organization_id);
 
 
 --
--- Name: ix_commission_plan_versions_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_plan_versions_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_plan_versions_organization_id ON public.commission_plan_versions USING btree (organization_id);
 
 
 --
--- Name: ix_commission_reversals_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_reversals_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_reversals_organization_id ON public.commission_reversals USING btree (organization_id);
 
 
 --
--- Name: ix_commission_rule_versions_commission_plan_version_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_commission_rule_versions_commission_plan_version_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_commission_rule_versions_commission_plan_version_id ON public.commission_rule_versions USING btree (commission_plan_version_id);
 
 
 --
--- Name: ix_contract_attributions_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contract_attributions_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contract_attributions_organization_id ON public.contract_attributions USING btree (organization_id);
 
 
 --
--- Name: ix_contract_events_contract_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contract_events_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contract_events_contract_id ON public.contract_events USING btree (contract_id);
 
 
 --
--- Name: ix_contract_status_history_contract_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contract_status_history_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contract_status_history_contract_id ON public.contract_status_history USING btree (contract_id);
 
 
 --
--- Name: ix_contracts_customer_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contracts_customer_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contracts_customer_id ON public.contracts USING btree (customer_id);
 
 
 --
--- Name: ix_contracts_expires_at; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contracts_expires_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contracts_expires_at ON public.contracts USING btree (expires_at);
 
 
 --
--- Name: ix_contracts_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contracts_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contracts_organization_id ON public.contracts USING btree (organization_id);
 
 
 --
--- Name: ix_contracts_status; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_contracts_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contracts_status ON public.contracts USING btree (status);
 
 
 --
--- Name: ix_customer_attributions_customer_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_customer_attributions_customer_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_customer_attributions_customer_id ON public.customer_attributions USING btree (customer_id);
 
 
 --
--- Name: ix_customer_attributions_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_customer_attributions_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_customer_attributions_organization_id ON public.customer_attributions USING btree (organization_id);
 
 
 --
--- Name: ix_customers_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_customers_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_customers_organization_id ON public.customers USING btree (organization_id);
 
 
 --
--- Name: ix_domain_outbox_event_type; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_documentation_posts_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documentation_posts_organization_id ON public.documentation_posts USING btree (organization_id);
+
+
+--
+-- Name: ix_documentation_posts_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documentation_posts_status ON public.documentation_posts USING btree (status);
+
+
+--
+-- Name: ix_documents_contract_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documents_contract_id ON public.documents USING btree (contract_id);
+
+
+--
+-- Name: ix_documents_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documents_organization_id ON public.documents USING btree (organization_id);
+
+
+--
+-- Name: ix_documents_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documents_status ON public.documents USING btree (status);
+
+
+--
+-- Name: ix_domain_outbox_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_domain_outbox_event_type ON public.domain_outbox USING btree (event_type);
 
 
 --
--- Name: ix_domain_outbox_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_domain_outbox_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_domain_outbox_organization_id ON public.domain_outbox USING btree (organization_id);
 
 
 --
--- Name: ix_domain_outbox_processed_at; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_domain_outbox_processed_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_domain_outbox_processed_at ON public.domain_outbox USING btree (processed_at);
 
 
 --
--- Name: ix_network_assignment_history_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_assignment_history_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_assignment_history_organization_id ON public.network_assignment_history USING btree (organization_id);
 
 
 --
--- Name: ix_network_closure_org_ancestor; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_closure_org_ancestor; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_closure_org_ancestor ON public.network_closure USING btree (organization_id, ancestor_agent_id);
 
 
 --
--- Name: ix_network_closure_org_ancestor_depth; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_closure_org_ancestor_depth; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_closure_org_ancestor_depth ON public.network_closure USING btree (organization_id, ancestor_agent_id, depth);
 
 
 --
--- Name: ix_network_closure_org_descendant; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_closure_org_descendant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_closure_org_descendant ON public.network_closure USING btree (organization_id, descendant_agent_id);
 
 
 --
--- Name: ix_network_closure_org_descendant_depth; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_closure_org_descendant_depth; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_closure_org_descendant_depth ON public.network_closure USING btree (organization_id, descendant_agent_id, depth);
 
 
 --
--- Name: ix_network_edges_child_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_edges_child_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_edges_child_agent_id ON public.network_edges USING btree (child_agent_id);
 
 
 --
--- Name: ix_network_edges_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_edges_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_edges_organization_id ON public.network_edges USING btree (organization_id);
 
 
 --
--- Name: ix_network_edges_parent_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_edges_parent_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_edges_parent_agent_id ON public.network_edges USING btree (parent_agent_id);
 
 
 --
--- Name: ix_network_nodes_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_nodes_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_nodes_agent_id ON public.network_nodes USING btree (agent_id);
 
 
 --
--- Name: ix_network_nodes_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_nodes_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_nodes_organization_id ON public.network_nodes USING btree (organization_id);
 
 
 --
--- Name: ix_network_snapshots_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_network_snapshots_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_network_snapshots_organization_id ON public.network_snapshots USING btree (organization_id);
 
 
 --
--- Name: ix_password_reset_tokens_token_hash; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_notifications_is_read; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_notifications_is_read ON public.notifications USING btree (is_read);
+
+
+--
+-- Name: ix_notifications_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_notifications_organization_id ON public.notifications USING btree (organization_id);
+
+
+--
+-- Name: ix_notifications_recipient_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_notifications_recipient_user_id ON public.notifications USING btree (recipient_user_id);
+
+
+--
+-- Name: ix_notifications_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_notifications_type ON public.notifications USING btree (type);
+
+
+--
+-- Name: ix_password_reset_tokens_token_hash; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX ix_password_reset_tokens_token_hash ON public.password_reset_tokens USING btree (token_hash);
 
 
 --
--- Name: ix_password_reset_tokens_user_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_password_reset_tokens_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_password_reset_tokens_user_id ON public.password_reset_tokens USING btree (user_id);
 
 
 --
--- Name: ix_product_versions_product_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_product_versions_product_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_product_versions_product_id ON public.product_versions USING btree (product_id);
 
 
 --
--- Name: ix_products_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_products_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_products_organization_id ON public.products USING btree (organization_id);
 
 
 --
--- Name: ix_promoter_codes_agent_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_promoter_codes_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_promoter_codes_agent_id ON public.promoter_codes USING btree (agent_id);
 
 
 --
--- Name: ix_promoter_codes_code; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_promoter_codes_code; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX ix_promoter_codes_code ON public.promoter_codes USING btree (code);
 
 
 --
--- Name: ix_promoter_codes_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_promoter_codes_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_promoter_codes_organization_id ON public.promoter_codes USING btree (organization_id);
 
 
 --
--- Name: ix_ranks_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_ranks_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_ranks_organization_id ON public.ranks USING btree (organization_id);
 
 
 --
--- Name: ix_referral_events_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_referral_events_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_referral_events_organization_id ON public.referral_events USING btree (organization_id);
 
 
 --
--- Name: ix_referral_events_promoter_code_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_referral_events_promoter_code_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_referral_events_promoter_code_id ON public.referral_events USING btree (promoter_code_id);
 
 
 --
--- Name: ix_referral_sessions_cookie_token_hash; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_referral_sessions_cookie_token_hash; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX ix_referral_sessions_cookie_token_hash ON public.referral_sessions USING btree (cookie_token_hash);
 
 
 --
--- Name: ix_referral_sessions_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_referral_sessions_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_referral_sessions_organization_id ON public.referral_sessions USING btree (organization_id);
 
 
 --
--- Name: ix_referral_sessions_promoter_code_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_referral_sessions_promoter_code_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_referral_sessions_promoter_code_id ON public.referral_sessions USING btree (promoter_code_id);
 
 
 --
--- Name: ix_roles_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_roles_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_roles_organization_id ON public.roles USING btree (organization_id);
 
 
 --
--- Name: ix_sessions_refresh_token_hash; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_sessions_refresh_token_hash; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX ix_sessions_refresh_token_hash ON public.sessions USING btree (refresh_token_hash);
 
 
 --
--- Name: ix_sessions_user_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_sessions_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_sessions_user_id ON public.sessions USING btree (user_id);
 
 
 --
--- Name: ix_supply_points_customer_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_supply_points_customer_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_supply_points_customer_id ON public.supply_points USING btree (customer_id);
 
 
 --
--- Name: ix_supply_points_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_supply_points_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_supply_points_organization_id ON public.supply_points USING btree (organization_id);
 
 
 --
--- Name: ix_ticket_messages_ticket_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_ticket_messages_ticket_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_ticket_messages_ticket_id ON public.ticket_messages USING btree (ticket_id);
 
 
 --
--- Name: ix_tickets_opened_by_user_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_tickets_opened_by_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_tickets_opened_by_user_id ON public.tickets USING btree (opened_by_user_id);
 
 
 --
--- Name: ix_tickets_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_tickets_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_tickets_organization_id ON public.tickets USING btree (organization_id);
 
 
 --
--- Name: ix_tickets_status; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_tickets_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_tickets_status ON public.tickets USING btree (status);
 
 
 --
--- Name: ix_user_roles_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_user_roles_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_user_roles_organization_id ON public.user_roles USING btree (organization_id);
 
 
 --
--- Name: ix_user_roles_user_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_user_roles_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_user_roles_user_id ON public.user_roles USING btree (user_id);
 
 
 --
--- Name: ix_users_email; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_users_email; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_users_email ON public.users USING btree (email);
 
 
 --
--- Name: ix_users_organization_id; Type: INDEX; Schema: public; Owner: lial
+-- Name: ix_users_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_users_organization_id ON public.users USING btree (organization_id);
 
 
 --
--- Name: uq_network_nodes_active_agent; Type: INDEX; Schema: public; Owner: lial
+-- Name: uq_network_nodes_active_agent; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX uq_network_nodes_active_agent ON public.network_nodes USING btree (organization_id, agent_id) WHERE (effective_to IS NULL);
 
 
 --
--- Name: addresses fk_addresses_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: addresses fk_addresses_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.addresses
@@ -1796,7 +1868,7 @@ ALTER TABLE ONLY public.addresses
 
 
 --
--- Name: addresses fk_addresses_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: addresses fk_addresses_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.addresses
@@ -1804,7 +1876,15 @@ ALTER TABLE ONLY public.addresses
 
 
 --
--- Name: agent_profiles fk_agent_profiles_current_rank_id_ranks; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_profiles fk_agent_profiles_approved_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_profiles
+    ADD CONSTRAINT fk_agent_profiles_approved_by_user_id_users FOREIGN KEY (approved_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: agent_profiles fk_agent_profiles_current_rank_id_ranks; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_profiles
@@ -1812,7 +1892,7 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
--- Name: agent_profiles fk_agent_profiles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_profiles fk_agent_profiles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_profiles
@@ -1820,7 +1900,7 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
--- Name: agent_profiles fk_agent_profiles_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_profiles fk_agent_profiles_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_profiles
@@ -1828,7 +1908,7 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
--- Name: agent_rank_history fk_agent_rank_history_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_rank_history fk_agent_rank_history_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_rank_history
@@ -1836,7 +1916,7 @@ ALTER TABLE ONLY public.agent_rank_history
 
 
 --
--- Name: agent_rank_history fk_agent_rank_history_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_rank_history fk_agent_rank_history_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_rank_history
@@ -1844,7 +1924,7 @@ ALTER TABLE ONLY public.agent_rank_history
 
 
 --
--- Name: agent_rank_history fk_agent_rank_history_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_rank_history fk_agent_rank_history_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_rank_history
@@ -1852,7 +1932,7 @@ ALTER TABLE ONLY public.agent_rank_history
 
 
 --
--- Name: agent_rank_history fk_agent_rank_history_rank_id_ranks; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: agent_rank_history fk_agent_rank_history_rank_id_ranks; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_rank_history
@@ -1860,7 +1940,7 @@ ALTER TABLE ONLY public.agent_rank_history
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1868,7 +1948,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_customer_attribution_id_cust_9fdb; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_customer_attribution_id_cust_9fdb; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1876,7 +1956,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_new_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_new_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1884,7 +1964,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1892,7 +1972,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_previous_promoter_code_id_pr_9ca1; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_previous_promoter_code_id_pr_9ca1; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1900,7 +1980,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: attribution_corrections fk_attribution_corrections_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: attribution_corrections fk_attribution_corrections_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.attribution_corrections
@@ -1908,7 +1988,7 @@ ALTER TABLE ONLY public.attribution_corrections
 
 
 --
--- Name: audit_log fk_audit_log_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: audit_log fk_audit_log_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_log
@@ -1916,7 +1996,7 @@ ALTER TABLE ONLY public.audit_log
 
 
 --
--- Name: audit_log fk_audit_log_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: audit_log fk_audit_log_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_log
@@ -1924,7 +2004,7 @@ ALTER TABLE ONLY public.audit_log
 
 
 --
--- Name: commission_adjustments fk_commission_adjustments_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments fk_commission_adjustments_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -1932,7 +2012,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_adjustments fk_commission_adjustments_new_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments fk_commission_adjustments_new_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -1940,7 +2020,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_adjustments fk_commission_adjustments_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments fk_commission_adjustments_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -1948,7 +2028,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_adjustments fk_commission_adjustments_original_movement_id_commissi_4113; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments fk_commission_adjustments_original_movement_id_commissi_4113; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -1956,7 +2036,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_adjustments fk_commission_adjustments_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_adjustments fk_commission_adjustments_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_adjustments
@@ -1964,7 +2044,7 @@ ALTER TABLE ONLY public.commission_adjustments
 
 
 --
--- Name: commission_calculation_steps fk_commission_calculation_steps_beneficiary_agent_id_ag_5fea; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculation_steps fk_commission_calculation_steps_beneficiary_agent_id_ag_5fea; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculation_steps
@@ -1972,7 +2052,7 @@ ALTER TABLE ONLY public.commission_calculation_steps
 
 
 --
--- Name: commission_calculation_steps fk_commission_calculation_steps_calculation_id_commissi_4b0f; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculation_steps fk_commission_calculation_steps_calculation_id_commissi_4b0f; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculation_steps
@@ -1980,7 +2060,7 @@ ALTER TABLE ONLY public.commission_calculation_steps
 
 
 --
--- Name: commission_calculations fk_commission_calculations_commission_plan_version_id_c_62c3; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations fk_commission_calculations_commission_plan_version_id_c_62c3; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -1988,7 +2068,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_calculations fk_commission_calculations_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations fk_commission_calculations_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -1996,7 +2076,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_calculations fk_commission_calculations_network_snapshot_id_network__9654; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations fk_commission_calculations_network_snapshot_id_network__9654; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -2004,7 +2084,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_calculations fk_commission_calculations_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_calculations fk_commission_calculations_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_calculations
@@ -2012,7 +2092,7 @@ ALTER TABLE ONLY public.commission_calculations
 
 
 --
--- Name: commission_movements fk_commission_movements_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements fk_commission_movements_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -2020,7 +2100,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_movements fk_commission_movements_calculation_id_commission_calculations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements fk_commission_movements_calculation_id_commission_calculations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -2028,7 +2108,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_movements fk_commission_movements_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements fk_commission_movements_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -2036,7 +2116,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_movements fk_commission_movements_network_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements fk_commission_movements_network_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -2044,7 +2124,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_movements fk_commission_movements_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_movements fk_commission_movements_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_movements
@@ -2052,7 +2132,7 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
--- Name: commission_offsets fk_commission_offsets_credit_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_offsets fk_commission_offsets_credit_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_offsets
@@ -2060,7 +2140,7 @@ ALTER TABLE ONLY public.commission_offsets
 
 
 --
--- Name: commission_offsets fk_commission_offsets_debit_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_offsets fk_commission_offsets_debit_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_offsets
@@ -2068,7 +2148,7 @@ ALTER TABLE ONLY public.commission_offsets
 
 
 --
--- Name: commission_offsets fk_commission_offsets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_offsets fk_commission_offsets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_offsets
@@ -2076,7 +2156,7 @@ ALTER TABLE ONLY public.commission_offsets
 
 
 --
--- Name: commission_plan_versions fk_commission_plan_versions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_plan_versions fk_commission_plan_versions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_plan_versions
@@ -2084,7 +2164,7 @@ ALTER TABLE ONLY public.commission_plan_versions
 
 
 --
--- Name: commission_reversals fk_commission_reversals_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals fk_commission_reversals_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -2092,7 +2172,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_reversals fk_commission_reversals_new_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals fk_commission_reversals_new_movement_id_commission_movements; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -2100,7 +2180,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_reversals fk_commission_reversals_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals fk_commission_reversals_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -2108,7 +2188,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_reversals fk_commission_reversals_original_movement_id_commission_9fb0; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals fk_commission_reversals_original_movement_id_commission_9fb0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -2116,7 +2196,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_reversals fk_commission_reversals_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_reversals fk_commission_reversals_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_reversals
@@ -2124,7 +2204,7 @@ ALTER TABLE ONLY public.commission_reversals
 
 
 --
--- Name: commission_rule_versions fk_commission_rule_versions_commission_plan_version_id__cf5f; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: commission_rule_versions fk_commission_rule_versions_commission_plan_version_id__cf5f; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.commission_rule_versions
@@ -2132,7 +2212,7 @@ ALTER TABLE ONLY public.commission_rule_versions
 
 
 --
--- Name: companies fk_companies_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: companies fk_companies_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.companies
@@ -2140,7 +2220,7 @@ ALTER TABLE ONLY public.companies
 
 
 --
--- Name: contract_attributions fk_contract_attributions_attributed_promoter_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_attributions fk_contract_attributions_attributed_promoter_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_attributions
@@ -2148,7 +2228,7 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
--- Name: contract_attributions fk_contract_attributions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_attributions fk_contract_attributions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_attributions
@@ -2156,7 +2236,7 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
--- Name: contract_attributions fk_contract_attributions_producer_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_attributions fk_contract_attributions_producer_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_attributions
@@ -2164,7 +2244,7 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
--- Name: contract_events fk_contract_events_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_events fk_contract_events_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_events
@@ -2172,7 +2252,7 @@ ALTER TABLE ONLY public.contract_events
 
 
 --
--- Name: contract_status_history fk_contract_status_history_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_status_history fk_contract_status_history_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_status_history
@@ -2180,7 +2260,7 @@ ALTER TABLE ONLY public.contract_status_history
 
 
 --
--- Name: contract_status_history fk_contract_status_history_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contract_status_history fk_contract_status_history_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_status_history
@@ -2188,7 +2268,7 @@ ALTER TABLE ONLY public.contract_status_history
 
 
 --
--- Name: contracts fk_contracts_contract_attribution_id_contract_attributions; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_contract_attribution_id_contract_attributions; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2196,7 +2276,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: contracts fk_contracts_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2204,7 +2284,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: contracts fk_contracts_network_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_network_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2212,7 +2292,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: contracts fk_contracts_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2220,7 +2300,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: contracts fk_contracts_product_version_id_product_versions; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_product_version_id_product_versions; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2228,7 +2308,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: contracts fk_contracts_supply_point_id_supply_points; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: contracts fk_contracts_supply_point_id_supply_points; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
@@ -2236,7 +2316,7 @@ ALTER TABLE ONLY public.contracts
 
 
 --
--- Name: customer_attributions fk_customer_attributions_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_attributions fk_customer_attributions_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_attributions
@@ -2244,7 +2324,7 @@ ALTER TABLE ONLY public.customer_attributions
 
 
 --
--- Name: customer_attributions fk_customer_attributions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_attributions fk_customer_attributions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_attributions
@@ -2252,7 +2332,7 @@ ALTER TABLE ONLY public.customer_attributions
 
 
 --
--- Name: customer_attributions fk_customer_attributions_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_attributions fk_customer_attributions_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_attributions
@@ -2260,7 +2340,7 @@ ALTER TABLE ONLY public.customer_attributions
 
 
 --
--- Name: customer_attributions fk_customer_attributions_referral_session_id_referral_sessions; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_attributions fk_customer_attributions_referral_session_id_referral_sessions; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_attributions
@@ -2268,7 +2348,7 @@ ALTER TABLE ONLY public.customer_attributions
 
 
 --
--- Name: customer_profiles fk_customer_profiles_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customer_profiles fk_customer_profiles_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customer_profiles
@@ -2276,7 +2356,7 @@ ALTER TABLE ONLY public.customer_profiles
 
 
 --
--- Name: customers fk_customers_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customers fk_customers_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -2284,7 +2364,7 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: customers fk_customers_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: customers fk_customers_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -2292,7 +2372,55 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: domain_outbox fk_domain_outbox_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: documentation_posts fk_documentation_posts_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documentation_posts
+    ADD CONSTRAINT fk_documentation_posts_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: documentation_posts fk_documentation_posts_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documentation_posts
+    ADD CONSTRAINT fk_documentation_posts_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: documents fk_documents_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT fk_documents_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: documents fk_documents_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT fk_documents_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: documents fk_documents_reviewed_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT fk_documents_reviewed_by_user_id_users FOREIGN KEY (reviewed_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: documents fk_documents_uploaded_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT fk_documents_uploaded_by_user_id_users FOREIGN KEY (uploaded_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: domain_outbox fk_domain_outbox_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.domain_outbox
@@ -2300,7 +2428,7 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2308,7 +2436,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_approved_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2316,7 +2444,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_new_parent_agent_id_agent_149a; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_new_parent_agent_id_agent_149a; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2324,7 +2452,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_old_parent_agent_id_agent_6886; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_old_parent_agent_id_agent_6886; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2332,7 +2460,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2340,7 +2468,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_assignment_history fk_network_assignment_history_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_assignment_history fk_network_assignment_history_requested_by_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_assignment_history
@@ -2348,7 +2476,7 @@ ALTER TABLE ONLY public.network_assignment_history
 
 
 --
--- Name: network_closure fk_network_closure_ancestor_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_closure fk_network_closure_ancestor_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_closure
@@ -2356,7 +2484,7 @@ ALTER TABLE ONLY public.network_closure
 
 
 --
--- Name: network_closure fk_network_closure_descendant_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_closure fk_network_closure_descendant_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_closure
@@ -2364,7 +2492,7 @@ ALTER TABLE ONLY public.network_closure
 
 
 --
--- Name: network_closure fk_network_closure_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_closure fk_network_closure_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_closure
@@ -2372,7 +2500,7 @@ ALTER TABLE ONLY public.network_closure
 
 
 --
--- Name: network_edges fk_network_edges_child_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_edges fk_network_edges_child_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_edges
@@ -2380,7 +2508,7 @@ ALTER TABLE ONLY public.network_edges
 
 
 --
--- Name: network_edges fk_network_edges_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_edges fk_network_edges_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_edges
@@ -2388,7 +2516,7 @@ ALTER TABLE ONLY public.network_edges
 
 
 --
--- Name: network_edges fk_network_edges_parent_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_edges fk_network_edges_parent_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_edges
@@ -2396,7 +2524,7 @@ ALTER TABLE ONLY public.network_edges
 
 
 --
--- Name: network_nodes fk_network_nodes_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_nodes fk_network_nodes_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_nodes
@@ -2404,7 +2532,7 @@ ALTER TABLE ONLY public.network_nodes
 
 
 --
--- Name: network_nodes fk_network_nodes_direct_parent_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_nodes fk_network_nodes_direct_parent_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_nodes
@@ -2412,7 +2540,7 @@ ALTER TABLE ONLY public.network_nodes
 
 
 --
--- Name: network_nodes fk_network_nodes_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_nodes fk_network_nodes_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_nodes
@@ -2420,7 +2548,7 @@ ALTER TABLE ONLY public.network_nodes
 
 
 --
--- Name: network_snapshot_nodes fk_network_snapshot_nodes_ancestor_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshot_nodes fk_network_snapshot_nodes_ancestor_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshot_nodes
@@ -2428,7 +2556,7 @@ ALTER TABLE ONLY public.network_snapshot_nodes
 
 
 --
--- Name: network_snapshot_nodes fk_network_snapshot_nodes_rank_id_at_snapshot_ranks; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshot_nodes fk_network_snapshot_nodes_rank_id_at_snapshot_ranks; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshot_nodes
@@ -2436,7 +2564,7 @@ ALTER TABLE ONLY public.network_snapshot_nodes
 
 
 --
--- Name: network_snapshot_nodes fk_network_snapshot_nodes_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshot_nodes fk_network_snapshot_nodes_snapshot_id_network_snapshots; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshot_nodes
@@ -2444,7 +2572,7 @@ ALTER TABLE ONLY public.network_snapshot_nodes
 
 
 --
--- Name: network_snapshots fk_network_snapshots_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: network_snapshots fk_network_snapshots_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.network_snapshots
@@ -2452,7 +2580,23 @@ ALTER TABLE ONLY public.network_snapshots
 
 
 --
--- Name: password_reset_tokens fk_password_reset_tokens_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: notifications fk_notifications_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT fk_notifications_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: notifications fk_notifications_recipient_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT fk_notifications_recipient_user_id_users FOREIGN KEY (recipient_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: password_reset_tokens fk_password_reset_tokens_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.password_reset_tokens
@@ -2460,7 +2604,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: product_versions fk_product_versions_commission_plan_version_id_commissi_c160; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: product_versions fk_product_versions_commission_plan_version_id_commissi_c160; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_versions
@@ -2468,7 +2612,7 @@ ALTER TABLE ONLY public.product_versions
 
 
 --
--- Name: product_versions fk_product_versions_product_id_products; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: product_versions fk_product_versions_product_id_products; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_versions
@@ -2476,7 +2620,7 @@ ALTER TABLE ONLY public.product_versions
 
 
 --
--- Name: products fk_products_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: products fk_products_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.products
@@ -2484,7 +2628,7 @@ ALTER TABLE ONLY public.products
 
 
 --
--- Name: promoter_codes fk_promoter_codes_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: promoter_codes fk_promoter_codes_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.promoter_codes
@@ -2492,7 +2636,7 @@ ALTER TABLE ONLY public.promoter_codes
 
 
 --
--- Name: promoter_codes fk_promoter_codes_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: promoter_codes fk_promoter_codes_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.promoter_codes
@@ -2500,7 +2644,7 @@ ALTER TABLE ONLY public.promoter_codes
 
 
 --
--- Name: ranks fk_ranks_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: ranks fk_ranks_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ranks
@@ -2508,7 +2652,7 @@ ALTER TABLE ONLY public.ranks
 
 
 --
--- Name: referral_events fk_referral_events_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_events fk_referral_events_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_events
@@ -2516,7 +2660,7 @@ ALTER TABLE ONLY public.referral_events
 
 
 --
--- Name: referral_events fk_referral_events_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_events fk_referral_events_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_events
@@ -2524,7 +2668,7 @@ ALTER TABLE ONLY public.referral_events
 
 
 --
--- Name: referral_sessions fk_referral_sessions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_sessions fk_referral_sessions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_sessions
@@ -2532,7 +2676,7 @@ ALTER TABLE ONLY public.referral_sessions
 
 
 --
--- Name: referral_sessions fk_referral_sessions_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: referral_sessions fk_referral_sessions_promoter_code_id_promoter_codes; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.referral_sessions
@@ -2540,7 +2684,7 @@ ALTER TABLE ONLY public.referral_sessions
 
 
 --
--- Name: role_permissions fk_role_permissions_permission_id_permissions; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: role_permissions fk_role_permissions_permission_id_permissions; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.role_permissions
@@ -2548,7 +2692,7 @@ ALTER TABLE ONLY public.role_permissions
 
 
 --
--- Name: role_permissions fk_role_permissions_role_id_roles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: role_permissions fk_role_permissions_role_id_roles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.role_permissions
@@ -2556,7 +2700,7 @@ ALTER TABLE ONLY public.role_permissions
 
 
 --
--- Name: roles fk_roles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: roles fk_roles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.roles
@@ -2564,7 +2708,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- Name: sessions fk_sessions_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: sessions fk_sessions_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sessions
@@ -2572,7 +2716,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- Name: supply_points fk_supply_points_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: supply_points fk_supply_points_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.supply_points
@@ -2580,7 +2724,7 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
--- Name: supply_points fk_supply_points_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: supply_points fk_supply_points_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.supply_points
@@ -2588,7 +2732,7 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
--- Name: supply_points fk_supply_points_supply_address_id_addresses; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: supply_points fk_supply_points_supply_address_id_addresses; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.supply_points
@@ -2596,7 +2740,7 @@ ALTER TABLE ONLY public.supply_points
 
 
 --
--- Name: ticket_messages fk_ticket_messages_author_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: ticket_messages fk_ticket_messages_author_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ticket_messages
@@ -2604,7 +2748,7 @@ ALTER TABLE ONLY public.ticket_messages
 
 
 --
--- Name: ticket_messages fk_ticket_messages_ticket_id_tickets; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: ticket_messages fk_ticket_messages_ticket_id_tickets; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.ticket_messages
@@ -2612,7 +2756,7 @@ ALTER TABLE ONLY public.ticket_messages
 
 
 --
--- Name: tickets fk_tickets_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: tickets fk_tickets_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tickets
@@ -2620,7 +2764,7 @@ ALTER TABLE ONLY public.tickets
 
 
 --
--- Name: tickets fk_tickets_opened_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: tickets fk_tickets_opened_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tickets
@@ -2628,7 +2772,7 @@ ALTER TABLE ONLY public.tickets
 
 
 --
--- Name: tickets fk_tickets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: tickets fk_tickets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tickets
@@ -2636,7 +2780,7 @@ ALTER TABLE ONLY public.tickets
 
 
 --
--- Name: user_roles fk_user_roles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: user_roles fk_user_roles_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -2644,7 +2788,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: user_roles fk_user_roles_role_id_roles; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: user_roles fk_user_roles_role_id_roles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -2652,7 +2796,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: user_roles fk_user_roles_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: user_roles fk_user_roles_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -2660,7 +2804,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: users fk_users_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: lial
+-- Name: users fk_users_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -2671,5 +2815,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict nHtcFUse65bkOcAIhDrxeeah6aLv7ThcPnU93dMdBzpo7GLeq36kuUqntRaJgye
+\unrestrict cDyrzZvcv3ppsemBiH8A8zCftAClPguKic173s8H8ZOvn9kuCrQJ8HuVZtjvN4U
 

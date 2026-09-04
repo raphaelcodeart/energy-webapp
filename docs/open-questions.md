@@ -21,6 +21,20 @@ progress calculation is lifetime-cumulative, not evaluated over any window.
 and `apps/api/app/seed/ranks.py` (both need updating together to stay in
 sync), or a new `commission_rule_versions` row once the real plan document is
 available — no application code change needed, only data.
+**Also (Session 20)**: `network/service.py::AUTO_ACTIVATION_RANK_CODE = "S1"`
+hardcodes the floor rank self-service "lavora con noi" applicants start at,
+instead of deriving the lowest-`level` rank from the org's ladder. If code
+`S1` is ever renamed/removed, this silently resolves to no rank
+(`_get_current_rank_id()` returns `None`, no error) rather than failing loud.
+**Where to fix**: same file, alongside item #1's other placeholder figures.
+**Update (Session 20)**: a second, independent axis now exists —
+`commissions/services/rank_evaluation.py` actually **writes** the agent's
+rank (promotes or demotes) once a month, using a fixed single-calendar-month
+window, explicitly NOT `evaluation_window_months` (still unused by anything).
+This was an explicit user decision, not a resolution of this open question —
+see `business-rules.md §Automatic monthly rank evaluation`. If the real plan
+document specifies a genuine rolling window, both this and item #6 below need
+updating together, since they'd likely share the same window definition.
 
 ## 2. Network move approval
 
@@ -62,6 +76,11 @@ beneficiary's rank re-evaluation (`ranks.evaluation_window_months`).
 **Where to fix**: `apps/api/app/domains/commissions/policies/branch_cap.py` — the
 aggregation query is isolated there specifically so the denominator can change without
 touching the main calculator.
+**Note (Session 20)**: the rank re-evaluation that now actually exists
+(`rank_evaluation.py`, see item #1) does NOT use `evaluation_window_months`
+either — it's a fixed single calendar month. This assumption's cross-reference
+to "the same evaluation window" is therefore still unresolved/unverified, not
+contradicted; revisit both together once the real window is known.
 
 ## 7. MFA and account lockout policy
 

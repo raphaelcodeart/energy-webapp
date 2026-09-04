@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.storage import generate_presigned_document_url, upload_document as storage_upload_document
+from app.core.storage import generate_presigned_document_url
+from app.core.storage import upload_document as storage_upload_document
 from app.domains.audit import service as audit_service
 from app.domains.contracts.models import Contract
 from app.domains.documents.models import DOCUMENT_TYPES, Document

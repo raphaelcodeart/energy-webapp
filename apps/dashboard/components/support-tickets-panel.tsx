@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { friendlyApiError } from "@/lib/api-error";
 import type { TicketDetailRead, TicketRead } from "@/lib/types";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -80,7 +81,7 @@ export function SupportTicketsPanel({ title, subtitle }: { title: string; subtit
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject, category, message }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       const newTicket = (await res.json()) as TicketRead;
       setSubject("");
       setMessage("");
@@ -105,7 +106,7 @@ export function SupportTicketsPanel({ title, subtitle }: { title: string; subtit
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: reply }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setReply("");
       await queryClient.invalidateQueries({ queryKey: ["support", "tickets", "detail", selectedId] });
       await queryClient.invalidateQueries({ queryKey: ["support", "tickets", "mine"] });

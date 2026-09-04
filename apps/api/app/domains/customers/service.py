@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Address, Company, Customer, CustomerProfile, SupplyPoint
-from app.domains.customers.schemas import CustomerCreate, CustomerUpdate, SupplyPointCreate, SupplyPointUpdate
+from app.domains.customers.schemas import (
+    CustomerCreate,
+    CustomerUpdate,
+    SupplyPointCreate,
+    SupplyPointUpdate,
+)
 
 PRIVATE_LIKE_KINDS = {"PRIVATE", "SOLE_PROPRIETOR"}
 COMPANY_LIKE_KINDS = {"COMPANY", "CONDOMINIUM"}
@@ -52,6 +57,7 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
             "pec": c.pec,
             "photo_url": c.photo_url,
             "display_name": display_name_for(c.kind, profiles.get(c.id), companies.get(c.id)),
+            "created_at": c.created_at,
         }
         for c in customers
     ]
@@ -99,6 +105,7 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
         "pec": customer.pec,
         "photo_url": customer.photo_url,
         "display_name": display_name_for(customer.kind, profile, company),
+        "created_at": customer.created_at,
         "addresses": list(addresses),
         "supply_points": list(supply_points),
         "current_promoter_agent_id": current_promoter_agent_id,

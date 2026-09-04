@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { translateErrorDetail } from "@/lib/api-error";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -32,7 +33,7 @@ function ResetPasswordForm() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "Impossibile reimpostare la password.");
+        throw new Error(body.detail ? translateErrorDetail(body.detail) : "Impossibile reimpostare la password.");
       }
       setSuccess(true);
       setTimeout(() => router.push("/login"), 2500);

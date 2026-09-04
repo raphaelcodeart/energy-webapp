@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { friendlyApiError } from "@/lib/api-error";
 import type { TicketDetailRead, TicketRead } from "@/lib/types";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -116,7 +117,7 @@ export function AdminTicketsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: reply }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       setReply("");
       await refreshDetail();
     } catch (err: any) {
@@ -135,7 +136,7 @@ export function AdminTicketsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       await refreshDetail();
     } finally {
       setStatusLoading(false);
@@ -148,7 +149,7 @@ export function AdminTicketsPanel() {
     setDeleteError(null);
     try {
       const res = await fetch(`/api/proxy/support/tickets/${deletingTicket.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.text()) || "Impossibile eliminare il ticket.");
+      if (!res.ok) throw new Error(await friendlyApiError(res, "Impossibile eliminare il ticket."));
       if (selectedId === deletingTicket.id) setSelectedId(null);
       setDeletingTicket(null);
       await queryClient.invalidateQueries({ queryKey: ["admin", "tickets"] });

@@ -23,14 +23,14 @@ async def _make_actor(db, organization_id):
 @pytest.mark.asyncio
 async def test_branch_isolation_parallel_branches_are_not_ancestors_of_each_other(db, organization_id):
     root_a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root A", promoter_code="ROOT-A", parent_agent_id=None,
+        db, organization_id=organization_id, first_name="Root", last_name="A", promoter_code="ROOT-A", parent_agent_id=None,
     )
     child_a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Child A", promoter_code="CHILD-A",
+        db, organization_id=organization_id, first_name="Child", last_name="A", promoter_code="CHILD-A",
         parent_agent_id=root_a.id,
     )
     root_b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root B", promoter_code="ROOT-B", parent_agent_id=None,
+        db, organization_id=organization_id, first_name="Root", last_name="B", promoter_code="ROOT-B", parent_agent_id=None,
     )
 
     # root_a IS an ancestor of child_a...
@@ -46,13 +46,13 @@ async def test_branch_isolation_parallel_branches_are_not_ancestors_of_each_othe
 @pytest.mark.asyncio
 async def test_closure_table_reflects_full_chain_depth(db, organization_id):
     a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="A", promoter_code="A1", parent_agent_id=None
+        db, organization_id=organization_id, first_name="A", last_name="Tester", promoter_code="A1", parent_agent_id=None
     )
     b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="B", promoter_code="B1", parent_agent_id=a.id
+        db, organization_id=organization_id, first_name="B", last_name="Tester", promoter_code="B1", parent_agent_id=a.id
     )
     c = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="C", promoter_code="C1", parent_agent_id=b.id
+        db, organization_id=organization_id, first_name="C", last_name="Tester", promoter_code="C1", parent_agent_id=b.id
     )
 
     branch = await network_service.get_branch(db, organization_id=organization_id, root_agent_id=a.id)
@@ -72,19 +72,19 @@ async def test_get_branch_returns_parent_agent_id_for_tree_reconstruction(db, or
     root itself must have none (its own parent, if any, is outside the
     branch that was fetched)."""
     a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="A", promoter_code=f"PA-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="A", last_name="Tester", promoter_code=f"PA-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None,
     )
     b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="B", promoter_code=f"PB-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="B", last_name="Tester", promoter_code=f"PB-{uuid.uuid4().hex[:8]}",
         parent_agent_id=a.id,
     )
     c = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="C", promoter_code=f"PC-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="C", last_name="Tester", promoter_code=f"PC-{uuid.uuid4().hex[:8]}",
         parent_agent_id=b.id,
     )
     d = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="D", promoter_code=f"PD-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="D", last_name="Tester", promoter_code=f"PD-{uuid.uuid4().hex[:8]}",
         parent_agent_id=b.id,
     )
 
@@ -104,15 +104,15 @@ async def test_get_branch_from_a_non_root_agent_hides_its_own_parent(db, organiz
     A was never fetched and the frontend must not try to attach B to a node
     it doesn't have."""
     a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="A", promoter_code=f"QA-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="A", last_name="Tester", promoter_code=f"QA-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None,
     )
     b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="B", promoter_code=f"QB-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="B", last_name="Tester", promoter_code=f"QB-{uuid.uuid4().hex[:8]}",
         parent_agent_id=a.id,
     )
     c = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="C", promoter_code=f"QC-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="C", last_name="Tester", promoter_code=f"QC-{uuid.uuid4().hex[:8]}",
         parent_agent_id=b.id,
     )
 
@@ -128,10 +128,10 @@ async def test_get_branch_from_a_non_root_agent_hides_its_own_parent(db, organiz
 @pytest.mark.asyncio
 async def test_move_agent_prevents_cycle(db, organization_id):
     a = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="A", promoter_code="A2", parent_agent_id=None
+        db, organization_id=organization_id, first_name="A", last_name="Tester", promoter_code="A2", parent_agent_id=None
     )
     b = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="B", promoter_code="B2", parent_agent_id=a.id
+        db, organization_id=organization_id, first_name="B", last_name="Tester", promoter_code="B2", parent_agent_id=a.id
     )
 
     actor_user_id = await _make_actor(db, organization_id)
@@ -146,16 +146,16 @@ async def test_move_agent_prevents_cycle(db, organization_id):
 @pytest.mark.asyncio
 async def test_move_agent_relocates_whole_subtree_and_updates_closure(db, organization_id):
     root1 = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root1", promoter_code="R1", parent_agent_id=None
+        db, organization_id=organization_id, first_name="Root1", last_name="Tester", promoter_code="R1", parent_agent_id=None
     )
     root2 = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Root2", promoter_code="R2", parent_agent_id=None
+        db, organization_id=organization_id, first_name="Root2", last_name="Tester", promoter_code="R2", parent_agent_id=None
     )
     mover = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Mover", promoter_code="MV", parent_agent_id=root1.id
+        db, organization_id=organization_id, first_name="Mover", last_name="Tester", promoter_code="MV", parent_agent_id=root1.id
     )
     movers_child = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="MoversChild", promoter_code="MC",
+        db, organization_id=organization_id, first_name="MoversChild", last_name="Tester", promoter_code="MC",
         parent_agent_id=mover.id,
     )
 
@@ -194,7 +194,7 @@ async def test_multi_tenant_isolation_agents_are_scoped_to_their_organization(db
     await db.refresh(org_b)
 
     agent_a = await network_service.create_agent(
-        db, organization_id=org_a.id, display_name="Agent A", promoter_code="OA-1", parent_agent_id=None
+        db, organization_id=org_a.id, first_name="Agent", last_name="A", promoter_code="OA-1", parent_agent_id=None
     )
 
     # A query scoped to org_b must never find an agent that belongs to org_a, even

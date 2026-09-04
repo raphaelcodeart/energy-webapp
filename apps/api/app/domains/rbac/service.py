@@ -73,3 +73,33 @@ async def assign_role(
     if existing is not None:
         return
     db.add(UserRole(user_id=user_id, organization_id=organization_id, role_id=role.id))
+
+
+async def revoke_role(
+    db: AsyncSession, *, user_id: uuid.UUID, organization_id: uuid.UUID, role_code: str
+) -> None:
+    """Inverse of assign_role() -- e.g. deactivating a promoter back to a plain
+    customer. Idempotent (a no-op if the role wasn't held) and, like
+    assign_role(), does not commit."""
+    role = (
+        await db.execute(
+            select(Role).where(
+                (Role.organization_id == organization_id) | (Role.organization_id.is_(None)),
+                Role.code == role_code,
+            )
+        )
+    ).scalars().first()
+    if role is None:
+        return
+
+    user_role = (
+        await db.execute(
+            select(UserRole).where(
+                UserRole.user_id == user_id,
+                UserRole.organization_id == organization_id,
+                UserRole.role_id == role.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if user_role is not None:
+        await db.delete(user_role)

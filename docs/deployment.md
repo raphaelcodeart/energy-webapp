@@ -29,7 +29,12 @@ docker compose -f docker-compose.dev.yml exec api python -m app.seed
 ## Scripts (Phase H hardens these; skeletons exist now)
 
 - `scripts/deploy.sh` — pulls, builds, migrates, restarts with health-check gating.
-- `scripts/backup.sh` — pg_dump + document bucket sync to off-server storage.
+- `scripts/backup.sh` — pg_dump (real data) + document bucket sync to off-server storage.
+  Writes to `./backups/`, gitignored on purpose — never commit these.
+- `scripts/dump-schema.sh` — regenerates `docs/database-schema.sql`, a structure-only
+  (no data) `pg_dump`, portable across servers. Run after any new Alembic migration so
+  this stays in sync; it's the artifact `docs/server-migration-guide.md` points to for
+  "what does the database actually look like."
 - `scripts/restore.sh` — restores from a named backup, verifies checksum before restore.
 - `scripts/health-check.sh` — curls health/readiness endpoints for api/dashboard, checks
   postgres/redis connectivity.

@@ -12,7 +12,11 @@ import { AdminCreateContractPanel } from "@/components/admin-create-contract-pan
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
 import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
+import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
+import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
+import { ContractStatusHistoryModal } from "@/components/contract-status-history-modal";
 import { SectionBanner } from "@/components/section-banner";
+import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
@@ -169,6 +173,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "documentation",
+    label: "Documentazione",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
@@ -178,7 +191,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "documentation">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -194,6 +207,8 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
 
   // State for transitioning a contract
   const [selectedContract, setSelectedContract] = useState<ContractRead | null>(null);
+  const [commissionsContractId, setCommissionsContractId] = useState<string | null>(null);
+  const [historyContractId, setHistoryContractId] = useState<string | null>(null);
   const [targetStatus, setTargetStatus] = useState("UNDER_REVIEW");
   const [transitionReason, setTransitionReason] = useState("");
   const [transitionNotes, setTransitionNotes] = useState("");
@@ -265,8 +280,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Errore transizione");
+        throw new Error(await friendlyApiError(res, "Errore durante il cambio di stato del contratto."));
       }
 
       const updatedContract = await res.json() as ContractRead;
@@ -445,9 +459,13 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                           <div className="font-mono text-[10px] text-slate-500">{c.id}</div>
                         </td>
                         <td className="py-4 px-6">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeColor(c.status)}`}>
+                          <button
+                            onClick={() => setHistoryContractId(c.id)}
+                            title="Vedi storico stati"
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer hover:brightness-125 transition ${getStatusBadgeColor(c.status)}`}
+                          >
                             {STATUS_LABELS[c.status] ?? c.status}
-                          </span>
+                          </button>
                         </td>
                         <td className="py-4 px-6">
                           <span className={`text-xs ${expiryColor(c.expires_at)}`}>
@@ -455,12 +473,20 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
                           </span>
                         </td>
                         <td className="py-4 px-6 text-right">
-                          <button
-                            onClick={() => handleOpenTransition(c)}
-                            className="px-3 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
-                          >
-                            Recensisci
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setCommissionsContractId(c.id)}
+                              className="px-3 py-1 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                            >
+                              Provvigioni
+                            </button>
+                            <button
+                              onClick={() => handleOpenTransition(c)}
+                              className="px-3 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                            >
+                              Recensisci
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -519,6 +545,12 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           <div className="space-y-6">
             <SectionBanner image="commissions" alt="Provvigioni" />
             <AdminCommissionsPanel initialStatusFilter={pendingCommissionStatusFilter ?? undefined} />
+          </div>
+        )}
+        {activeTab === "documentation" && (
+          <div className="space-y-6">
+            <SectionBanner image="documentation" alt="Documentazione" />
+            <AdminDocumentationPanel />
           </div>
         )}
       </AppShell>
@@ -630,6 +662,20 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
             )}
           </div>
         </div>
+      )}
+
+      {commissionsContractId && (
+        <ContractCommissionsModal
+          contractId={commissionsContractId}
+          onClose={() => setCommissionsContractId(null)}
+        />
+      )}
+
+      {historyContractId && (
+        <ContractStatusHistoryModal
+          contractId={historyContractId}
+          onClose={() => setHistoryContractId(null)}
+        />
       )}
     </>
   );

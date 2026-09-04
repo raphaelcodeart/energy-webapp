@@ -1,4 +1,3 @@
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -75,4 +74,11 @@ async def resolve_promoter_link(
         samesite="lax",
         max_age=referral_service.ATTRIBUTION_WINDOW_DAYS * 24 * 3600,
     )
-    return PromoterCodeRead.model_validate(promoter_code)
+    agent = await db.get(AgentProfile, promoter_code.agent_id)
+    return PromoterCodeRead(
+        id=promoter_code.id,
+        code=promoter_code.code,
+        personal_link=promoter_code.personal_link,
+        status=promoter_code.status,
+        promoter_display_name=agent.display_name if agent else None,
+    )

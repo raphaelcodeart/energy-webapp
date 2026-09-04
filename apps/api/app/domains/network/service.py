@@ -1,11 +1,19 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
 from app.domains.audit import service as audit_service
+
+if TYPE_CHECKING:
+    # Annotation-only -- the real imports stay function-local at their call
+    # sites below to avoid module-level coupling with referral/users, same
+    # convention as the rest of this file.
+    from app.domains.referral.models import PromoterCode
+    from app.domains.users.models import User
 from app.domains.network.models import (
     AgentProfile,
     NetworkAssignmentHistory,
@@ -26,6 +34,10 @@ class CycleError(NetworkError):
 
 
 class DuplicateApplicationError(NetworkError):
+    pass
+
+
+class RootPromoterConflictError(NetworkError):
     pass
 
 
@@ -57,7 +69,8 @@ async def create_agent(
     db: AsyncSession,
     *,
     organization_id: uuid.UUID,
-    display_name: str,
+    first_name: str,
+    last_name: str,
     promoter_code: str,
     parent_agent_id: uuid.UUID | None,
     joined_at: datetime | None = None,
@@ -70,12 +83,21 @@ async def create_agent(
     Use move_agent() to relocate an agent that already has descendants. status
     defaults to ACTIVE for internal/test callers; the two user-facing creation
     routes (POST /agents, POST /agents/recruit) explicitly pass
-    PENDING_APPROVAL -- see AgentProfile.status docstring."""
+    PENDING_APPROVAL -- see AgentProfile.status docstring.
+
+    first_name/last_name are stored as their own columns (not just baked into
+    display_name) so admin screens, exports, and reports can sort/filter by
+    either independently -- display_name stays a derived, denormalized
+    "first last" for the many existing read paths (contracts, notifications,
+    branch views, ...) that only ever needed one string to show."""
     joined_at = joined_at or utcnow()
+    display_name = f"{first_name} {last_name}".strip()
 
     agent = AgentProfile(
         organization_id=organization_id,
         display_name=display_name,
+        first_name=first_name,
+        last_name=last_name,
         promoter_code=promoter_code,
         status=status,
         joined_at=joined_at,
@@ -180,48 +202,250 @@ def _generate_promoter_code(display_name: str) -> str:
     return f"{slug}-{secrets.token_hex(3).upper()}"
 
 
+AUTO_ACTIVATION_RANK_CODE = "S1"
+
+
+async def _get_current_rank_id(db: AsyncSession, *, organization_id: uuid.UUID, code: str) -> uuid.UUID | None:
+    """The currently-in-effect (valid_to IS NULL) version of a rank code --
+    same "current version" convention used by rank_evaluation.py."""
+    from app.domains.commissions.models import Rank
+
+    stmt = select(Rank.id).where(
+        Rank.organization_id == organization_id, Rank.code == code, Rank.valid_to.is_(None)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def _resolve_referring_agent_id(db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID) -> uuid.UUID | None:
+    """Which promoter's referral link this user originally signed up through
+    (if any) -- registration is invite-only everywhere (auth/service.py
+    register_with_referral), so a customer_attributions row should always
+    exist, but this stays defensive (None) for e.g. a customer created
+    outside that flow. Used so a self-service promoter application lands
+    under the sponsor who actually invited them, not as a stray root."""
+    from app.domains.customers.models import Customer
+    from app.domains.referral.models import CustomerAttribution, PromoterCode
+
+    stmt = (
+        select(PromoterCode.agent_id)
+        .select_from(CustomerAttribution)
+        .join(Customer, Customer.id == CustomerAttribution.customer_id)
+        .join(PromoterCode, PromoterCode.id == CustomerAttribution.promoter_code_id)
+        .where(CustomerAttribution.organization_id == organization_id, Customer.user_id == user_id)
+        .order_by(CustomerAttribution.attributed_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def apply_as_promoter(
-    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID, display_name: str
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID, first_name: str, last_name: str
 ) -> AgentProfile:
-    """Self-service 'Lavora con noi': an existing CUSTOMER asks to also become
-    a PROMOTER. Reuses create_agent() with parent_agent_id=None (this is not a
-    recruit -- see POST /agents/recruit for that) and status=PENDING_APPROVAL,
-    the same suggest-then-approve workflow as the admin/promoter creation
-    routes; approve_agent() is what actually grants the PROMOTER role.
+    """Self-service 'Lavora con noi': an existing CUSTOMER becomes a PROMOTER.
+
+    Auto-activates immediately at rank S1, under whichever promoter originally
+    referred them (see _resolve_referring_agent_id) -- no admin approval
+    needed, PROMOTER role granted right away. The exceptions, both routed
+    through the original manual PENDING_APPROVAL/approve workflow instead:
+    a previously blacklisted agent (AgentProfile.is_blacklisted, set by an
+    admin via PATCH /agents/{id} -- worse than a plain deactivation), and an
+    agent an admin explicitly set to SUSPENDED (the agent edit form's "Stato"
+    dropdown -- update_agent() treats SUSPENDED as a real deactivation,
+    revoking the PROMOTER role same as TERMINATED, so it must not silently
+    self-heal here). TERMINATED (the dedicated "Disattiva" button) is the one
+    status that IS meant to auto-reactivate on reapply, unchanged from before
+    this auto-activation behavior existed.
 
     get_own_agent_profile() assumes at most one AgentProfile per user_id, so a
-    reapply after a TERMINATED (rejected) application resets that same row
-    in place rather than calling create_agent() again -- a second row would
-    make get_own_agent_profile()'s scalar_one_or_none() raise, and would
+    reapply after a TERMINATED (deactivated/rejected) application resets that
+    same row in place rather than calling create_agent() again -- a second row
+    would make get_own_agent_profile()'s scalar_one_or_none() raise, and would
     orphan a second, disconnected network_nodes row for the same person."""
+    from app.domains.rbac import service as rbac_service
+
     existing = await get_own_agent_profile(db, organization_id=organization_id, user_id=user_id)
+    referring_agent_id = await _resolve_referring_agent_id(db, organization_id=organization_id, user_id=user_id)
+    rank_id = await _get_current_rank_id(db, organization_id=organization_id, code=AUTO_ACTIVATION_RANK_CODE)
+
     if existing is not None:
         if existing.status in ("PENDING_APPROVAL", "ACTIVE"):
             raise DuplicateApplicationError(f"Existing application/profile is {existing.status}")
-        existing.status = "PENDING_APPROVAL"
-        existing.display_name = display_name
+
+        # Blacklisted always needs manual review. SUSPENDED does too -- it's a
+        # real, admin-selectable status (the agent edit form's "Stato" dropdown,
+        # distinct from the dedicated "Disattiva"/"Blacklist" buttons which both
+        # use TERMINATED) and update_agent() treats SUSPENDED as a genuine
+        # deactivation (revokes the PROMOTER role, same as TERMINATED) -- letting
+        # it silently auto-reactivate here would let the agent undo an admin's
+        # explicit suspension with zero admin involvement, unlike TERMINATED
+        # (the "Disattiva" case), which is intentionally self-service-reactivable.
+        previous_status = existing.status
+        if existing.is_blacklisted or existing.status == "SUSPENDED":
+            existing.status = "PENDING_APPROVAL"
+            existing.first_name = first_name
+            existing.last_name = last_name
+            existing.display_name = f"{first_name} {last_name}".strip()
+            existing.approved_by_user_id = None
+            existing.approved_at = None
+            existing.rejection_reason = None
+            await audit_service.record(
+                db, organization_id=organization_id, actor_user_id=user_id,
+                action="network.agent_reapplied", entity_type="agent_profile", entity_id=str(existing.id),
+                previous_value={"status": previous_status}, new_value={"status": "PENDING_APPROVAL"},
+            )
+            await db.commit()
+            await db.refresh(existing)
+            return existing
+
+        existing.status = "ACTIVE"
+        existing.first_name = first_name
+        existing.last_name = last_name
+        existing.display_name = f"{first_name} {last_name}".strip()
+        existing.current_rank_id = rank_id
         existing.approved_by_user_id = None
-        existing.approved_at = None
+        existing.approved_at = utcnow()
         existing.rejection_reason = None
+
+        current_parent_id = (
+            await db.execute(
+                select(NetworkNode.direct_parent_agent_id).where(
+                    NetworkNode.organization_id == organization_id,
+                    NetworkNode.agent_id == existing.id,
+                    NetworkNode.effective_to.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if referring_agent_id is not None and referring_agent_id != current_parent_id:
+            await move_agent(
+                db, organization_id=organization_id, agent_id=existing.id,
+                new_parent_agent_id=referring_agent_id, requested_by=user_id, approved_by=user_id,
+                reason="Riattivazione automatica 'lavora con noi': sponsor dal link di invito originale",
+            )
+
+        await rbac_service.assign_role(db, user_id=user_id, organization_id=organization_id, role_code="PROMOTER")
         await audit_service.record(
             db, organization_id=organization_id, actor_user_id=user_id,
-            action="network.agent_reapplied", entity_type="agent_profile", entity_id=str(existing.id),
-            previous_value={"status": "TERMINATED"}, new_value={"status": "PENDING_APPROVAL"},
+            action="network.agent_auto_activated", entity_type="agent_profile", entity_id=str(existing.id),
+            previous_value={"status": "TERMINATED"}, new_value={"status": "ACTIVE"},
         )
         await db.commit()
         await db.refresh(existing)
         return existing
 
-    return await create_agent(
+    agent = await create_agent(
         db,
         organization_id=organization_id,
-        display_name=display_name,
-        promoter_code=_generate_promoter_code(display_name),
-        parent_agent_id=None,
+        first_name=first_name,
+        last_name=last_name,
+        promoter_code=_generate_promoter_code(f"{first_name} {last_name}"),
+        parent_agent_id=referring_agent_id,
         actor_user_id=user_id,
         user_id=user_id,
-        status="PENDING_APPROVAL",
+        current_rank_id=rank_id,
+        status="ACTIVE",
     )
+    await rbac_service.assign_role(db, user_id=user_id, organization_id=organization_id, role_code="PROMOTER")
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
+async def create_root_promoter_with_login(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    first_name: str,
+    last_name: str,
+    email: str,
+    promoter_code: str | None,
+    actor_user_id: uuid.UUID,
+) -> tuple[AgentProfile, "User", "PromoterCode", str]:
+    """SUPER_ADMIN/ORGANIZATION_ADMIN-only bootstrap for a brand-new, parentless
+    network root. Registration everywhere else in the app is invite-only,
+    gated on an existing promoter's referral code (see auth/service.py
+    register_with_referral) -- there is deliberately no self-service way for
+    anyone to become a root promoter, since a referral code always implies a
+    parent. This is the one escape hatch: equivalent to what app/seed/data.py
+    does for the demo network's a0, but for a real person, done in a single
+    step (login + ACTIVE root agent + a usable referral link), not the
+    suggest-then-approve dance create_agent()'s other callers go through."""
+    from app.core.config import get_settings
+    from app.core.security import hash_password
+    from app.domains.rbac import service as rbac_service
+    from app.domains.referral.models import PromoterCode
+    from app.domains.users.models import User
+
+    existing_user = (
+        await db.execute(select(User).where(User.organization_id == organization_id, User.email == email))
+    ).scalar_one_or_none()
+    if existing_user is not None:
+        raise RootPromoterConflictError(f"An account with email '{email}' already exists")
+
+    code = promoter_code or _generate_promoter_code(f"{first_name} {last_name}")
+    existing_code = (
+        await db.execute(
+            select(AgentProfile).where(
+                AgentProfile.organization_id == organization_id, AgentProfile.promoter_code == code
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_code is not None:
+        raise RootPromoterConflictError(f"Promoter code '{code}' is already in use")
+
+    temporary_password = _generate_temp_password()
+    user = User(
+        organization_id=organization_id,
+        email=email,
+        password_hash=hash_password(temporary_password),
+        status="ACTIVE",
+    )
+    db.add(user)
+    await db.flush()
+    await rbac_service.assign_role(db, user_id=user.id, organization_id=organization_id, role_code="PROMOTER")
+
+    agent = await create_agent(
+        db,
+        organization_id=organization_id,
+        first_name=first_name,
+        last_name=last_name,
+        promoter_code=code,
+        parent_agent_id=None,
+        actor_user_id=actor_user_id,
+        user_id=user.id,
+        status="ACTIVE",
+    )
+
+    settings = get_settings()
+    promoter_code_row = PromoterCode(
+        organization_id=organization_id,
+        agent_id=agent.id,
+        code=code,
+        personal_link=f"{settings.public_app_base_url}/r/{code}?org={organization_id}",
+        status="ACTIVE",
+        valid_from=utcnow(),
+    )
+    db.add(promoter_code_row)
+    await audit_service.record(
+        db,
+        organization_id=organization_id,
+        actor_user_id=actor_user_id,
+        action="network.root_promoter_created",
+        entity_type="agent_profile",
+        entity_id=str(agent.id),
+        new_value={"display_name": agent.display_name, "promoter_code": code, "email": email},
+    )
+    await db.commit()
+    await db.refresh(agent)
+    await db.refresh(promoter_code_row)
+    return agent, user, promoter_code_row, temporary_password
+
+
+def _generate_temp_password() -> str:
+    import secrets
+    import string
+
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(16)) + "!Aa1"
 
 
 async def move_agent(
@@ -387,6 +611,7 @@ async def move_agent(
 
 async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:
     from app.domains.commissions.models import Rank
+    from app.domains.users.models import User
 
     stmt = (
         select(
@@ -400,6 +625,10 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             NetworkNode.direct_parent_agent_id,
             AgentProfile.photo_url,
             AgentProfile.rejection_reason,
+            User.email,
+            AgentProfile.is_blacklisted,
+            AgentProfile.first_name,
+            AgentProfile.last_name,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -407,6 +636,9 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             (NetworkNode.agent_id == AgentProfile.id) & (NetworkNode.effective_to.is_(None)),
             isouter=True,
         )
+        # isouter: an admin-suggested agent may have no user_id (no login of its
+        # own) -- it must still show up in the list, just with email=None.
+        .join(User, User.id == AgentProfile.user_id, isouter=True)
         .where(AgentProfile.organization_id == organization_id)
         .order_by(AgentProfile.joined_at.desc())
     )
@@ -423,6 +655,10 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "direct_parent_agent_id": r[7],
             "photo_url": r[8],
             "rejection_reason": r[9],
+            "email": r[10],
+            "is_blacklisted": r[11],
+            "first_name": r[12],
+            "last_name": r[13],
         }
         for r in rows
     ]
@@ -433,22 +669,57 @@ async def update_agent(
     *,
     organization_id: uuid.UUID,
     agent_id: uuid.UUID,
-    display_name: str | None,
+    first_name: str | None,
+    last_name: str | None,
     status_value: str | None,
     current_rank_id: uuid.UUID | None,
     actor_user_id: uuid.UUID,
+    is_blacklisted: bool | None = None,
 ) -> AgentProfile | None:
     from app.domains.commissions.models import AgentRankHistory
+    from app.domains.rbac import service as rbac_service
 
     agent = await db.get(AgentProfile, agent_id)
     if agent is None or agent.organization_id != organization_id:
         return None
 
-    previous = {"status": agent.status, "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None}
-    if display_name is not None:
-        agent.display_name = display_name
+    # PENDING_APPROVAL -> ACTIVE is an approval, not a plain edit -- must go
+    # through approve_agent() (network.approve-gated) exclusively. Without this
+    # guard, this function's network.manage-gated caller (PATCH /agents/{id})
+    # would let a plain ADMIN confirm their own suggested agent, defeating the
+    # entire point of network.approve being withheld from that role. Other
+    # transitions into ACTIVE (e.g. "Riattiva" on a SUSPENDED/TERMINATED
+    # agent) are unaffected -- only the PENDING_APPROVAL source status is special.
+    if status_value == "ACTIVE" and agent.status == "PENDING_APPROVAL":
+        raise AgentApprovalError("Use the dedicated approve endpoint (network.approve) to activate a suggested agent")
+
+    previous = {
+        "status": agent.status,
+        "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None,
+        "is_blacklisted": agent.is_blacklisted,
+    }
+    if first_name is not None or last_name is not None:
+        agent.first_name = first_name if first_name is not None else agent.first_name
+        agent.last_name = last_name if last_name is not None else agent.last_name
+        agent.display_name = f"{agent.first_name or ''} {agent.last_name or ''}".strip()
     if status_value is not None:
         agent.status = status_value
+        # Deactivating (SUSPENDED/TERMINATED, e.g. the admin's "Disattiva
+        # promoter"/"Blacklist" buttons) must actually take the PROMOTER
+        # capability away, not just hide the row -- re-activating (back to
+        # ACTIVE) restores it. A login-less admin-suggested agent has no
+        # user_id and nothing to sync.
+        if agent.user_id is not None:
+            if status_value == "ACTIVE":
+                await rbac_service.assign_role(
+                    db, user_id=agent.user_id, organization_id=organization_id, role_code="PROMOTER"
+                )
+            elif status_value in ("SUSPENDED", "TERMINATED"):
+                await rbac_service.revoke_role(
+                    db, user_id=agent.user_id, organization_id=organization_id, role_code="PROMOTER"
+                )
+    if is_blacklisted is not None:
+        agent.is_blacklisted = is_blacklisted
     if current_rank_id is not None:
         agent.current_rank_id = current_rank_id
         db.add(
@@ -468,7 +739,11 @@ async def update_agent(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="network.agent_updated", entity_type="agent_profile", entity_id=str(agent_id),
         previous_value=previous,
-        new_value={"status": agent.status, "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None},
+        new_value={
+            "status": agent.status,
+            "current_rank_id": str(agent.current_rank_id) if agent.current_rank_id else None,
+            "is_blacklisted": agent.is_blacklisted,
+        },
     )
     await db.commit()
     await db.refresh(agent)

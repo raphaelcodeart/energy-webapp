@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.deps import CurrentUser, get_current_user
 from app.core.rate_limit import rate_limit
 from app.domains.auth import service as auth_service
 from app.domains.auth.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
+    MeRead,
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
@@ -17,6 +19,22 @@ from app.domains.auth.schemas import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 REFRESH_COOKIE_NAME = "lial_refresh_token"
+
+
+@router.get("/me", response_model=MeRead)
+async def get_me(current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> MeRead:
+    """Live roles for the current user -- unlike the access token's own baked-in
+    roles (set once at login/refresh, see authenticate()), this always reflects
+    the current DB state. Needed for anything that can change roles mid-session
+    without forcing a re-login: 'lavora con noi' auto-activation grants
+    PROMOTER immediately, and an admin deactivating a promoter revokes it --
+    the customer/promoter area switcher (app-shell.tsx) reads this so it
+    appears/disappears right away instead of waiting for the 15-minute access
+    token to naturally expire and refresh."""
+    from app.domains.rbac.service import get_roles_for_user
+
+    roles = await get_roles_for_user(db, user_id=current_user.user_id, organization_id=current_user.organization_id)
+    return MeRead(roles=roles)
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { friendlyApiError } from "@/lib/api-error";
 import type { BranchContractRead, BranchMemberRead, SimulationStepRead } from "@/lib/types";
 
 const RANKS = ["S1", "S2", "S3", "TL1", "TL2", "TL3", "TL4", "MD1", "MD2", "MD3", "MD4", "MD5"];
@@ -100,8 +101,7 @@ export function CommissionSimulator({ agentId }: { agentId: string }) {
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Errore durante la simulazione");
+        throw new Error(await friendlyApiError(res, "Errore durante la simulazione."));
       }
 
       const data = (await res.json()) as SimulationStepRead[];

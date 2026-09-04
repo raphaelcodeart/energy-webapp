@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CommissionLevelTotalsRead, CommissionMovementDetailRead } from "@/lib/types";
+import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
@@ -80,7 +81,7 @@ export function AdminCommissionsPanel({ initialStatusFilter }: { initialStatusFi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: "Segnata come pagata da amministrazione" }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await friendlyApiError(res));
       await queryClient.invalidateQueries({ queryKey: ["admin", "commissions"] });
     } catch (err: any) {
       setPayError(err.message || "Impossibile registrare il pagamento.");

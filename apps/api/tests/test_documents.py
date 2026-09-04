@@ -7,14 +7,11 @@ import uuid
 
 import pytest
 
-from app.core.security import hash_password
 from app.domains.catalog.models import Product, ProductVersion
 from app.domains.contracts import service as contract_service
 from app.domains.customers.models import Address, Customer, SupplyPoint
 from app.domains.documents import service as documents_service
 from app.domains.network import service as network_service
-from app.domains.users.models import User
-
 from tests.test_commission_engine_integration import _make_actor
 
 
@@ -54,7 +51,7 @@ async def _make_contract(db, organization_id, *, customer_kind="PRIVATE"):
     await db.commit()
 
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Doc Agent",
+        db, organization_id=organization_id, first_name="Doc", last_name="Agent",
         promoter_code=f"DA-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
     )
     contract = await contract_service.create_contract(

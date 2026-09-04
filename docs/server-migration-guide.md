@@ -377,9 +377,16 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 ## 6. Struttura completa del database
 
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
-cartella — è un dump reale (`pg_dump --schema-only`) del database in esecuzione,
-non una ricostruzione a memoria. Contiene tutte le 46 tabelle con tipi esatti,
-vincoli, indici, foreign key.
+cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
+rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
+ricostruzione a memoria (rigenerato 2026-09-04, allineato alla revision
+Alembic `b8e4f1a2c937` / migrazione `0017_agent_first_last_name`;
+`--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
+usa un utente Postgres diverso da `lial`). Contiene tutte le 49 tabelle con
+tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
+rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
+file torna a essere stale (è già successo una volta: era rimasto indietro di
+tre domini interi prima di questa sessione).
 
 La spiegazione **concettuale** (perché ogni tabella esiste, come si collegano,
 diagramma ER) è in `docs/database-model.md` — leggila insieme allo schema SQL,
@@ -400,29 +407,38 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 46 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 49 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
                     user_roles, sessions, audit_log, password_reset_tokens
-Rete commerciale:  agent_profiles (ha anche photo_url), network_nodes,
-                    network_edges, network_closure, network_assignment_history,
-                    network_snapshots, network_snapshot_nodes
+Rete commerciale:  agent_profiles (ha anche photo_url, approved_by_user_id/
+                    approved_at/rejection_reason, is_blacklisted,
+                    first_name/last_name -- display_name resta derivato),
+                    network_nodes, network_edges, network_closure,
+                    network_assignment_history, network_snapshots,
+                    network_snapshot_nodes
 Referral:          promoter_codes, referral_events, referral_sessions,
                     customer_attributions, attribution_corrections
 Catalogo/clienti:  products, product_versions (ha anche
-                    contract_duration_months), customers (ha anche photo_url),
-                    customer_profiles, companies, addresses,
-                    supply_points (ha anche label)
-Contratti:         contracts (ha anche activated_at/expires_at),
+                    contract_duration_months, token per grado su
+                    commissions.services.rank_evaluation), customers (ha
+                    anche photo_url, pec), customer_profiles, companies,
+                    addresses, supply_points (ha anche label)
+Contratti:         contracts (ha anche activated_at/expires_at/iban),
                     contract_status_history, contract_events,
-                    contract_attributions
+                    contract_attributions, documents (documenti sensibili
+                    del contratto -- bucket privato lial-documents)
 Supporto:          tickets, ticket_messages
 Provvigioni:       ranks, agent_rank_history, commission_plan_versions,
                     commission_rule_versions, commission_calculations,
                     commission_calculation_steps, commission_movements,
                     commission_adjustments, commission_offsets,
                     commission_reversals
+Notifiche:         notifications (in-app, popolate da approvazioni,
+                    promozioni/retrocessioni di grado, ecc.)
+Documentazione:    documentation_posts (news/materiale admin per clienti e
+                    promoter, allegati sul bucket pubblico lial-media)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```

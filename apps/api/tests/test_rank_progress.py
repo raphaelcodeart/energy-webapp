@@ -87,7 +87,7 @@ async def test_rank_progress_reports_personal_volume_and_next_rank_thresholds(db
 
     actor_user_id = await _make_actor(db, organization_id)
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Producer", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Producer", last_name="Tester", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     await _make_active_contract(db, organization_id, producer_agent_id=agent.id, actor_user_id=actor_user_id, price_cents=1000)
@@ -120,11 +120,11 @@ async def test_rank_progress_group_volume_includes_downline_but_personal_does_no
 
     actor_user_id = await _make_actor(db, organization_id)
     sponsor = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Sponsor", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Sponsor", last_name="Tester", promoter_code=f"SP-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=s1.id,
     )
     producer = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Producer", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Producer", last_name="Tester", promoter_code=f"PR-{uuid.uuid4().hex[:8]}",
         parent_agent_id=sponsor.id, current_rank_id=s1.id,
     )
     await _make_active_contract(db, organization_id, producer_agent_id=producer.id, actor_user_id=actor_user_id, price_cents=1000)
@@ -149,7 +149,7 @@ async def test_rank_progress_is_max_rank_when_no_higher_rank_exists(db, organiza
     await db.flush()
 
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="Top Agent", promoter_code=f"TOP-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="Top", last_name="Agent", promoter_code=f"TOP-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None, current_rank_id=top.id,
     )
 
@@ -163,7 +163,7 @@ async def test_rank_progress_is_max_rank_when_no_higher_rank_exists(db, organiza
 @pytest.mark.asyncio
 async def test_rank_progress_with_no_rank_assigned(db, organization_id):
     agent = await network_service.create_agent(
-        db, organization_id=organization_id, display_name="No Rank Agent", promoter_code=f"NR-{uuid.uuid4().hex[:8]}",
+        db, organization_id=organization_id, first_name="No", last_name="Rank Agent", promoter_code=f"NR-{uuid.uuid4().hex[:8]}",
         parent_agent_id=None,
     )
     progress = await get_rank_progress(db, organization_id=organization_id, agent_id=agent.id)

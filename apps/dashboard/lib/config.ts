@@ -10,4 +10,4 @@
 // being correct -- bring back an organization picker (or resolve it from the
 // email server-side) at that point, don't just add a second hardcoded value
 // here.
-export const DEFAULT_ORGANIZATION_ID = "0b0b6a89-e09d-4581-80cd-e8457f287b9e";
+export const DEFAULT_ORGANIZATION_ID = "2617cc7b-9f55-4e08-bded-e40680035c36";
