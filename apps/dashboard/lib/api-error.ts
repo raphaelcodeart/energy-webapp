@@ -59,6 +59,12 @@ const KNOWN_MESSAGES: Record<string, string> = {
   "status must be APPROVED or REJECTED": "Lo stato deve essere Approvato o Rifiutato.",
   "Only a resolved ticket can be deleted.": "Solo un ticket risolto può essere eliminato.",
   "iban is required": "L'IBAN è obbligatorio.",
+  "Insufficient balance": "Saldo insufficiente per completare l'operazione.",
+  "Insufficient balance to reverse this transaction": "Saldo insufficiente per stornare questa transazione.",
+  "Cannot send to your own wallet": "Non puoi inviare denaro al tuo stesso wallet.",
+  "Wallet not found": "Indirizzo wallet non trovato.",
+  "Transaction not found": "Transazione non trovata.",
+  "Cannot reverse a REVERSAL": "Non è possibile stornare uno storno.",
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -95,6 +101,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "documents.upload": "caricare documenti",
   "documents.review": "revisionare i documenti",
   "documentation.manage": "gestire la documentazione",
+  "wallet.manage": "gestire i wallet",
 };
 
 const GENERIC_FALLBACK = "Si è verificato un errore imprevisto. Riprova più tardi.";

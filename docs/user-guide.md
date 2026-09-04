@@ -106,6 +106,17 @@ manuale). Chi ha sia il ruolo Cliente sia quello Promoter vede in cima
 all'intestazione (e nel menu account) un selettore **"Area Cliente / Area
 Promoter"** per passare dall'una all'altra senza fare logout.
 
+**Wallet** — un portafoglio interno in euro, personale e sempre disponibile,
+pensato come un "finto wallet crypto": ha un saldo, un indirizzo univoco
+(stile `0x...`, da copiare con un click) e uno storico di tutte le
+transazioni. L'amministrazione può accreditare del cashback su questo
+wallet dopo un acquisto (o anche solo come ricarica). Da qui puoi anche
+**inviare denaro a un altro wallet** conoscendo il suo indirizzo — funziona
+come un vero wallet crypto: basta l'indirizzo del destinatario, nessuna
+relazione richiesta. Ogni movimento (ricevuto o inviato) resta nello
+storico con data, importo e controparte. Il saldo è puramente interno: non
+è collegato a conti bancari reali e non si può prelevare.
+
 ### 3.2 Area Promoter (`/promoter`)
 
 Pensata per far gestire al promoter la propria rete **come una vera azienda**:
@@ -149,6 +160,11 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 - **Documentazione** — lo stesso feed di annunci/materiale che vede il
   cliente, quando l'amministrazione lo pubblica anche (o solo) per i
   promoter.
+- **Wallet** — lo stesso portafoglio interno in euro descritto per l'area
+  Cliente: saldo, indirizzo personale, invio/ricezione verso qualsiasi altro
+  wallet della piattaforma, storico transazioni. È lo stesso wallet
+  indipendentemente dal ruolo con cui accedi (se hai sia login Cliente sia
+  Promoter, il saldo è unico e condiviso tra le due aree).
 
 Se hai anche un account Cliente collegato allo stesso login, in cima
 all'intestazione trovi lo stesso selettore **"Area Cliente / Area Promoter"**
@@ -197,7 +213,10 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   di fornitura, dati fiscali) e in più un **riepilogo contratti**: prodotto,
   stato colorato (verde se attivo/rinnovato, rosso se respinto/cessato,
   ambra se in lavorazione), scadenza — clicca una riga per il dettaglio
-  (date esatte, note, id). L'icona **Modifica** apre una schermata completa:
+  (date esatte, note, id). Lo stesso popup mostra anche il **Wallet** del
+  cliente (saldo e indirizzo, se ha già un login) con un mini-modulo
+  **"Ricarica"** per accreditare cashback direttamente da qui, subito dopo
+  un acquisto o come riconoscimento manuale. L'icona **Modifica** apre una schermata completa:
   carica/cambia la foto profilo, modifica i dati anagrafici, e in fondo
   **Riassegna Promoter** (cambia a quale promoter il cliente è attribuito,
   con motivazione obbligatoria — tracciato come le altre modifiche). Non c'è
@@ -250,6 +269,16 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   subito nell'area del cliente/promoter. Una risposta su un ticket "Aperto" lo
   sposta automaticamente in "In lavorazione"; solo l'amministrazione può
   segnarlo come "Risolto" o "Chiuso".
+- **Wallet** — visione d'insieme di tutti i portafogli della piattaforma:
+  saldo e indirizzo di ogni cliente/promoter (con ricerca per nome, email o
+  indirizzo), più il registro globale di tutte le transazioni (ricariche,
+  trasferimenti tra utenti, storni), filtrabile per tipo ed esportabile in
+  CSV. Da qui puoi anche **stornare** una transazione fatta per errore (un
+  clic su "Storna" con motivazione): non cancella la transazione originale,
+  ne registra una di correzione collegata, così lo storico resta sempre
+  tracciabile. La ricarica di un singolo cliente si fa più comodamente dal
+  suo popup in "Anagrafiche Clienti" (vedi sopra); questa sezione è la vista
+  d'insieme su tutta l'organizzazione.
 
 ## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 

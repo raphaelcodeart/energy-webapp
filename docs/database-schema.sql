@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict cDyrzZvcv3ppsemBiH8A8zCftAClPguKic173s8H8ZOvn9kuCrQJ8HuVZtjvN4U
+\restrict awEpE7dHTBwkqySywN6rQqjRMLgY4bKOOvwgdQ5dlKRadhGxy1wVPTebOTZo6Go
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -828,6 +828,44 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: wallet_transactions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.wallet_transactions (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    from_wallet_id uuid,
+    to_wallet_id uuid,
+    amount_cents bigint NOT NULL,
+    currency character varying(3) DEFAULT 'EUR'::character varying NOT NULL,
+    type character varying(16) NOT NULL,
+    reference_contract_id uuid,
+    reverses_transaction_id uuid,
+    note character varying(500),
+    actor_user_id uuid,
+    idempotency_key character varying(128) NOT NULL,
+    CONSTRAINT ck_wallet_transactions_ck_wallet_transactions_has_a_side CHECK (((from_wallet_id IS NOT NULL) OR (to_wallet_id IS NOT NULL)))
+);
+
+
+--
+-- Name: wallets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.wallets (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    address character varying(42) NOT NULL,
+    balance_cents bigint DEFAULT '0'::bigint NOT NULL,
+    currency character varying(3) DEFAULT 'EUR'::character varying NOT NULL,
+    CONSTRAINT ck_wallets_ck_wallets_balance_non_negative CHECK ((balance_cents >= 0))
+);
+
+
+--
 -- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1220,6 +1258,22 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: wallet_transactions pk_wallet_transactions; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT pk_wallet_transactions PRIMARY KEY (id);
+
+
+--
+-- Name: wallets pk_wallets; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT pk_wallets PRIMARY KEY (id);
+
+
+--
 -- Name: agent_profiles uq_agent_promoter_code; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1297,6 +1351,30 @@ ALTER TABLE ONLY public.user_roles
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT uq_users_org_email UNIQUE (organization_id, email);
+
+
+--
+-- Name: wallet_transactions uq_wallet_transactions_idempotency_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT uq_wallet_transactions_idempotency_key UNIQUE (idempotency_key);
+
+
+--
+-- Name: wallets uq_wallets_address; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT uq_wallets_address UNIQUE (address);
+
+
+--
+-- Name: wallets uq_wallets_user_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT uq_wallets_user_id UNIQUE (user_id);
 
 
 --
@@ -1850,6 +1928,55 @@ CREATE INDEX ix_users_email ON public.users USING btree (email);
 --
 
 CREATE INDEX ix_users_organization_id ON public.users USING btree (organization_id);
+
+
+--
+-- Name: ix_wallet_transactions_from_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallet_transactions_from_wallet_id ON public.wallet_transactions USING btree (from_wallet_id);
+
+
+--
+-- Name: ix_wallet_transactions_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallet_transactions_organization_id ON public.wallet_transactions USING btree (organization_id);
+
+
+--
+-- Name: ix_wallet_transactions_to_wallet_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallet_transactions_to_wallet_id ON public.wallet_transactions USING btree (to_wallet_id);
+
+
+--
+-- Name: ix_wallet_transactions_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallet_transactions_type ON public.wallet_transactions USING btree (type);
+
+
+--
+-- Name: ix_wallets_address; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallets_address ON public.wallets USING btree (address);
+
+
+--
+-- Name: ix_wallets_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallets_organization_id ON public.wallets USING btree (organization_id);
+
+
+--
+-- Name: ix_wallets_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_wallets_user_id ON public.wallets USING btree (user_id);
 
 
 --
@@ -2812,8 +2939,72 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: wallet_transactions fk_wallet_transactions_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_actor_user_id_users FOREIGN KEY (actor_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_from_wallet_id_wallets; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_from_wallet_id_wallets FOREIGN KEY (from_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_reference_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_contract_id_contracts FOREIGN KEY (reference_contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_reverses_transaction_id_wallet_t_a759; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reverses_transaction_id_wallet_t_a759 FOREIGN KEY (reverses_transaction_id) REFERENCES public.wallet_transactions(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_to_wallet_id_wallets; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_to_wallet_id_wallets FOREIGN KEY (to_wallet_id) REFERENCES public.wallets(id);
+
+
+--
+-- Name: wallets fk_wallets_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT fk_wallets_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: wallets fk_wallets_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallets
+    ADD CONSTRAINT fk_wallets_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict cDyrzZvcv3ppsemBiH8A8zCftAClPguKic173s8H8ZOvn9kuCrQJ8HuVZtjvN4U
+\unrestrict awEpE7dHTBwkqySywN6rQqjRMLgY4bKOOvwgdQ5dlKRadhGxy1wVPTebOTZo6Go
 

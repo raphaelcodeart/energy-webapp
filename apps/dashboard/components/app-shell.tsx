@@ -45,6 +45,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   PROMOTER_APPROVED: "Promoter approvato",
   PROMOTER_REJECTED: "Promoter non approvato",
   COMMISSION_EARNED: "Nuova provvigione",
+  CASHBACK_RECEIVED: "Cashback ricevuto",
+  WALLET_TRANSFER_RECEIVED: "Bonifico wallet ricevuto",
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
@@ -65,6 +67,12 @@ const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
   ),
   COMMISSION_EARNED: (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2" />
+  ),
+  CASHBACK_RECEIVED: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2" />
+  ),
+  WALLET_TRANSFER_RECEIVED: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
   ),
 };
 

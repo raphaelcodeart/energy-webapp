@@ -96,6 +96,7 @@ export type BranchMemberRead = {
 export type AgentProfileRead = {
   id: string;
   organization_id: string;
+  user_id: string | null;
   display_name: string;
   promoter_code: string;
   status: string;
@@ -133,6 +134,7 @@ export type RankEvaluationChangeRead = {
 export type CustomerRead = {
   id: string;
   organization_id: string;
+  user_id: string | null;
   kind: string;
   fiscal_code: string | null;
   vat_number: string | null;
@@ -399,5 +401,38 @@ export type TicketRead = {
 
 export type TicketDetailRead = TicketRead & {
   messages: TicketMessageRead[];
+};
+
+export type WalletRead = {
+  id: string;
+  user_id: string;
+  address: string;
+  balance_cents: number;
+  currency: string;
+  created_at: string;
+};
+
+export type WalletAdminListItemRead = WalletRead & {
+  owner_display_name: string;
+  owner_email: string;
+  owner_roles: string[];
+};
+
+export type WalletTransactionRead = {
+  id: string;
+  from_wallet_id: string | null;
+  from_address: string | null;
+  from_display_name: string | null;
+  to_wallet_id: string | null;
+  to_address: string | null;
+  to_display_name: string | null;
+  amount_cents: number;
+  currency: string;
+  type: string;
+  reference_contract_id: string | null;
+  reverses_transaction_id: string | null;
+  note: string | null;
+  actor_user_id: string | null;
+  created_at: string;
 };
 

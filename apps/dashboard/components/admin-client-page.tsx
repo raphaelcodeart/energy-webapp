@@ -12,6 +12,7 @@ import { AdminCreateContractPanel } from "@/components/admin-create-contract-pan
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
 import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
+import { AdminWalletsPanel } from "@/components/admin-wallets-panel";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
 import { ContractStatusHistoryModal } from "@/components/contract-status-history-modal";
@@ -174,6 +175,15 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "wallets",
+    label: "Wallet",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+      </svg>
+    ),
+  },
+  {
     key: "documentation",
     label: "Documentazione",
     icon: (
@@ -191,7 +201,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "documentation">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "documentation">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -545,6 +555,12 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           <div className="space-y-6">
             <SectionBanner image="commissions" alt="Provvigioni" />
             <AdminCommissionsPanel initialStatusFilter={pendingCommissionStatusFilter ?? undefined} />
+          </div>
+        )}
+        {activeTab === "wallets" && (
+          <div className="space-y-6">
+            <SectionBanner image="wallets" alt="Wallet" />
+            <AdminWalletsPanel />
           </div>
         )}
         {activeTab === "documentation" && (

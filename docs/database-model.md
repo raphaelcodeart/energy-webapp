@@ -452,7 +452,62 @@ public `lial-media` bucket (marketing material, not the sensitive-document
 workflow in §4/`documents`), uploaded via
 `core/storage.py::upload_documentation_attachment()`.
 
-## 9. ER diagram (core slice)
+## 9. Internal wallet (added Session 21)
+
+```
+wallets
+  id, organization_id, user_id (unique -- one wallet per login, whether
+    CUSTOMER, PROMOTER, or both roles on the same account),
+  address (unique, "0x" + 40 hex chars, Ethereum-style -- cosmetic
+    resemblance only, no real blockchain involved),
+  balance_cents (BigInteger, default 0, CHECK >= 0 -- the first CHECK
+    constraint anywhere in this codebase, justified because this is the
+    first column that is real financial state rather than an append-only
+    ledger total),
+  currency (default EUR)
+
+wallet_transactions                                     -- the ledger
+  id, organization_id,
+  from_wallet_id nullable (NULL = admin/system origin, i.e. an ADMIN_CREDIT),
+  to_wallet_id nullable (NULL = admin/system destination, i.e. a REVERSAL
+    of an ADMIN_CREDIT -- CHECK ensures at least one side is set),
+  amount_cents, currency,
+  type (ADMIN_CREDIT / TRANSFER / REVERSAL),
+  reference_contract_id nullable (links a cashback credit to the purchase
+    that triggered it -- always NULL for TRANSFER/REVERSAL),
+  reverses_transaction_id nullable (self-FK, set only on a REVERSAL row --
+    the original row is never mutated, same discipline as
+    CommissionReversal in §5),
+  note nullable, actor_user_id nullable, idempotency_key (unique)
+```
+
+ONE ROW per transaction (not double-entry with two rows) -- deliberate,
+simpler schema matching the user's own framing ("una tabella globale delle
+transazioni... ogni transazione è associato a id cliente e id ricevente").
+`Wallet.user_id` is the only ownership key -- not `Customer.id` or
+`AgentProfile.id` specifically, since a person may hold both roles on the
+same login (see `network/service.py::apply_as_promoter`); the wallet is
+created lazily on first access (`wallets/service.py::get_or_create_wallet()`).
+
+**Concurrency**: a debit (peer transfer, or a reversal clawing money back)
+uses an atomic compare-and-swap `UPDATE ... WHERE balance_cents >= :amount`
+and checks the affected row count -- not `SELECT ... FOR UPDATE`, this
+codebase's only other concurrency pattern anywhere being a DB unique
+constraint + catching `IntegrityError` (see `commission_movements
+.idempotency_key`). `idempotency_key` (client-generated, Stripe-style)
+guards against a double-submitted request creating two transactions.
+
+**Reversal**: admin-only (`wallet.manage`, same tier as `SUPER_ADMIN`/
+`ORGANIZATION_ADMIN`/`ADMIN` -- not `BACK_OFFICE_OPERATOR`), inserts a new
+`REVERSAL` row rather than mutating the original. Reversing a `TRANSFER`
+re-debits the original recipient, which can itself fail with
+`InsufficientBalanceError` if they've since spent the funds -- an accepted,
+documented outcome. A `REVERSAL` itself can never be reversed.
+
+No real-money withdrawal or payment-provider integration exists or is
+planned for this domain -- it is a purely internal, virtual balance.
+
+## 10. ER diagram (core slice)
 
 ```mermaid
 erDiagram

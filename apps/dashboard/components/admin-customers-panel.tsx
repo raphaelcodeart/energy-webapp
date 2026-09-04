@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoUpload } from "@/components/photo-upload";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
-import type { AgentListItemRead, ContractRead, CustomerDetailRead, CustomerRead } from "@/lib/types";
+import type { AgentListItemRead, ContractRead, CustomerDetailRead, CustomerRead, WalletRead } from "@/lib/types";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Bozza",
@@ -53,6 +53,19 @@ async function fetchAgentsForReassign(): Promise<AgentListItemRead[]> {
   const res = await fetch("/api/proxy/network/agents");
   if (!res.ok) throw new Error("Impossibile caricare i promoter.");
   return res.json();
+}
+
+// null (not an error) means "this user has never transacted yet" -- the
+// admin view deliberately does not lazily create a wallet just by looking.
+async function fetchCustomerWallet(userId: string): Promise<WalletRead | null> {
+  const res = await fetch(`/api/proxy/wallets/admin/${userId}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Impossibile caricare il wallet.");
+  return res.json();
+}
+
+function euro(cents: number): string {
+  return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
 function CustomerAvatar({ url, size = 36 }: { url: string | null; size?: number }) {
@@ -109,6 +122,53 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
   const [expandedContractId, setExpandedContractId] = useState<string | null>(null);
   const customerContracts = (allContracts ?? []).filter((c) => c.customer_id === viewingId);
 
+  // Wallet ("Ricarica") -- shown inside the same detail popup, only when the
+  // customer has a login (user_id) to attach a wallet to.
+  const { data: viewingWallet } = useQuery({
+    queryKey: ["admin", "wallets", "by-user", viewingDetail?.user_id],
+    queryFn: () => fetchCustomerWallet(viewingDetail!.user_id!),
+    enabled: !!viewingDetail?.user_id,
+  });
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [topUpNote, setTopUpNote] = useState("");
+  const [topUpLoading, setTopUpLoading] = useState(false);
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+  const [topUpSuccess, setTopUpSuccess] = useState(false);
+
+  async function handleTopUp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewingDetail?.user_id) return;
+    const amountCents = Math.round(parseFloat(topUpAmount.replace(",", ".")) * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      setTopUpError("Inserisci un importo valido.");
+      return;
+    }
+    setTopUpLoading(true);
+    setTopUpError(null);
+    try {
+      const res = await fetch("/api/proxy/wallets/admin/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: viewingDetail.user_id,
+          amount_cents: amountCents,
+          note: topUpNote || null,
+          idempotency_key: crypto.randomUUID(),
+        }),
+      });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      setTopUpSuccess(true);
+      setTopUpAmount("");
+      setTopUpNote("");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "wallets", "by-user", viewingDetail.user_id] });
+      setTimeout(() => setTopUpSuccess(false), 3000);
+    } catch (err: any) {
+      setTopUpError(err.message || "Impossibile ricaricare il wallet.");
+    } finally {
+      setTopUpLoading(false);
+    }
+  }
+
   // Edit form
   const [editingCustomer, setEditingCustomer] = useState<CustomerRead | null>(null);
   const [editEmail, setEditEmail] = useState("");
@@ -162,6 +222,14 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
     } finally {
       setReassignLoading(false);
     }
+  }
+
+  function openView(id: string) {
+    setTopUpAmount("");
+    setTopUpNote("");
+    setTopUpError(null);
+    setTopUpSuccess(false);
+    setViewingId(id);
   }
 
   function openEdit(c: CustomerRead) {
@@ -368,7 +436,7 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                     <td className="py-4 px-6">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
-                          onClick={() => setViewingId(c.id)}
+                          onClick={() => openView(c.id)}
                           title="Mostra dettagli"
                           className="p-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-slate-400 light:text-slate-500 hover:text-white transition cursor-pointer"
                         >
@@ -626,6 +694,60 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                           <div className="text-[10px] text-slate-500 mt-0.5">{sp.energy_type}</div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {viewingDetail.user_id && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-semibold mb-2">Wallet</p>
+                    <div className="p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 space-y-3">
+                      {viewingWallet === undefined ? (
+                        <p className="text-xs text-slate-500">Caricamento...</p>
+                      ) : viewingWallet === null ? (
+                        <p className="text-xs text-slate-500">Nessun wallet ancora -- verrà creato alla prima ricarica.</p>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Saldo</span>
+                            <p className="text-lg font-bold text-white light:text-slate-900">{euro(viewingWallet.balance_cents)}</p>
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-500">{viewingWallet.address}</span>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleTopUp} className="flex items-end gap-2 pt-2 border-t border-white/5 light:border-slate-200">
+                        <div className="space-y-1 flex-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (EUR)</label>
+                          <input
+                            required
+                            inputMode="decimal"
+                            value={topUpAmount}
+                            onChange={(e) => setTopUpAmount(e.target.value)}
+                            placeholder="0,00"
+                            className="w-full rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                          />
+                        </div>
+                        <div className="space-y-1 flex-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Nota (opzionale)</label>
+                          <input
+                            value={topUpNote}
+                            onChange={(e) => setTopUpNote(e.target.value)}
+                            placeholder="Cashback ordine..."
+                            className="w-full rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                          />
+                        </div>
+                        <button type="submit" disabled={topUpLoading}
+                          className="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50 shrink-0">
+                          {topUpLoading ? "..." : "Ricarica"}
+                        </button>
+                      </form>
+                      {topUpError && (
+                        <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{topUpError}</div>
+                      )}
+                      {topUpSuccess && (
+                        <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">Wallet ricaricato con successo.</div>
+                      )}
                     </div>
                   </div>
                 )}

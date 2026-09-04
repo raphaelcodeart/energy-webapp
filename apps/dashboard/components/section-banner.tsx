@@ -17,6 +17,11 @@ export const SECTION_IMAGES = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Rooftop_solar_photovoltaic_installation.jpg/1280px-Rooftop_solar_photovoltaic_installation.jpg",
   commissions:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Piggy-bank-968302.jpg/1920px-Piggy-bank-968302.jpg",
+  // Same image as "commissions" -- both are money/savings themed and this
+  // avoids introducing a second, unverified Wikimedia URL for a purely
+  // decorative header.
+  wallets:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Piggy-bank-968302.jpg/1920px-Piggy-bank-968302.jpg",
   support:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Reception_Desk.jpg/1280px-Reception_Desk.jpg",
   // Bundled locally (apps/dashboard/public/images/), not hotlinked -- picked

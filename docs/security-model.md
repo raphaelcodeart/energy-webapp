@@ -103,6 +103,25 @@
   -- creating a parentless "root" promoter is treated as the same
   sensitivity tier as approving a suggested agent, not the broader
   `network.manage`.
+- `wallet.manage` (Session 21, migration `0018`): gates every admin wallet
+  route (list all wallets, view/credit any user's wallet, view the global
+  transaction ledger, reverse a transaction). `SUPER_ADMIN`/
+  `ORGANIZATION_ADMIN`/`ADMIN` only, deliberately not
+  `BACK_OFFICE_OPERATOR` -- crediting a wallet is a real money-adjacent
+  action (cashback), same tier as `commissions.evaluate_ranks`. Reading or
+  spending from one's OWN wallet needs no permission beyond authentication
+  (`GET /wallets/me`, `POST /wallets/transfer`) -- the source wallet is
+  always resolved from the caller's own `user_id`, never from the request
+  body, so there is no cross-user access surface to gate. See
+  `business-rules.md §Internal wallet`.
+  - **Financial-integrity controls, not just RBAC**: a wallet debit uses an
+    atomic compare-and-swap `UPDATE ... WHERE balance_cents >= :amount`
+    (checked via affected-row-count, not a pre-read-then-write race) plus a
+    DB `CHECK (balance_cents >= 0)` as defense in depth -- the first CHECK
+    constraint anywhere in this codebase. Every credit/transfer/reversal
+    carries a client-generated `idempotency_key` (unique DB constraint) so a
+    double-submitted request can never double-apply. `POST /wallets/transfer`
+    is additionally rate-limited per IP (20/60s) against scripted abuse.
 
 ## Multi-tenancy
 - Every tenant-scoped table carries `organization_id`. All repository queries filter on

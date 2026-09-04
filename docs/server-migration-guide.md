@@ -380,9 +380,9 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (rigenerato 2026-09-04, allineato alla revision
-Alembic `b8e4f1a2c937` / migrazione `0017_agent_first_last_name`;
+Alembic `c9a1e4b6d2f3` / migrazione `0018_wallets`;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le 49 tabelle con
+usa un utente Postgres diverso da `lial`). Contiene tutte le 51 tabelle con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo una volta: era rimasto indietro di
@@ -407,7 +407,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 49 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 51 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -439,6 +439,9 @@ Notifiche:         notifications (in-app, popolate da approvazioni,
                     promozioni/retrocessioni di grado, ecc.)
 Documentazione:    documentation_posts (news/materiale admin per clienti e
                     promoter, allegati sul bucket pubblico lial-media)
+Wallet:            wallets (saldo interno per utente, indirizzo stile
+                    crypto), wallet_transactions (ledger globale
+                    ricariche/cashback, trasferimenti P2P, storni)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```

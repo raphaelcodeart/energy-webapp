@@ -74,6 +74,7 @@ domain's ORM internals directly from a router.
 | `renewals` / `reversals` | renewal & storno events | E |
 | `notifications` | in-app notifications (approvals, rank changes, tickets) | E (built) |
 | `documentation` | admin-authored news/training posts for customers & promoters | E (built) |
+| `wallets` | internal EUR wallet per user, admin cashback, peer transfers | E (built) |
 | `reports` | aggregate reporting endpoints | F |
 | `ai` | pgvector ingestion, hybrid search, assistant | G |
 

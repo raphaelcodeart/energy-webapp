@@ -35,6 +35,7 @@ PERMISSIONS = [
     "tickets.create", "tickets.respond", "tickets.delete",
     "documents.upload", "documents.review",
     "documentation.manage",
+    "wallet.manage",
 ]
 
 # Default role -> permission grants for the demo/seed environment. Real deployments
@@ -52,7 +53,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "commission_adjustments.create", "payments.manage", "documents.download",
         "reports.export", "reports.read", "audit.read", "settings.manage",
         "products.read", "products.manage", "tickets.respond", "tickets.delete",
-        "documents.upload", "documents.review", "documentation.manage",
+        "documents.upload", "documents.review", "documentation.manage", "wallet.manage",
     ],
     "BACK_OFFICE_OPERATOR": [
         "customers.read", "customers.create", "customers.update",

@@ -9,6 +9,7 @@ class CustomerRead(BaseModel):
 
     id: uuid.UUID
     organization_id: uuid.UUID
+    user_id: uuid.UUID | None
     kind: str
     fiscal_code: str | None
     vat_number: str | None

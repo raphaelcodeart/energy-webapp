@@ -14,6 +14,7 @@ import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
+import { WalletPanel } from "@/components/wallet-panel";
 import type { AgentProfileRead, BranchMemberRead, PromoterCodeRead, RankRead } from "@/lib/types";
 
 interface PromoterClientPageProps {
@@ -101,6 +102,16 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "wallet",
+    label: "Wallet",
+    notificationTypes: ["CASHBACK_RECEIVED", "WALLET_TRANSFER_RECEIVED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+      </svg>
+    ),
+  },
 ];
 
 const QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
@@ -157,7 +168,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
 ];
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet">("azienda");
   const router = useRouter();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
 
@@ -348,6 +359,13 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
             <div className="space-y-6">
               <SectionBanner image="documentation" alt="Documentazione" />
               <DocumentationFeed />
+            </div>
+          )}
+
+          {activeTab === "wallet" && (
+            <div className="space-y-6">
+              <SectionBanner image="wallets" alt="Wallet" />
+              <WalletPanel />
             </div>
           )}
         </div>

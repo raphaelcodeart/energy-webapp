@@ -49,6 +49,7 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
         {
             "id": c.id,
             "organization_id": c.organization_id,
+            "user_id": c.user_id,
             "kind": c.kind,
             "fiscal_code": c.fiscal_code,
             "vat_number": c.vat_number,
@@ -97,6 +98,7 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
     return {
         "id": customer.id,
         "organization_id": customer.organization_id,
+        "user_id": customer.user_id,
         "kind": customer.kind,
         "fiscal_code": customer.fiscal_code,
         "vat_number": customer.vat_number,

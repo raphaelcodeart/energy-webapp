@@ -9,6 +9,7 @@ class AgentProfileRead(BaseModel):
 
     id: uuid.UUID
     organization_id: uuid.UUID
+    user_id: uuid.UUID | None
     display_name: str
     promoter_code: str
     status: str

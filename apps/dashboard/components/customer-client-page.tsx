@@ -9,6 +9,7 @@ import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-
 import { DocumentationFeed } from "@/components/documentation-feed";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
+import { WalletPanel } from "@/components/wallet-panel";
 import { friendlyApiError } from "@/lib/api-error";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
 
@@ -154,11 +155,21 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "wallet",
+    label: "Wallet",
+    notificationTypes: ["CASHBACK_RECEIVED", "WALLET_TRANSFER_RECEIVED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+      </svg>
+    ),
+  },
 ];
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation">("products");
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation" | "wallet">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -404,6 +415,13 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
         <div className="space-y-6">
           <SectionBanner image="documentation" alt="Documentazione" />
           <DocumentationFeed />
+        </div>
+      )}
+
+      {activeTab === "wallet" && (
+        <div className="space-y-6">
+          <SectionBanner image="wallets" alt="Wallet" />
+          <WalletPanel />
         </div>
       )}
     </AppShell>

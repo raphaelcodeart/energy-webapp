@@ -4,6 +4,79 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 21 — 2026-09-04 — Internal EUR wallet (cashback, peer transfers)
+
+New `wallets` domain: every user (customer or promoter) gets an internal EUR
+wallet with a crypto-style address (`0x` + 40 hex chars), a balance, and a
+global append-only transaction ledger. Full design rationale in
+`business-rules.md §Internal wallet` and `database-model.md §9` -- summary:
+
+- **Schema**: `wallets` (`user_id` unique, `address` unique, `balance_cents`
+  with a `CHECK >= 0` -- the first CHECK constraint in this codebase) and
+  `wallet_transactions` (one row per transaction, not double-entry;
+  `from_wallet_id`/`to_wallet_id` both nullable with a CHECK that at least
+  one is set -- NULL `from` means an admin credit, NULL `to` means a
+  reversal of one; `type` ADMIN_CREDIT/TRANSFER/REVERSAL;
+  `reverses_transaction_id` self-FK for corrections, never mutating the
+  original row; `idempotency_key` unique). Migration `0018_wallets`, new
+  permission `wallet.manage` seeded for `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/
+  `ADMIN` only.
+- **Concurrency**: a debit (peer transfer, or reversing a credit) uses an
+  atomic compare-and-swap `UPDATE ... WHERE balance_cents >= :amount`,
+  checked via affected-row-count -- not `SELECT ... FOR UPDATE`, matching
+  this codebase's sole existing concurrency pattern (DB constraint + catch
+  `IntegrityError`, see `commission_movements.idempotency_key`) rather than
+  introducing pessimistic locking as new territory.
+- **Endpoints**: self-service `GET /wallets/me`, `GET
+  /wallets/me/transactions`, `POST /wallets/transfer` (rate-limited 20/60s
+  per IP) need no permission beyond authentication -- the caller's own
+  wallet is always the source/target, resolved from their own `user_id`.
+  Admin: `GET /wallets/admin` (all balances), `GET /wallets/admin/{user_id}`
+  (+`/transactions`) -- deliberately does NOT lazily create a wallet just by
+  viewing, `POST /wallets/admin/topup` (cashback/recharge, optionally linked
+  to the purchase contract via `reference_contract_id`), `GET
+  /wallets/admin/transactions` (global ledger, filterable), `POST
+  /wallets/admin/transactions/{id}/reverse`.
+- **Frontend**: new `wallet-panel.tsx` (shared by customer and promoter
+  dashboards -- balance, address with copy-to-clipboard, send form,
+  transaction history) and `admin-wallets-panel.tsx` (global balances +
+  ledger table, CSV export, modeled on `admin-commissions-panel.tsx`). A
+  "Wallet" section (balance + "Ricarica" mini-form) was added inside the
+  existing customer detail modal in `admin-customers-panel.tsx`. New
+  notification types `CASHBACK_RECEIVED`/`WALLET_TRANSFER_RECEIVED`.
+- **Additive fix along the way**: neither `CustomerRead` nor
+  `AgentProfileRead` exposed `user_id` to the frontend before this session,
+  but the admin wallet panel needs it to link a customer/promoter record to
+  their wallet. Added `user_id: uuid.UUID | None` to both schemas (and their
+  dict-building service functions) rather than inventing a parallel
+  customer-id/agent-id-keyed wallet API surface.
+- **Real bug found and fixed during testing**: the insufficient-balance and
+  reversal-insufficient-balance code paths called `await db.rollback()`
+  after a CAS `UPDATE` matched zero rows -- but that UPDATE is not a DB
+  error (nothing was written), so the rollback was both unnecessary and
+  actively broke the test suite's SAVEPOINT-based session fixture
+  (`sqlalchemy.exc.MissingGreenlet` on the next query in the same test).
+  Fixed by removing the rollback calls -- a business-logic check that
+  changed nothing needs no undo, unlike the `except IntegrityError:` blocks
+  elsewhere in this same file, which correctly do roll back a real aborted
+  DB transaction.
+- **Verification**: 9 new tests (`tests/test_wallets.py`) covering lazy
+  creation, credit + notification, transfer happy path, insufficient
+  balance (both wallets provably untouched), self-transfer rejection,
+  cross-organization wallet lookup (not found), idempotency-key replay, and
+  reversal (including "cannot reverse a REVERSAL"). Full backend suite:
+  120/120 passing. `ruff`/`mypy` clean (one pre-existing, unrelated
+  `Result.rowcount` stub false-positive, also present in
+  `notifications/service.py`). Dashboard `pnpm typecheck`/`pnpm lint`/`pnpm
+  build` all clean. Verified live: migration applied, `wallet.manage`
+  confirmed granted to exactly `SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN` via
+  direct SQL, all 9 routes present in the live OpenAPI schema and
+  auth-gated (401, not 404) before login. No interactive browser
+  click-through was performed this session (no browser tool available, and
+  this environment holds real user data -- minting/deleting throwaway
+  wallet transactions against it was judged not worth the risk for a
+  session that already had strong automated + live-routing coverage).
+
 ## Session 20 — 2026-08-17 to 2026-09-04 — Go-live wipe, root promoter creation, self-service promoter activation, per-rank commission tokens, automatic monthly rank evaluation
 
 Catch-up entry covering several working sessions that shipped without a

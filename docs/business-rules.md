@@ -440,6 +440,56 @@ See `database-model.md §7` for the table shape. Behavior:
   fixed-window counter) -- 5 requests/5min for `forgot-password`, 10/5min for
   `reset-password` -- independent of the per-account lockout in `authenticate()`.
 
+## Internal wallet (added Session 21)
+
+Every user (customer or promoter, whether or not they also hold the other
+role) has an internal EUR wallet, styled after a cryptocurrency wallet: an
+address (`0x` + 40 hex chars, cosmetic only -- no real blockchain), an
+integer-cents balance, and a global append-only transaction ledger
+(`wallets`/`wallet_transactions`, see `database-model.md §9`). This is a
+purely internal, virtual balance -- there is no connection to real banking
+rails, no payment provider integration, and no withdrawal path to real
+money, by design.
+
+- **Cashback / top-up**: after a customer buys a product, an admin can
+  credit ("bonifica") an arbitrary amount to that customer's wallet,
+  optionally linked to the contract that earned it (`reference_contract_id`)
+  -- or as a plain, purchase-unrelated recharge. Gated by `wallet.manage`
+  (`SUPER_ADMIN`/`ORGANIZATION_ADMIN`/`ADMIN` only, deliberately not
+  `BACK_OFFICE_OPERATOR` -- same sensitivity tier as
+  `commissions.evaluate_ranks`). The wallet is created lazily on first
+  credit if the recipient never had one.
+- **Peer-to-peer transfer**: any wallet holder can send money to any other
+  wallet in the same organization by address, no relationship required
+  (like a real crypto wallet) -- self-transfer and cross-organization
+  transfers are both rejected. Self-service, gated only by authentication
+  (the caller's own wallet is always the source, resolved from their own
+  login, never from the request body) plus a per-IP rate limit (20
+  requests/60s on `POST /wallets/transfer`) against scripted abuse.
+- **Balance integrity**: a debit can never take a wallet below zero --
+  enforced both by an atomic compare-and-swap `UPDATE` at write time and by
+  a DB `CHECK (balance_cents >= 0)` constraint as defense in depth. Every
+  credit/transfer/reversal request carries a client-generated
+  `idempotency_key`; a retried request with the same key returns the
+  original result instead of double-applying.
+- **Reversal**: an admin can correct a mistaken `ADMIN_CREDIT` or `TRANSFER`
+  (`wallet.manage`-gated `POST /wallets/admin/transactions/{id}/reverse`).
+  This inserts a new, linked `REVERSAL` row -- the original is never
+  mutated, same append-only discipline as `commission_reversals`. Reversing
+  a `TRANSFER` re-debits the original recipient, which can itself fail with
+  "saldo insufficiente" if they've since spent the funds; this is an
+  accepted, documented outcome, not a bug. A `REVERSAL` row can never itself
+  be reversed.
+- **Notifications**: the recipient of a credit or transfer gets an in-app
+  notification (`CASHBACK_RECEIVED` / `WALLET_TRANSFER_RECEIVED`).
+- **Admin visibility**: `GET /wallets/admin` lists every wallet's balance
+  org-wide; `GET /wallets/admin/{user_id}` and
+  `GET /wallets/admin/{user_id}/transactions` show one user's wallet and
+  history (does **not** lazily create a wallet just by viewing -- an admin
+  looking at a user who never transacted sees "no wallet yet");
+  `GET /wallets/admin/transactions` is the global ledger, filterable by
+  type/user, with CSV export in the dashboard.
+
 ## GDPR notes
 
 Consent versions, retention periods, and the legal basis for each processing purpose
