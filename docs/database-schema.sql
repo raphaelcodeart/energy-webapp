@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict awEpE7dHTBwkqySywN6rQqjRMLgY4bKOOvwgdQ5dlKRadhGxy1wVPTebOTZo6Go
+\restrict ifNP11bhPRlZza3uzzvWrR5z0zBgJyRM3SoLesmodiOIwwNBsfML0UBQakbqJQN
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -449,6 +449,33 @@ CREATE TABLE public.domain_outbox (
 
 
 --
+-- Name: invoice_redemptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoice_redemptions (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_user_id uuid NOT NULL,
+    partner_id uuid NOT NULL,
+    storage_key character varying(500) NOT NULL,
+    original_filename character varying(255) NOT NULL,
+    content_type character varying(100) NOT NULL,
+    size_bytes bigint NOT NULL,
+    declared_amount_cents bigint NOT NULL,
+    confirmed_amount_cents bigint,
+    payment_reference_code character varying(32),
+    status character varying(16) DEFAULT 'SUBMITTED'::character varying NOT NULL,
+    rejection_reason character varying(500),
+    verified_by_user_id uuid,
+    verified_at timestamp with time zone,
+    credited_by_user_id uuid,
+    credited_at timestamp with time zone,
+    CONSTRAINT ck_invoice_redemptions_ck_invoice_redemptions_confirmed_a796 CHECK (((confirmed_amount_cents IS NULL) OR (confirmed_amount_cents > 0)))
+);
+
+
+--
 -- Name: network_assignment_history; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -554,6 +581,32 @@ CREATE TABLE public.notifications (
 
 
 --
+-- Name: orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.orders (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_user_id uuid NOT NULL,
+    product_version_id uuid NOT NULL,
+    created_by_user_id uuid NOT NULL,
+    amount_cents bigint NOT NULL,
+    credit_applied_cents bigint DEFAULT '0'::bigint NOT NULL,
+    credit_debit_transaction_id uuid,
+    status character varying(16) DEFAULT 'AWAITING_PAYMENT'::character varying NOT NULL,
+    note character varying(1000),
+    paid_by_user_id uuid,
+    paid_at timestamp with time zone,
+    cancelled_by_user_id uuid,
+    cancelled_at timestamp with time zone,
+    cancellation_reason character varying(500),
+    CONSTRAINT ck_orders_ck_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
+    CONSTRAINT ck_orders_ck_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents))
+);
+
+
+--
 -- Name: organizations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -565,6 +618,20 @@ CREATE TABLE public.organizations (
     settings jsonb NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: partners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.partners (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    logo_url character varying(1000),
+    is_active boolean DEFAULT true NOT NULL
 );
 
 
@@ -617,7 +684,8 @@ CREATE TABLE public.product_versions (
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL
+    commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL,
+    credit_discount_percentage integer DEFAULT 0 NOT NULL
 );
 
 
@@ -633,7 +701,8 @@ CREATE TABLE public.products (
     customer_type character varying(32) NOT NULL,
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    category character varying(16) DEFAULT 'INTERNAL'::character varying NOT NULL
 );
 
 
@@ -845,6 +914,9 @@ CREATE TABLE public.wallet_transactions (
     note character varying(500),
     actor_user_id uuid,
     idempotency_key character varying(128) NOT NULL,
+    source character varying(32),
+    reference_invoice_redemption_id uuid,
+    reference_order_id uuid,
     CONSTRAINT ck_wallet_transactions_ck_wallet_transactions_has_a_side CHECK (((from_wallet_id IS NOT NULL) OR (to_wallet_id IS NOT NULL)))
 );
 
@@ -861,6 +933,7 @@ CREATE TABLE public.wallets (
     address character varying(42) NOT NULL,
     balance_cents bigint DEFAULT '0'::bigint NOT NULL,
     currency character varying(3) DEFAULT 'EUR'::character varying NOT NULL,
+    can_transfer boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_wallets_ck_wallets_balance_non_negative CHECK ((balance_cents >= 0))
 );
 
@@ -1066,6 +1139,14 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
+-- Name: invoice_redemptions pk_invoice_redemptions; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT pk_invoice_redemptions PRIMARY KEY (id);
+
+
+--
 -- Name: network_assignment_history pk_network_assignment_history; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1122,11 +1203,27 @@ ALTER TABLE ONLY public.notifications
 
 
 --
+-- Name: orders pk_orders; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT pk_orders PRIMARY KEY (id);
+
+
+--
 -- Name: organizations pk_organizations; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT pk_organizations PRIMARY KEY (id);
+
+
+--
+-- Name: partners pk_partners; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.partners
+    ADD CONSTRAINT pk_partners PRIMARY KEY (id);
 
 
 --
@@ -1311,6 +1408,30 @@ ALTER TABLE ONLY public.customers
 
 ALTER TABLE ONLY public.documents
     ADD CONSTRAINT uq_documents_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: invoice_redemptions uq_invoice_redemptions_payment_reference_code; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT uq_invoice_redemptions_payment_reference_code UNIQUE (payment_reference_code);
+
+
+--
+-- Name: invoice_redemptions uq_invoice_redemptions_storage_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT uq_invoice_redemptions_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: partners uq_partners_organization_name; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.partners
+    ADD CONSTRAINT uq_partners_organization_name UNIQUE (organization_id, name);
 
 
 --
@@ -1644,6 +1765,27 @@ CREATE INDEX ix_domain_outbox_processed_at ON public.domain_outbox USING btree (
 
 
 --
+-- Name: ix_invoice_redemptions_customer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_invoice_redemptions_customer_user_id ON public.invoice_redemptions USING btree (customer_user_id);
+
+
+--
+-- Name: ix_invoice_redemptions_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_invoice_redemptions_organization_id ON public.invoice_redemptions USING btree (organization_id);
+
+
+--
+-- Name: ix_invoice_redemptions_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_invoice_redemptions_status ON public.invoice_redemptions USING btree (status);
+
+
+--
 -- Name: ix_network_assignment_history_organization_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1746,6 +1888,34 @@ CREATE INDEX ix_notifications_recipient_user_id ON public.notifications USING bt
 --
 
 CREATE INDEX ix_notifications_type ON public.notifications USING btree (type);
+
+
+--
+-- Name: ix_orders_customer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_orders_customer_user_id ON public.orders USING btree (customer_user_id);
+
+
+--
+-- Name: ix_orders_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_orders_organization_id ON public.orders USING btree (organization_id);
+
+
+--
+-- Name: ix_orders_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_orders_status ON public.orders USING btree (status);
+
+
+--
+-- Name: ix_partners_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_partners_organization_id ON public.partners USING btree (organization_id);
 
 
 --
@@ -2555,6 +2725,46 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
+-- Name: invoice_redemptions fk_invoice_redemptions_credited_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT fk_invoice_redemptions_credited_by_user_id_users FOREIGN KEY (credited_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: invoice_redemptions fk_invoice_redemptions_customer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT fk_invoice_redemptions_customer_user_id_users FOREIGN KEY (customer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: invoice_redemptions fk_invoice_redemptions_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT fk_invoice_redemptions_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: invoice_redemptions fk_invoice_redemptions_partner_id_partners; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT fk_invoice_redemptions_partner_id_partners FOREIGN KEY (partner_id) REFERENCES public.partners(id);
+
+
+--
+-- Name: invoice_redemptions fk_invoice_redemptions_verified_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT fk_invoice_redemptions_verified_by_user_id_users FOREIGN KEY (verified_by_user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: network_assignment_history fk_network_assignment_history_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2720,6 +2930,70 @@ ALTER TABLE ONLY public.notifications
 
 ALTER TABLE ONLY public.notifications
     ADD CONSTRAINT fk_notifications_recipient_user_id_users FOREIGN KEY (recipient_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: orders fk_orders_cancelled_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_cancelled_by_user_id_users FOREIGN KEY (cancelled_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: orders fk_orders_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: orders fk_orders_credit_debit_transaction_id_wallet_transactions; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_credit_debit_transaction_id_wallet_transactions FOREIGN KEY (credit_debit_transaction_id) REFERENCES public.wallet_transactions(id);
+
+
+--
+-- Name: orders fk_orders_customer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_customer_user_id_users FOREIGN KEY (customer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: orders fk_orders_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: orders fk_orders_paid_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_paid_by_user_id_users FOREIGN KEY (paid_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: orders fk_orders_product_version_id_product_versions; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT fk_orders_product_version_id_product_versions FOREIGN KEY (product_version_id) REFERENCES public.product_versions(id);
+
+
+--
+-- Name: partners fk_partners_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.partners
+    ADD CONSTRAINT fk_partners_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -2971,6 +3245,22 @@ ALTER TABLE ONLY public.wallet_transactions
 
 
 --
+-- Name: wallet_transactions fk_wallet_transactions_reference_invoice_redemption_id__3fd7; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_invoice_redemption_id__3fd7 FOREIGN KEY (reference_invoice_redemption_id) REFERENCES public.invoice_redemptions(id);
+
+
+--
+-- Name: wallet_transactions fk_wallet_transactions_reference_order_id_orders; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_order_id_orders FOREIGN KEY (reference_order_id) REFERENCES public.orders(id);
+
+
+--
 -- Name: wallet_transactions fk_wallet_transactions_reverses_transaction_id_wallet_t_a759; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3006,5 +3296,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict awEpE7dHTBwkqySywN6rQqjRMLgY4bKOOvwgdQ5dlKRadhGxy1wVPTebOTZo6Go
+\unrestrict ifNP11bhPRlZza3uzzvWrR5z0zBgJyRM3SoLesmodiOIwwNBsfML0UBQakbqJQN
 

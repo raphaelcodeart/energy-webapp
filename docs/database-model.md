@@ -192,7 +192,9 @@ products
   energy_type nullable (ELECTRICITY/GAS/DUAL_FUEL -- only meaningful when
     product_type=ENERGY_CONTRACT; was NOT NULL before Session 10, relaxed
     because a DIGITAL/PHYSICAL/SUBSCRIPTION product has no energy type),
-  customer_type, status
+  customer_type, status,
+  category (INTERNAL default/DROPSHIPPING/PARTNER -- added Session 23,
+    orthogonal to product_type; see §11)
 
 product_versions
   id, product_id, version_label, base_price_cents, initial_fee_cents,
@@ -205,7 +207,8 @@ product_versions
     so an explicit NULL from the API is never silently coerced to 12. Drives
     contracts.expires_at, see below),
   commission_plan_version_id, required_documents jsonb, terms_version,
-  valid_from, valid_to nullable, status
+  valid_from, valid_to nullable, status,
+  credit_discount_percentage (0-100, default 0 -- added Session 23; see §11)
 
 customers
   id, organization_id, kind (PRIVATE/SOLE_PROPRIETOR/COMPANY/CONDOMINIUM),
@@ -452,7 +455,7 @@ public `lial-media` bucket (marketing material, not the sensitive-document
 workflow in §4/`documents`), uploaded via
 `core/storage.py::upload_documentation_attachment()`.
 
-## 9. Internal wallet (added Session 21)
+## 9. Internal wallet (added Session 21; extended Sessions 23-24)
 
 ```
 wallets
@@ -464,17 +467,32 @@ wallets
     constraint anywhere in this codebase, justified because this is the
     first column that is real financial state rather than an append-only
     ledger total),
-  currency (default EUR)
+  currency (default EUR),
+  can_transfer (Boolean, default FALSE -- added Session 23; peer-to-peer
+    sending is denied by default for every wallet and enabled individually
+    per promoter by an admin, PATCH /wallets/admin/{user_id}/transfer-
+    permission. Deliberately per-wallet, not a role grant.)
 
 wallet_transactions                                     -- the ledger
   id, organization_id,
   from_wallet_id nullable (NULL = admin/system origin, i.e. an ADMIN_CREDIT),
   to_wallet_id nullable (NULL = admin/system destination, i.e. a REVERSAL
-    of an ADMIN_CREDIT -- CHECK ensures at least one side is set),
+    of an ADMIN_CREDIT, or a PURCHASE_DEBIT -- CHECK ensures at least one
+    side is set),
   amount_cents, currency,
-  type (ADMIN_CREDIT / TRANSFER / REVERSAL),
+  type (ADMIN_CREDIT / TRANSFER / PURCHASE_DEBIT / REVERSAL --
+    PURCHASE_DEBIT added Session 24, the mirror of ADMIN_CREDIT: to_wallet_id
+    NULL instead of from_wallet_id NULL, money leaves a wallet to pay for an
+    order and ceases to exist),
+  source nullable (added Session 23 -- MANUAL_ADMIN / INVOICE_REDEMPTION_BASE
+    / INVOICE_REDEMPTION_BONUS, a structured tag distinguishing WHY an
+    ADMIN_CREDIT row exists without parsing free-text `note`; NULL for
+    TRANSFER/PURCHASE_DEBIT/REVERSAL, where `type` alone already says enough),
   reference_contract_id nullable (links a cashback credit to the purchase
     that triggered it -- always NULL for TRANSFER/REVERSAL),
+  reference_invoice_redemption_id nullable (added Session 23, FK
+    invoice_redemptions.id -- see §11),
+  reference_order_id nullable (added Session 24, FK orders.id -- see §12),
   reverses_transaction_id nullable (self-FK, set only on a REVERSAL row --
     the original row is never mutated, same discipline as
     CommissionReversal in §5),
@@ -502,12 +520,114 @@ guards against a double-submitted request creating two transactions.
 `REVERSAL` row rather than mutating the original. Reversing a `TRANSFER`
 re-debits the original recipient, which can itself fail with
 `InsufficientBalanceError` if they've since spent the funds -- an accepted,
-documented outcome. A `REVERSAL` itself can never be reversed.
+documented outcome. Reversing a `PURCHASE_DEBIT` (added Session 24) just
+credits the buyer back -- there is no recipient wallet to claw back from,
+the mirror-image case `reverse_transaction()` was extended to handle
+correctly. A `REVERSAL` itself can never be reversed.
 
 No real-money withdrawal or payment-provider integration exists or is
 planned for this domain -- it is a purely internal, virtual balance.
 
-## 10. ER diagram (core slice)
+## 10. Partner-invoice cashback: `partners` & `invoice_redemptions` (added Session 23)
+
+```
+partners
+  id, organization_id, name (unique per org),
+  logo_url nullable, is_active (default TRUE)
+
+invoice_redemptions
+  id, organization_id,
+  customer_user_id (FK users.id -- the redeemer, customer or promoter),
+  partner_id (FK partners.id),
+  storage_key (unique -- private-bucket object key for the uploaded proof of
+    payment; deliberately NOT a row in `documents`, whose contract_id is
+    NOT NULL by design and has no equivalent here),
+  original_filename, content_type, size_bytes,
+  declared_amount_cents (what the customer typed in at upload),
+  confirmed_amount_cents nullable (what an admin actually verified on the
+    document -- this, not the declared figure, drives the payment/credit),
+  payment_reference_code nullable, unique (short code generated once
+    confirmed_amount_cents is set, e.g. "RIS-8D4384" -- the customer puts it
+    in the bank transfer's causale so an admin can match the incoming wire),
+  status (SUBMITTED / PAYMENT_PENDING / CREDITED / REJECTED),
+  rejection_reason nullable,
+  verified_by_user_id/verified_at nullable, credited_by_user_id/credited_at
+    nullable
+```
+
+Lifecycle: `SUBMITTED` (uploaded) → `PAYMENT_PENDING` (an admin verified the
+real amount and a payment reference code was generated -- one action, not
+two separate states) → `CREDITED` (an admin confirmed the 3% wire arrived;
+this is the one moment two `wallet_transactions` rows get written together,
+`INVOICE_REDEMPTION_BASE` + `INVOICE_REDEMPTION_BONUS`, never a single
+combined row -- see §9). `REJECTED` is reachable from `SUBMITTED` or
+`PAYMENT_PENDING`. No OCR: the customer types the amount, an admin always
+verifies against the document before anything is unlocked -- see
+`docs/cashback-partner-invoices-plan.md`.
+
+## 11. Product credit categories & orders (added Sessions 23-24)
+
+```
+products (extended)
+  category (INTERNAL default / DROPSHIPPING / PARTNER -- orthogonal to
+    product_type, which describes WHAT a product is, not who supplies it or
+    how it may be paid)
+
+product_versions (extended)
+  credit_discount_percentage (0-100, default 0 -- how much of THIS
+    version's price the checkout may let a customer pay from wallet credit
+    instead of bank transfer. Enforced server-side to stay 0 whenever the
+    parent product's category is INTERNAL, regardless of what's requested --
+    catalog/service.py::_clamp_credit_discount() is the single place this
+    is enforced, including when a product's category is changed back to
+    INTERNAL after having a discount configured, which zeroes it on every
+    version in one bulk update.)
+
+orders                                    -- DROPSHIPPING/PARTNER purchases
+  id, organization_id,
+  customer_user_id (FK users.id -- whose wallet is debited),
+  product_version_id (FK product_versions.id),
+  created_by_user_id (FK users.id -- the admin who created it; no
+    self-checkout yet),
+  amount_cents (frozen from product_version.base_price_cents at creation --
+    same "frozen at the moment it happens" rule as everywhere else),
+  credit_applied_cents (default 0, CHECK 0 <= credit_applied_cents <=
+    amount_cents),
+  credit_debit_transaction_id nullable (FK wallet_transactions.id -- set
+    only when credit_applied_cents > 0, points at the PURCHASE_DEBIT row so
+    cancelling can reverse that exact row rather than minting a fresh,
+    less-traceable refund),
+  status (AWAITING_PAYMENT / PAID / CANCELLED),
+  note nullable,
+  paid_by_user_id/paid_at nullable, cancelled_by_user_id/cancelled_at/
+    cancellation_reason nullable
+```
+
+Deliberately **not** an extension of `Contract` -- `Contract.supply_point_id`
+is NOT NULL by design (every contract is an energy supply), which has no
+equivalent for e.g. a partner t-shirt; a new, much simpler domain was the
+lower-risk choice, confirmed with the user before building it. If
+`credit_applied_cents` covers 100% of `amount_cents` at creation, the order
+skips straight to `PAID` -- no bank transfer, no `AWAITING_PAYMENT` step.
+Cancelling an `AWAITING_PAYMENT` order reverses the exact
+`credit_debit_transaction_id` row (see §9's `PURCHASE_DEBIT` reversal) before
+marking itself `CANCELLED`, refunding the customer precisely.
+
+## 12. Organization settings (added Session 25)
+
+No new table -- `organizations.settings` (JSONB, existed since the original
+schema) is now actually read/written through a typed subset,
+`GET`/`PATCH /organizations/me/settings` (new `organization.manage`
+permission, same three roles as `wallet.manage`). Currently holds
+`bank_iban`/`bank_account_holder` -- the account customers wire bonifico
+payments to (invoice-redemption 3% payments today). An update merges into
+the existing dict (`{**org.settings, **updates}`, only the fields actually
+present in the PATCH), so an unrelated key living in the same JSONB blob is
+never clobbered by an admin only touching the bank fields. `.env`'s
+`COMPANY_BANK_IBAN`/`COMPANY_BANK_HOLDER` remain a bootstrap fallback only,
+read when the DB value is unset.
+
+## 13. ER diagram (core slice)
 
 ```mermaid
 erDiagram
@@ -532,6 +652,14 @@ erDiagram
   users ||--o{ tickets : opens
   tickets ||--o{ ticket_messages : contains
   contracts ||--o{ tickets : "optionally about"
+  users ||--|| wallets : owns
+  wallets ||--o{ wallet_transactions : "from/to"
+  partners ||--o{ invoice_redemptions : "redeemed against"
+  users ||--o{ invoice_redemptions : submits
+  invoice_redemptions ||--o{ wallet_transactions : "credits (base+bonus)"
+  product_versions ||--o{ orders : "priced by"
+  users ||--o{ orders : "buys (customer_user_id)"
+  orders ||--o| wallet_transactions : "debits (credit leg)"
 ```
 
 Full ER diagram will grow as Phase F/G tables land; kept mermaid so it renders directly
