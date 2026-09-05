@@ -442,6 +442,11 @@ export type WalletTransactionRead = {
   created_at: string;
 };
 
+export type OrganizationSettingsRead = {
+  bank_iban: string | null;
+  bank_account_holder: string | null;
+};
+
 export type PartnerRead = {
   id: string;
   name: string;

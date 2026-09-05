@@ -14,17 +14,26 @@ from app.domains.invoice_redemptions.schemas import (
     InvoiceRedemptionVerifyRequest,
     PaymentInfoRead,
 )
+from app.domains.organizations import service as organizations_service
 
 router = APIRouter(prefix="/invoice-redemptions", tags=["invoice-redemptions"])
 
 
 @router.get("/payment-info", response_model=PaymentInfoRead)
-async def get_payment_info(current_user: CurrentUser = Depends(get_current_user)) -> PaymentInfoRead:
-    """Where a customer wires the 3% redemption payment -- iban is None until
-    an admin sets COMPANY_BANK_IBAN, in which case the wizard tells the
-    customer to contact administration instead of showing a blank field."""
+async def get_payment_info(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> PaymentInfoRead:
+    """Where a customer wires the 3% redemption payment. The IBAN an admin
+    saved in Impostazioni Azienda (Organization.settings, DB-backed --
+    editable from the dashboard) wins; COMPANY_BANK_IBAN in .env is only a
+    bootstrapping fallback for a server nobody has configured yet. Either
+    way, iban is None (wizard shows "contatta l'amministrazione") until one
+    of the two is actually set."""
+    org_settings = await organizations_service.get_settings(db, organization_id=current_user.organization_id)
     settings = get_settings()
-    return PaymentInfoRead(iban=settings.company_bank_iban or None, holder=settings.company_bank_holder)
+    iban = org_settings["bank_iban"] or settings.company_bank_iban or None
+    holder = org_settings["bank_account_holder"] or settings.company_bank_holder
+    return PaymentInfoRead(iban=iban, holder=holder)
 
 
 @router.post("", response_model=InvoiceRedemptionRead, status_code=status.HTTP_201_CREATED)

@@ -4,6 +4,55 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 25 — 2026-09-05 (same day, continued) — PWA home-screen icons, scheduled DB backups, admin-editable company IBAN
+
+Three independent items, none touching the cashback/orders work itself.
+
+- **Real bug found and fixed**: `.env`'s `COMPANY_BANK_HOLDER=Lial Energy`
+  (added Session 23, unquoted) breaks any script that `source`s `.env` as
+  bash rather than parsing it as a real dotenv file -- bash reads `Energy`
+  as a command to run and errors out, aborting the whole script under
+  `set -e`. Confirmed live: this silently prevented `scripts/backup.sh`
+  from ever completing. Fixed by quoting the value; documented the
+  constraint in a comment on that script so it doesn't happen again with a
+  different value later.
+- **Daily backups scheduled**: `scripts/backup.sh` already existed
+  (`pg_dump` + gzip) but was never in crontab -- only `renew-cert.sh` was.
+  Added `scripts/backup.sh dev >> ./backups/backup.log` at 04:00 daily (the
+  `dev` compose file is what's actually running in production on this
+  server -- confirmed by checking which containers exist; `production`'s
+  compose file is unused). Also added retention (`find -mtime +14 -delete`)
+  to the script itself, since it previously kept every dump forever. Still
+  NOT sufficient disaster recovery on its own -- same disk as the database,
+  no off-server copy -- see the script's own header comment and
+  `docs/deployment.md`.
+- **PWA icons for "Aggiungi a schermata Home"**: neither site had a
+  favicon/apple-touch-icon/manifest at all, so mobile browsers fell back to
+  a page screenshot or a generic globe instead of the Lial logo. Generated
+  proper square, white-padded icons (32/16/180/192/512px) from the existing
+  marketing-site logo (Pillow, one-off, not a recurring build step) and
+  wired them into both sites: the marketing site via manual `<link>` tags +
+  `site.webmanifest`, the dashboard via Next.js's file-based convention
+  (`app/icon.png`, `app/apple-icon.png`, `app/manifest.ts`). Also fixed a
+  real nginx MIME-type gap while verifying this: `.webmanifest` has no
+  entry in nginx's stock `mime.types`, so it was served as
+  `application/octet-stream` -- some browsers silently ignore a manifest
+  served with the wrong content-type. Added an explicit `types {}` block.
+- **Company IBAN is now admin-editable from the dashboard**, not just an
+  `.env` value requiring server access + a container restart. New
+  `GET`/`PATCH /organizations/me/settings` (new `organization.manage`
+  permission, same three roles as `wallet.manage`) reads/writes a typed
+  subset of the already-existing `Organization.settings` JSONB column (no
+  migration needed for the column itself, just the permission). New admin
+  tab "Impostazioni". `GET /invoice-redemptions/payment-info` now reads the
+  DB value first, falling back to `.env`'s `COMPANY_BANK_IBAN` only as a
+  bootstrap default for a server nobody has configured yet. Verified live:
+  set via the API, reflected immediately in payment-info, then cleared
+  (test value, not a real account).
+- Backend suite 134/134 passing (2 new tests for the settings merge
+  behavior), ruff clean, mypy clean (same pre-existing rowcount
+  false-positives, nothing new).
+
 ## Session 24 — 2026-09-05 (same day, continued) — Cashback Phase 4: spending credits on orders
 
 Closes the loop opened in Session 23: credits could be earned (invoice

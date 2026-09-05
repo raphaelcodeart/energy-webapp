@@ -229,9 +229,16 @@ conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
 - [ ] **Anagrafica fornitori-partner**: bastano nome/logo (quello che c'è
       oggi), o servono anche referente/accordo di partnership/percentuale
       commissione ricevuta da loro?
-- [ ] **IBAN aziendale reale**: `COMPANY_BANK_IBAN` è ancora vuoto in
-      `.env` -- il wizard cliente funziona ma mostra "contatta
-      l'amministrazione" finché non viene compilato.
+- [ ] **IBAN aziendale reale**: nessuno inserito ancora (né in `.env`, né
+      nel nuovo pannello admin). Il wizard cliente funziona ma mostra
+      "contatta l'amministrazione" finché non viene compilato. **Non serve
+      più modificare `.env`** -- da questa sessione l'IBAN si inserisce
+      dalla dashboard: tab admin "Impostazioni" (`GET`/`PATCH
+      /organizations/me/settings`, salvato in `Organization.settings`
+      JSONB, gated `organization.manage` -- SUPER_ADMIN/ORGANIZATION_ADMIN/
+      ADMIN). `COMPANY_BANK_IBAN` in `.env` resta come fallback di bootstrap
+      se il pannello non è ancora stato compilato, ma il valore DB vince
+      sempre quando presente.
 
 ## Come riprendere se una sessione futura parte da zero
 

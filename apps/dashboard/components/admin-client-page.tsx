@@ -17,6 +17,7 @@ import { AdminPartnersPanel } from "@/components/admin-partners-panel";
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
+import { AdminOrganizationSettingsPanel } from "@/components/admin-organization-settings-panel";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
 import { ContractStatusHistoryModal } from "@/components/contract-status-history-modal";
 import { SectionBanner } from "@/components/section-banner";
@@ -222,6 +223,16 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "settings",
+    label: "Impostazioni",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
@@ -231,7 +242,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "documentation">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -615,6 +626,12 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           <div className="space-y-6">
             <SectionBanner image="documentation" alt="Documentazione" />
             <AdminDocumentationPanel />
+          </div>
+        )}
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            <SectionBanner image="documentation" alt="Impostazioni" />
+            <AdminOrganizationSettingsPanel />
           </div>
         )}
       </AppShell>

@@ -34,6 +34,7 @@ from app.domains.notifications.router import router as notifications_router
 from app.domains.orders import models as _orders_models  # noqa: F401
 from app.domains.orders.router import router as orders_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
+from app.domains.organizations.router import router as organizations_router
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.partners import models as _partners_models  # noqa: F401
 from app.domains.partners.router import router as partners_router
@@ -84,6 +85,7 @@ app.include_router(wallets_router, prefix="/api")
 app.include_router(partners_router, prefix="/api")
 app.include_router(invoice_redemptions_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
+app.include_router(organizations_router, prefix="/api")
 
 
 @app.on_event("startup")

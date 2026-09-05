@@ -363,6 +363,41 @@ dopo aver cancellato le righe Postgres corrispondenti (le righe portano solo
 la `storage_key`, il file resta nel bucket finché non lo elimini
 esplicitamente con `mc rm` o svuotando il bucket).
 
+### 4.8 Backup automatico del database (Session 25)
+
+`scripts/backup.sh` esisteva già (dump `pg_dump` + gzip in `./backups/`) ma
+non era mai stato pianificato -- solo il rinnovo certificati lo era. Su
+questo server è ora in crontab:
+
+```bash
+crontab -l
+# 0 3 * * * /opt/lialenergy/scripts/renew-cert.sh >> /opt/lialenergy/certbot/renew.log 2>&1
+# 0 4 * * * cd /opt/lialenergy && ./scripts/backup.sh dev >> ./backups/backup.log 2>&1
+```
+
+Nota il parametro `dev`, non `production`: su questo server è il file
+`docker-compose.dev.yml` quello effettivamente in esecuzione (verificato
+controllando i nomi dei container reali, tutti `lial-energy-dev-*`) —
+`docker-compose.production.yml` esiste ma non è quello usato qui, nonostante
+il nome. Su un server diverso, verifica prima quale compose file è
+realmente attivo prima di copiare questa riga di cron.
+
+Lo script stesso ora applica una retention di 14 giorni (cancella i dump più
+vecchi dopo ognuno nuovo, vedi il suo header comment) — prima teneva ogni
+dump per sempre. **Resta comunque solo un backup sullo stesso disco del
+database**: un disco perso o corrotto si porta via anche i backup. Una copia
+off-server (altro host, object storage) non è ancora stata implementata —
+vedi anche `docs/deployment.md` per la retention 7-giornaliera/4-settimanale/
+6-mensile più completa, anch'essa non ancora implementata.
+
+**Bug reale trovato e corretto in questa sessione**: `scripts/backup.sh` fa
+`source .env` per leggere le credenziali Postgres — se un valore in `.env`
+contiene uno spazio e non è tra virgolette (es. `COMPANY_BANK_HOLDER=Lial
+Energy` invece di `COMPANY_BANK_HOLDER="Lial Energy"`), bash lo interpreta
+come un comando da eseguire e l'intero script si interrompe con un errore
+criptico ("Energy: command not found"), fallendo silenziosamente il backup.
+**Ogni valore in `.env` con uno spazio deve stare tra virgolette.**
+
 ## 5. Migrare i dati da un server esistente (non solo il codice)
 
 Se il vecchio server è ancora raggiungibile, **non ripartire dal seed** — porta i
@@ -639,12 +674,15 @@ risolto, per lo stesso motivo per cui questi lo sono.
 
 Vedi `docs/implementation-progress.md`, sezione "Explicitly NOT in this session's
 scope" per l'elenco completo. In breve: pagamenti reali, notifiche, motore
-AI/pgvector, CI/CD, backup automatizzati con retention, MFA. Non sono bug —
+AI/pgvector, CI/CD, MFA. Non sono bug —
 sono semplicemente fasi successive non ancora costruite. (L'upload dei
 documenti sensibili di contratto -- carta d'identità, codice fiscale,
 bolletta, visura camerale -- ESISTE dalla Session 14, vedi
 `docs/security-model.md §Documents`; HTTPS è attivo dalla Session 3, vedi §4.6
-sopra.)
+sopra. **Backup giornaliero automatico ESISTE dalla Session 25**: cron alle
+04:00 esegue `scripts/backup.sh dev` con retention 14 giorni, vedi §4.8
+sotto — resta comunque solo un backup locale sullo stesso disco, non ancora
+una copia off-server.)
 
 ## 10. Assunzioni di business ancora provvisorie
 
