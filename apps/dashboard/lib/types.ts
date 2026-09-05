@@ -449,6 +449,33 @@ export type PartnerRead = {
   is_active: boolean;
 };
 
+export type OrderRead = {
+  id: string;
+  customer_user_id: string;
+  customer_display_name: string;
+  product_version_id: string;
+  product_name: string;
+  created_by_user_id: string;
+  amount_cents: number;
+  credit_applied_cents: number;
+  residual_amount_cents: number;
+  status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  note: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+};
+
+export type OrderQuoteRead = {
+  product_version_id: string;
+  product_name: string;
+  amount_cents: number;
+  credit_discount_percentage: number;
+  max_creditable_cents: number;
+  customer_wallet_balance_cents: number;
+};
+
 export type InvoiceRedemptionRead = {
   id: string;
   partner_id: string;

@@ -8,6 +8,7 @@ import type { WalletRead, WalletTransactionRead } from "@/lib/types";
 const TYPE_LABELS: Record<string, string> = {
   ADMIN_CREDIT: "Ricarica/Cashback",
   TRANSFER: "Trasferimento",
+  PURCHASE_DEBIT: "Pagamento ordine (crediti)",
   REVERSAL: "Storno",
 };
 

@@ -15,6 +15,7 @@ import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
 import { AdminWalletsPanel } from "@/components/admin-wallets-panel";
 import { AdminPartnersPanel } from "@/components/admin-partners-panel";
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
+import { AdminOrdersPanel } from "@/components/admin-orders-panel";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
 import { ContractStatusHistoryModal } from "@/components/contract-status-history-modal";
@@ -204,6 +205,15 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "orders",
+    label: "Ordini",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 7.5h-9v9h9v-9zM3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+      </svg>
+    ),
+  },
+  {
     key: "documentation",
     label: "Documentazione",
     icon: (
@@ -221,7 +231,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "documentation">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "documentation">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -593,6 +603,12 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
           <div className="space-y-6">
             <SectionBanner image="wallets" alt="Riscatti Fatture" />
             <AdminInvoiceRedemptionsPanel />
+          </div>
+        )}
+        {activeTab === "orders" && (
+          <div className="space-y-6">
+            <SectionBanner image="products" alt="Ordini" />
+            <AdminOrdersPanel />
           </div>
         )}
         {activeTab === "documentation" && (

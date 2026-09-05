@@ -529,12 +529,24 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   `contract_id` is NOT NULL by design, for contract KYC documents) --
   `invoice_redemptions` carries its own `storage_key` in the same private
   bucket via `core/storage.py`.
-- **Spending side (Phase 4, not yet built)**: `Product.category`
+- **Spending side (Phase 4, added Session 24)**: `Product.category`
   (`INTERNAL`/`DROPSHIPPING`/`PARTNER`) and
   `ProductVersion.credit_discount_percentage` (0-100, enforced to 0 for
-  `INTERNAL`) already exist and are configurable per product, but no
-  checkout/contract-creation flow reads them yet to actually let a customer
-  pay part of a purchase in credits.
+  `INTERNAL`) gate a new `orders` domain -- deliberately NOT `Contract`
+  (`Contract.supply_point_id` is NOT NULL by design, every contract is an
+  energy supply; an order for e.g. a partner t-shirt has no equivalent).
+  Admin picks a customer + a DROPSHIPPING/PARTNER product version and how
+  much wallet credit to apply (capped by both the product's percentage and
+  the customer's balance, previewed via `GET /orders/quote` first); that
+  amount is debited immediately via a new `PURCHASE_DEBIT` wallet-transaction
+  type (the mirror of `ADMIN_CREDIT`: `to_wallet_id` NULL instead of
+  `from_wallet_id` NULL). The residual is paid by bank transfer and confirmed
+  by an admin exactly like a contract's `PAID` transition; if credit alone
+  covers 100%, the order skips straight to `PAID`. Cancelling an
+  `AWAITING_PAYMENT` order reverses the exact `PURCHASE_DEBIT` row via
+  `reverse_transaction()` (extended to handle a debit with no recipient
+  wallet), refunding the customer precisely. No self-checkout yet -- admin
+  creates every order, same as contracts today.
 
 ## GDPR notes
 

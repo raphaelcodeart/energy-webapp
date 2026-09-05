@@ -49,6 +49,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   WALLET_TRANSFER_RECEIVED: "Bonifico wallet ricevuto",
   INVOICE_REDEMPTION_VERIFIED: "Fattura verificata",
   INVOICE_REDEMPTION_REJECTED: "Fattura rifiutata",
+  ORDER_CREDIT_APPLIED: "Crediti usati per un ordine",
+  ORDER_PAID: "Ordine confermato",
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
@@ -81,6 +83,12 @@ const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
   ),
   INVOICE_REDEMPTION_REJECTED: (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+  ),
+  ORDER_CREDIT_APPLIED: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+  ),
+  ORDER_PAID: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 7.5h-9v9h9v-9zM3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
   ),
 };
 

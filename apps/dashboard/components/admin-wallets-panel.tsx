@@ -9,12 +9,14 @@ import { downloadCsv } from "@/lib/csv-export";
 const TYPE_LABELS: Record<string, string> = {
   ADMIN_CREDIT: "Ricarica/Cashback",
   TRANSFER: "Trasferimento",
+  PURCHASE_DEBIT: "Pagamento ordine (crediti)",
   REVERSAL: "Storno",
 };
 
 const TYPE_COLORS: Record<string, string> = {
   ADMIN_CREDIT: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   TRANSFER: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  PURCHASE_DEBIT: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   REVERSAL: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
 

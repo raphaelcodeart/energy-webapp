@@ -19,6 +19,7 @@ from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.notifications import models as _notifications_models  # noqa: F401
+from app.domains.orders import models as _orders_models  # noqa: F401
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.organizations.models import Organization
 from app.domains.outbox import models as _outbox_models  # noqa: F401

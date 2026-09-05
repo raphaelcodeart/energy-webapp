@@ -1,10 +1,12 @@
 # Piano: Cashback da riscatto fatture fornitori-partner
 
-**Stato: Fasi 0, 1, 2 implementate e verificate end-to-end (via HTTP reale,
-multipart incluso, non solo a livello di servizio) il 2026-09-05. Fase 3
-(wizard) implementata SENZA OCR reale (inserimento manuale dell'importo,
-verifica sempre umana). Fase 4 (sconto crediti nel checkout) NON ancora
-implementata — vedi sotto.**
+**Stato: Fasi 0, 1, 2, 3 (senza OCR reale) E 4 sono tutte implementate e
+verificate end-to-end via HTTP reale il 2026-09-05.** Il progetto è
+funzionalmente completo: un cliente può riscattare una fattura partner in
+crediti, e quei crediti si possono davvero spendere per pagare (in parte) un
+prodotto dropshipping/partner nel nuovo dominio `orders`. Resta solo l'OCR
+vero (deliberatamente rimandato) e il self-checkout diretto del cliente
+(per ora solo admin crea gli ordini, per scelta esplicita dell'utente).
 
 Se stai riprendendo questo lavoro dopo un crash/reset di sessione, questo file
 ti dice esattamente a che punto siamo — leggilo prima di chiedere di nuovo
@@ -35,7 +37,7 @@ dello shop (mai sui prodotti interni Lial, mai in contanti).
 da un ingresso reale di denaro (il bonifico del 3%, confermato da un admin).
 Non nasce mai dallo spendere un credito già esistente.
 
-## Cosa è stato costruito (Fasi 0-2, backend + admin UI + wizard cliente)
+## Cosa è stato costruito (Fasi 0-4 complete)
 
 **Backend** (`apps/api/app/domains/`):
 - `partners/` — dominio nuovo: anagrafica fornitori (nome, logo, attivo/non
@@ -88,8 +90,41 @@ Non nasce mai dallo spendere un credito già esistente.
   -- `credit_wallet()` invia già `CASHBACK_RECEIVED` automaticamente, quindi
   una conferma pagamento produce due notifiche (una per riga di credito),
   comportamento accettato così com'è, non soppresso.
+- `orders/` — dominio nuovo (Fase 4), acquisto di prodotti DROPSHIPPING/
+  PARTNER con sconto crediti opzionale. **Deliberatamente NON un `Contract`**:
+  `Contract.supply_point_id` è NOT NULL per disegno (ogni contratto è una
+  fornitura energia), un ordine di un gadget non ha nulla di equivalente --
+  vedi `orders/models.py` per il ragionamento completo. Decisione confermata
+  con l'utente (vedi §Decisioni prese sotto).
+  Stati: `AWAITING_PAYMENT → PAID`, con `CANCELLED` raggiungibile solo da
+  `AWAITING_PAYMENT` (storna il credito applicato, vedi sotto). Se il credito
+  applicato copre il 100% del prezzo, l'ordine salta direttamente a `PAID`
+  alla creazione -- nessun bonifico da attendere.
+  Admin sceglie cliente + prodotto + quanto credito applicare (fino al tetto
+  configurato sul prodotto E al saldo disponibile del cliente -- entrambi
+  mostrati in anteprima via `GET /orders/quote` prima di creare l'ordine).
+  Il resto (`amount_cents - credit_applied_cents`) si paga in bonifico come
+  già avviene per i contratti, confermato con `POST /orders/{id}/confirm-payment`.
+  Solo admin per ora (`wallet.manage`-gated su ogni endpoint): **nessun
+  self-checkout cliente**, per scelta esplicita dell'utente il 2026-09-05.
+  `POST /orders/{id}/cancel` storna l'esatta transazione di debito crediti
+  via `reverse_transaction()` (non un nuovo accredito generico) -- vedi sotto
+  per l'estensione fatta a quella funzione.
+- `wallets/` (ulteriore estensione per la Fase 4) — nuovo tipo
+  `PURCHASE_DEBIT` (speculare a `ADMIN_CREDIT`: `to_wallet_id` NULL invece di
+  `from_wallet_id` NULL, i soldi escono da un wallet per pagare un ordine e
+  cessano di esistere) e nuova funzione `debit_wallet_for_purchase()` con la
+  stessa guardia atomica compare-and-swap di `debit_and_transfer()`. Il saldo
+  viene comunque controllato ANCHE prima di creare la riga Order (non solo
+  nel CAS), per non lasciare un ordine "fantasma" flush-ato ma mai committato
+  in sessione se il debito fallisce -- un `db.rollback()` esplicito lì
+  avrebbe invece rotto il fixture di test a SAVEPOINT, stesso motivo per cui
+  `debit_and_transfer()` non lo fa già. `reverse_transaction()` esteso per
+  gestire correttamente lo storno di un `PURCHASE_DEBIT` (nessun wallet
+  destinatario da cui prelevare, solo un accredito di ritorno al mittente).
 - Migrazioni: `0019_wallet_transfer_gate`, `0020_partners_and_product_categories`,
-  `0021_invoice_redemptions` -- tutte applicate e verificate su questo server.
+  `0021_invoice_redemptions`, `0022_orders` -- tutte applicate e verificate
+  su questo server.
 
 **Frontend** (`apps/dashboard/components/`):
 - `admin-partners-panel.tsx` — CRUD semplice (nome, attiva/disattiva). Nuova
@@ -112,7 +147,15 @@ Non nasce mai dallo spendere un credito già esistente.
 - `wallet-panel.tsx` / `admin-wallets-panel.tsx` (estesi) — le righe dello
   storico ora mostrano un'etichetta specifica quando `source` è valorizzato
   ("Riscatto fattura" / "Bonus 3% riscatto fattura") invece del generico
-  "Ricarica/Cashback".
+  "Ricarica/Cashback", più un'etichetta per il nuovo tipo `PURCHASE_DEBIT`
+  ("Pagamento ordine (crediti)").
+- `admin-orders-panel.tsx` (nuovo, Fase 4) — nuova tab admin "Ordini": form
+  "Nuovo Ordine" (seleziona cliente con login attivo + prodotto non-INTERNAL,
+  mostra in tempo reale via `GET /orders/quote` il tetto sconto e il saldo
+  cliente, precompila l'importo crediti al massimo utilizzabile ma resta
+  modificabile, anteprima del residuo da bonifico prima di confermare), lista
+  ordini filtrabile per stato con azioni "Conferma bonifico ricevuto" /
+  "Annulla" (con motivo).
 
 **Verificato live** (non solo test unitari): intero ciclo via chiamate HTTP
 reali contro l'API in esecuzione, incluso upload multipart vero -- fattura da
@@ -126,20 +169,20 @@ doppio accredito), permessi (`PROMOTER` riceve 403 su `POST /partners`). I
 dati di test creati durante la verifica sono stati rimossi dal database
 (nessun partner/riscatto fittizio o saldo alterato è rimasto).
 
+**Fase 4 verificata live separatamente** (stesso metodo, HTTP reale): prodotto
+dropshipping da 80,00€ con 25% di sconto crediti configurato, cliente con
+30,00€ di saldo, ordine creato applicando 20,00€ di credito (il tetto) →
+saldo sceso a 10,00€, ordine `AWAITING_PAYMENT` con residuo 60,00€ →
+`confirm-payment` → `PAID`. Verificati anche: rifiuto sopra il tetto
+configurato, rifiuto per saldo insufficiente (nessun ordine fantasma creato),
+copertura 100% in crediti che salta dritto a `PAID` senza bonifico,
+annullamento che restituisce esattamente il credito applicato via una vera
+riga `REVERSAL` (non un accredito generico), doppio annullamento/doppia
+conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
+`POST /contracts`. Dati di test rimossi.
+
 ## Cosa NON è stato costruito
 
-- [ ] **Fase 4 — Sconto crediti nel checkout**: `Product.category` e
-      `credit_discount_percentage` esistono e sono configurabili, MA nessuna
-      schermata di acquisto/creazione contratto legge ancora questi campi per
-      applicare davvero lo sconto o proporre "paga con crediti" come metodo.
-      Questo è il pezzo che resta per chiudere il cerchio (i crediti oggi si
-      possono guadagnare ma non ancora spendere in checkout). Vedi anche
-      `docs/paid-contract-commission-audit.md` per come funziona oggi la
-      creazione/pagamento di un contratto -- un contratto non ha nemmeno un
-      campo importo proprio oggi (prezzo letto dal `product_version` al
-      momento dell'acquisto), quindi questa fase probabilmente richiede anche
-      di congelare un `amount_cents` sul contratto, non solo aggiungere un
-      selettore di pagamento.
 - [ ] **OCR reale**: il wizard chiede l'importo a mano al cliente; non c'è
       nessuna lettura automatica assistita del documento. Deliberatamente
       rimandato -- richiede una decisione su quale servizio di lettura
@@ -147,6 +190,13 @@ dati di test creati durante la verifica sono stati rimossi dal database
       sempre a mano quindi il sistema è già pienamente funzionante senza.
 - [ ] Controllo automatico anti-duplicato (stessa fattura caricata due
       volte) -- oggi previene solo la verifica umana.
+- [ ] **Self-checkout cliente**: il cliente non può ancora creare da solo un
+      ordine dal marketplace -- per scelta esplicita dell'utente, per ora
+      resta un'azione admin (come già oggi per i contratti). Se in futuro si
+      vuole aprire il self-checkout, l'endpoint `POST /orders` andrebbe
+      riaperto a un ruolo cliente con `customer_user_id` forzato al chiamante
+      (non passato liberamente come oggi), non serve altro cambiamento di
+      modello dati.
 
 ## Decisioni prese
 
@@ -158,13 +208,23 @@ dati di test creati durante la verifica sono stati rimossi dal database
       sistema imposto -- un admin può impostare qualunque valore 0-100 su un
       prodotto DROPSHIPPING/PARTNER. Deciso per omissione (non richiesto
       esplicitamente un tetto), facile da aggiungere dopo se serve.
+- [x] **Modello dati checkout**: nuovo dominio `orders` separato da
+      `Contract`, non un'estensione di quest'ultimo. Confermato con l'utente
+      il 2026-09-05 (opzione "consigliata" della domanda posta).
+- [x] **Chi avvia un ordine**: solo admin per ora, niente self-checkout
+      cliente. Confermato con l'utente il 2026-09-05.
+- [x] **Chi può confermare riscatti/pagamenti**: `ADMIN` (non solo
+      `SUPER_ADMIN`) può già farlo -- verificato nel DB, `wallet.manage` è
+      concesso a SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN. Nessuna modifica
+      necessaria, era già così.
+- [x] **Pagamento del residuo nel checkout**: bonifico + conferma admin,
+      stesso meccanismo già esistente per i contratti (nessun
+      `PaymentProvider` reale nel sistema, non è cambiato con questa fase).
 
 ## Decisioni ancora da prendere
 
 - [ ] **Fatture duplicate/false**: serve un controllo automatico
       numero-fattura + fornitore, o la sola verifica umana basta?
-- [ ] **Pagamento del residuo nel checkout** (Fase 4): sempre bonifico come
-      oggi? (Non esiste alcun `PaymentProvider` reale nel sistema.)
 - [ ] **Scadenza dei crediti**: restano validi per sempre o decadono?
 - [ ] **Anagrafica fornitori-partner**: bastano nome/logo (quello che c'è
       oggi), o servono anche referente/accordo di partnership/percentuale
@@ -175,9 +235,12 @@ dati di test creati durante la verifica sono stati rimossi dal database
 
 ## Come riprendere se una sessione futura parte da zero
 
-1. Leggi questo file per intero prima di fare qualunque altra cosa: Fasi
-   0-2 (+3 senza OCR) sono FATTE e verificate, non richiederle da capo.
-2. Se l'utente chiede di continuare, il pezzo mancante è la Fase 4
-   (checkout) -- inizia da lì, non dalle fondamenta.
+1. Leggi questo file per intero prima di fare qualunque altra cosa: **tutte
+   le Fasi 0-4 sono FATTE e verificate** (Fase 3 senza OCR reale, per
+   scelta), non richiederle da capo. Il progetto è funzionalmente completo
+   da riscatto a spesa.
+2. Se l'utente chiede di continuare, i pezzi mancanti sono solo: OCR reale,
+   controllo anti-duplicato fatture, self-checkout cliente (vedi "Cosa NON è
+   stato costruito") -- tutti extra/rifiniture, non fondamenta mancanti.
 3. Per le decisioni ancora aperte sopra, chiedi solo quelle.
 4. Aggiorna le checkbox di questo file mano a mano che qualcosa cambia.

@@ -9,11 +9,14 @@ from app.core.db import Base, TimestampMixin, UUIDPKMixin
 # What produced a WalletTransaction row. ADMIN_CREDIT = admin top-up/cashback
 # (from_wallet_id is NULL -- money originates outside the wallet system, e.g.
 # an admin crediting cashback after a product purchase). TRANSFER = peer-to-peer,
-# both wallet ids set. REVERSAL = a correction that links back to the original
-# row via reverses_transaction_id, mirroring CommissionReversal's "never mutate
-# a settled row, insert a new linked row instead" pattern (see
-# commissions/models.py CommissionReversal).
-WALLET_TRANSACTION_TYPES = ["ADMIN_CREDIT", "TRANSFER", "REVERSAL"]
+# both wallet ids set. PURCHASE_DEBIT = the mirror image of ADMIN_CREDIT --
+# to_wallet_id is NULL, money leaves a wallet to pay (part of) an order for a
+# DROPSHIPPING/PARTNER product and simply ceases to exist, same as an
+# ADMIN_CREDIT simply appears (see orders/service.py). REVERSAL = a
+# correction that links back to the original row via reverses_transaction_id,
+# mirroring CommissionReversal's "never mutate a settled row, insert a new
+# linked row instead" pattern (see commissions/models.py CommissionReversal).
+WALLET_TRANSACTION_TYPES = ["ADMIN_CREDIT", "TRANSFER", "PURCHASE_DEBIT", "REVERSAL"]
 
 
 class Wallet(UUIDPKMixin, TimestampMixin, Base):
@@ -107,6 +110,11 @@ class WalletTransaction(UUIDPKMixin, TimestampMixin, Base):
     source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     reference_invoice_redemption_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("invoice_redemptions.id"), nullable=True
+    )
+    # Set on a PURCHASE_DEBIT row (and on the REVERSAL that refunds one) --
+    # which order this debit paid (part of). NULL for every other type.
+    reference_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=True
     )
     # Self-FK: set only on a REVERSAL row, pointing back at the
     # ADMIN_CREDIT/TRANSFER row it corrects. The original row is never

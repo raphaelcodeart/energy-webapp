@@ -109,6 +109,7 @@ async def credit_wallet(
     actor_user_id: uuid.UUID | None,
     reference_contract_id: uuid.UUID | None = None,
     reference_invoice_redemption_id: uuid.UUID | None = None,
+    reference_order_id: uuid.UUID | None = None,
     source: str | None = None,
     note: str | None = None,
     idempotency_key: str,
@@ -134,6 +135,7 @@ async def credit_wallet(
         type=type_,
         reference_contract_id=reference_contract_id,
         reference_invoice_redemption_id=reference_invoice_redemption_id,
+        reference_order_id=reference_order_id,
         source=source,
         note=note,
         actor_user_id=actor_user_id,
@@ -255,6 +257,75 @@ async def debit_and_transfer(
     return txn
 
 
+async def debit_wallet_for_purchase(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    wallet_id: uuid.UUID,
+    amount_cents: int,
+    reference_order_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    note: str | None = None,
+    idempotency_key: str,
+) -> WalletTransaction:
+    """The credit-discount leg of an order (see orders/service.py) --
+    mirrors credit_wallet() but the money has a destination of NOTHING
+    (to_wallet_id NULL, type PURCHASE_DEBIT) rather than a source of
+    nothing, so unlike credit_wallet() this DOES need the atomic
+    compare-and-swap guard: a debit can take a wallet negative, a credit
+    never can. Same idempotency-replay behavior as every other wallet
+    write here."""
+    existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+    if existing is not None:
+        return existing
+
+    result = await db.execute(
+        update(Wallet)
+        .where(Wallet.id == wallet_id, Wallet.balance_cents >= amount_cents)
+        .values(balance_cents=Wallet.balance_cents - amount_cents)
+    )
+    if result.rowcount == 0:
+        raise InsufficientBalanceError("Insufficient balance")
+
+    txn = WalletTransaction(
+        organization_id=organization_id,
+        from_wallet_id=wallet_id,
+        to_wallet_id=None,
+        amount_cents=amount_cents,
+        type="PURCHASE_DEBIT",
+        reference_order_id=reference_order_id,
+        note=note,
+        actor_user_id=actor_user_id,
+        idempotency_key=idempotency_key,
+    )
+    db.add(txn)
+    await db.flush()
+
+    wallet = await db.get(Wallet, wallet_id)
+    assert wallet is not None  # just updated above by this same wallet_id
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="wallet.debited_for_purchase", entity_type="wallet_transaction", entity_id=str(txn.id),
+        new_value={"from_wallet_id": str(wallet_id), "amount_cents": amount_cents, "reference_order_id": str(reference_order_id)},
+    )
+    await notifications_service.notify_user(
+        db, organization_id=organization_id, user_id=wallet.user_id, type_="ORDER_CREDIT_APPLIED",
+        entity_type="wallet_transaction", entity_id=txn.id,
+        title=f"{amount_cents / 100:.2f} EUR di credito usati per un tuo ordine",
+        body=note,
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
+    await db.refresh(txn)
+    return txn
+
+
 async def reverse_transaction(
     db: AsyncSession,
     *,
@@ -265,12 +336,13 @@ async def reverse_transaction(
     idempotency_key: str,
 ) -> WalletTransaction:
     """Admin-only correction -- inserts a new REVERSAL row, never mutates the
-    original (same discipline as CommissionReversal). Only ADMIN_CREDIT and
-    TRANSFER rows may be reversed, not a REVERSAL itself (no correcting a
-    correction). Reversing a TRANSFER re-debits the original recipient, which
-    can itself raise InsufficientBalanceError if they've since spent the
-    funds -- an accepted, documented outcome, not a bug: docs/business-rules.md
-    #internal-wallet."""
+    original (same discipline as CommissionReversal). Any row may be reversed
+    except a REVERSAL itself (no correcting a correction). Reversing a
+    TRANSFER re-debits the original recipient, which can itself raise
+    InsufficientBalanceError if they've since spent the funds -- an accepted,
+    documented outcome, not a bug: docs/business-rules.md#internal-wallet.
+    Reversing a PURCHASE_DEBIT (see orders/service.py) just credits the
+    buyer back -- there is no recipient wallet to claw back from."""
     existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
     if existing is not None:
         return existing
@@ -284,15 +356,19 @@ async def reverse_transaction(
     # Claw back from whoever received the original amount, credit back
     # whoever it came from (or nobody, for an ADMIN_CREDIT -- the money just
     # ceases to exist again, mirroring how it was created from nothing).
-    result = await db.execute(
-        update(Wallet)
-        .where(Wallet.id == original.to_wallet_id, Wallet.balance_cents >= original.amount_cents)
-        .values(balance_cents=Wallet.balance_cents - original.amount_cents)
-    )
-    if result.rowcount == 0:
-        # See the identical comment in debit_and_transfer() -- no rollback
-        # needed, nothing was persisted.
-        raise InsufficientBalanceError("Insufficient balance to reverse this transaction")
+    # to_wallet_id is NULL for a PURCHASE_DEBIT (money left a wallet to pay
+    # for an order, went nowhere -- see orders/service.py) -- nothing to claw
+    # back from in that case, only the credit-back below applies.
+    if original.to_wallet_id is not None:
+        result = await db.execute(
+            update(Wallet)
+            .where(Wallet.id == original.to_wallet_id, Wallet.balance_cents >= original.amount_cents)
+            .values(balance_cents=Wallet.balance_cents - original.amount_cents)
+        )
+        if result.rowcount == 0:
+            # See the identical comment in debit_and_transfer() -- no rollback
+            # needed, nothing was persisted.
+            raise InsufficientBalanceError("Insufficient balance to reverse this transaction")
 
     if original.from_wallet_id is not None:
         await db.execute(
@@ -416,6 +492,7 @@ def _to_transaction_dict(txn: WalletTransaction, wallets_by_id: dict[uuid.UUID, 
         "source": txn.source,
         "reference_contract_id": txn.reference_contract_id,
         "reference_invoice_redemption_id": txn.reference_invoice_redemption_id,
+        "reference_order_id": txn.reference_order_id,
         "reverses_transaction_id": txn.reverses_transaction_id,
         "note": txn.note,
         "actor_user_id": txn.actor_user_id,

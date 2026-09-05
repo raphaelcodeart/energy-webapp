@@ -4,6 +4,47 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 24 — 2026-09-05 (same day, continued) — Cashback Phase 4: spending credits on orders
+
+Closes the loop opened in Session 23: credits could be earned (invoice
+redemption) but not spent. Full detail in
+`docs/cashback-partner-invoices-plan.md` (kept current, not duplicated here)
+-- summary:
+
+- New `orders` domain (checkout for DROPSHIPPING/PARTNER products only,
+  never INTERNAL) -- deliberately not `Contract`, whose `supply_point_id` is
+  NOT NULL by design. `AWAITING_PAYMENT -> PAID` (or straight to `PAID` if
+  credit covers 100%), `CANCELLED` reachable from `AWAITING_PAYMENT` and
+  refunds the exact credit applied. Admin-only for now (confirmed with the
+  user: no self-checkout yet).
+- `wallets`: new `PURCHASE_DEBIT` transaction type (mirror of `ADMIN_CREDIT`
+  -- `to_wallet_id` NULL, money leaves a wallet to pay for an order) and
+  `debit_wallet_for_purchase()`. Extended `reverse_transaction()` to
+  correctly refund a `PURCHASE_DEBIT` (no recipient wallet to claw back
+  from, only a credit-back to the buyer) -- this case would previously have
+  silently mis-handled the reversal (tried to debit a NULL `to_wallet_id`,
+  always raising `InsufficientBalanceError`).
+- **Real bug found and fixed during testing**: `create_order()` originally
+  flushed the `Order` row, then attempted the wallet debit, planning to
+  `db.rollback()` on `InsufficientBalanceError`. That rollback broke the
+  test suite's SAVEPOINT-based session fixture (same class of issue already
+  documented on `debit_and_transfer`'s identical insufficient-balance path).
+  Fixed by checking the wallet balance *before* creating the order row at
+  all, so no rollback is ever needed -- matches the existing codebase
+  convention exactly instead of reinventing it worse.
+- Two architecture questions were put to the user before writing any of
+  this (new `orders` domain vs. extending `Contract`; admin-only vs.
+  self-checkout) rather than assumed, given the cost of guessing wrong at
+  this scope -- both confirmed as designed above.
+- Verified live via real HTTP calls: an 80,00E product at 25% credit
+  discount, customer with 30,00E balance, order applying the full 20,00E
+  cap left a 10,00E balance and a 60,00E residual; confirm-payment moved it
+  to PAID. Cap/balance rejections, the straight-to-PAID 100%-credit case,
+  cancel-refund, double-action guards, and the INTERNAL-category rejection
+  all verified. Full backend suite 132/132 passing, ruff clean, mypy clean
+  (same pre-existing Result.rowcount stub false-positives as before, one
+  more instance from the new debit function, not a new class of issue).
+
 ## Session 23 — 2026-09-05 (same day, continued) — Partner-invoice cashback (Phases 0-2), wallet transfer default-deny
 
 Full implementation of the cashback design scoped out earlier the same
