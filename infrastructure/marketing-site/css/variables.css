@@ -1,0 +1,66 @@
+/* ============================================================
+   VARIABLES · RESET · BASE
+   Lial Energy — Light Theme
+============================================================ */
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* --- Brand --- */
+  --orange:        #FF6B00;
+  --orange-hover:  #E55A00;
+  --orange-light:  #FF8C00;
+  --orange-pale:   #FFF3EB;
+  --orange-tint:   #FFF8F3;
+  --gold:          #D4950A;
+  --red-accent:    #FF3D00;
+
+  /* --- Backgrounds --- */
+  --bg:            #FFFFFF;
+  --bg-alt:        #F7F8FA;
+  --bg-warm:       #FFF8F3;
+  --bg-card:       #FFFFFF;
+  --bg-dark:       #111111;
+  --bg-dark-2:     #1A1A1A;
+
+  /* --- Text --- */
+  --text:          #111111;
+  --text-2:        #3D3D3D;
+  --text-muted:    #717171;
+  --text-light:    #AAAAAA;
+
+  /* --- Borders --- */
+  --border:        rgba(0, 0, 0, .08);
+  --border-accent: rgba(255, 107, 0, .22);
+
+  /* --- Shadows --- */
+  --shadow-xs:     0 1px 6px  rgba(0, 0, 0, .05);
+  --shadow-sm:     0 3px 14px rgba(0, 0, 0, .06);
+  --shadow-md:     0 8px 32px rgba(0, 0, 0, .09);
+  --shadow-lg:     0 18px 60px rgba(0, 0, 0, .11);
+  --shadow-orange: 0 8px 30px rgba(255, 107, 0, .30);
+
+  /* --- Gradient --- */
+  --grad: linear-gradient(135deg, #FF6B00 0%, #FFB300 50%, #FF3D00 100%);
+
+  /* --- Typography --- */
+  --font: 'Montserrat', sans-serif;
+
+  /* --- Easing --- */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-alt); }
+::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 3px; }

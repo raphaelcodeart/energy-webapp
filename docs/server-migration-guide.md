@@ -127,7 +127,11 @@ Variabili che vanno adattate al nuovo server (non generate a caso):
 - `SMTP_*` — opzionali, lascia `SMTP_HOST` vuoto per partire senza email (i link
   di reset password restano validi, solo loggati invece che inviati — vedi
   `business-rules.md §Password reset`); compilali quando hai un provider SMTP
-  reale.
+  reale. **Stato attuale**: configurato con la casella `noreply@lialenergy.it`
+  ospitata su Aruba (`SMTP_HOST=smtps.aruba.it`, porta 587, STARTTLS) — è
+  l'endpoint standard di invio per caselle Aruba agganciate a un dominio i cui
+  nameserver sono `arubadns.net`/`technorail.com`, verificato con un login SMTP
+  reale prima di scriverlo in `.env`.
 
 **Mai committare `.env` nel repository.** È già in `.gitignore`; se `git status`
 lo mostra come modificabile, fermati e controlla prima di fare qualsiasi `git add`.
@@ -188,6 +192,36 @@ lato utente) con le credenziali del seed (`DemoPass123!`) o le credenziali reali
 migrate.
 
 ### 4.6 Dominio e HTTPS
+
+**Stato attuale (dal Session 22)**: questo server ora gira su un dominio vero,
+non più solo sull'hostname temporaneo Hetzner, ed è diviso in due siti separati
+con due certificati Let's Encrypt distinti:
+
+- `lialenergy.it` + `www.lialenergy.it` — sito pubblico/pubblicitario statico
+  (`infrastructure/marketing-site/`, montato in nginx su
+  `/usr/share/nginx/marketing`), servito direttamente da nginx, nessun proxy.
+  Il bottone "Accedi" nella pagina punta a `https://app.lialenergy.it/login`.
+  Cert: `certbot/conf/live/lialenergy.it/`.
+- `app.lialenergy.it` — l'app gestionale vera e propria (quello che questo
+  documento chiama sempre "il dominio" nella procedura generica sotto).
+  `NEXT_PUBLIC_APP_URL`/`PUBLIC_APP_BASE_URL` in `.env` puntano qui. Cert:
+  `certbot/conf/live/app.lialenergy.it/`. Il blocco server di questo dominio è
+  anche `default_server` e include l'hostname Hetzner temporaneo e `_` come
+  alias, così l'accesso diretto per IP o al vecchio hostname continua a
+  funzionare.
+
+Vedi `infrastructure/nginx/nginx.conf` per i due blocchi `server` completi. Se
+aggiungi un terzo dominio/sottodominio, ripeti la procedura generica sotto con
+un nuovo `-d` e un nuovo blocco `server` — non riusare uno dei due certificati
+esistenti per un nome che non è nel suo `-d`.
+
+**Nota MIME types**: `nginx.conf` include `mime.types` e imposta `default_type
+application/octet-stream` nel blocco `http {}` — necessario perché nginx ora
+serve file statici direttamente (il sito marketing), non solo da proxy verso
+Next.js/FastAPI che impostavano da soli il `Content-Type` corretto. Senza
+questo, CSS/JS venivano serviti come `text/plain` e i browser rifiutavano di
+applicare i fogli di stile (pagina bianca, nessuna impaginazione) — bug reale
+trovato e corretto in questa sessione.
 
 **Obbligatorio, non opzionale**: il cookie di sessione (`apps/dashboard/lib/session.ts`)
 è marcato `Secure`, quindi i browser lo scartano silenziosamente su una connessione

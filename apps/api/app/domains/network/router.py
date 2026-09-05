@@ -105,6 +105,7 @@ async def get_my_agent_profile(
     return AgentProfileRead(
         id=agent.id,
         organization_id=agent.organization_id,
+        user_id=agent.user_id,
         display_name=agent.display_name,
         promoter_code=agent.promoter_code,
         status=agent.status,
@@ -112,6 +113,7 @@ async def get_my_agent_profile(
         current_rank_id=agent.current_rank_id,
         rank_code=rank_code,
         rejection_reason=agent.rejection_reason,
+        is_blacklisted=agent.is_blacklisted,
     )
 
 

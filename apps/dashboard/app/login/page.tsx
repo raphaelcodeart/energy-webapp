@@ -53,18 +53,6 @@ export default function LoginPage() {
     }
   }
 
-  const fillTestCredentials = (role: "admin" | "promoter" | "customer") => {
-    setError(null);
-    setPassword("DemoPass123!");
-    if (role === "admin") {
-      setEmail("admin@lialenergy.demo");
-    } else if (role === "promoter") {
-      setEmail("promoter@lialenergy.demo");
-    } else {
-      setEmail("customer@lialenergy.demo");
-    }
-  };
-
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 relative">
       <div className="absolute top-4 right-4">
@@ -153,42 +141,6 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
-        {/* Demo Helper Panel */}
-        <div className="glass-card rounded-2xl p-6 mt-6 border-amber-500/10">
-          <h3 className="text-sm font-semibold text-amber-400 flex items-center gap-2 mb-3">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Area Demo & Test
-          </h3>
-          <p className="text-slate-400 light:text-slate-500 text-xs mb-4">
-            Fai click su uno dei ruoli per precompilare Email e Password (<code>DemoPass123!</code>):
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => fillTestCredentials("admin")}
-              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-orange-500/20 hover:border-orange-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
-            >
-              Amministratore
-            </button>
-            <button
-              type="button"
-              onClick={() => fillTestCredentials("promoter")}
-              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-amber-500/20 hover:border-amber-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
-            >
-              Promoter
-            </button>
-            <button
-              type="button"
-              onClick={() => fillTestCredentials("customer")}
-              className="py-2 px-3 text-xs bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 hover:bg-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-slate-300 light:text-slate-600 font-medium transition cursor-pointer"
-            >
-              Cliente
-            </button>
-          </div>
-        </div>
       </div>
     </main>
   );

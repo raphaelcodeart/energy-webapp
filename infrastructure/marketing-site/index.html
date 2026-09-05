@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Lial Energy — Trasforma le tue bollette in cashback. Il sistema di energia circolare che ti restituisce il 100% di quanto spendi ogni mese.">
+  <title>Lial Energy — Evolvi con l'Energia</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     NAVIGATION
+══════════════════════════════════════════════════════════ -->
+<nav id="nav">
+  <div class="nav-wrap">
+    <a href="#" class="nav-brand">
+      <img src="img/logo.png" alt="Lial Energy Logo">
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="#come-funziona">Come Funziona</a></li>
+      <li><a href="#benefici">Benefici</a></li>
+      <li><a href="#soluzione">Piani</a></li>
+      <li><a href="https://app.lialenergy.it/login" class="nav-login">Accedi</a></li>
+      <li><a href="#contatti" class="nav-btn">Inizia Ora →</a></li>
+    </ul>
+
+    <button class="hamburger" id="hbg" onclick="toggleMenu()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile menu -->
+<div id="mob-menu" role="dialog" aria-modal="true">
+  <button class="mob-close" onclick="toggleMenu()" aria-label="Chiudi">✕</button>
+  <a href="#come-funziona">Come Funziona</a>
+  <a href="#benefici">Benefici</a>
+  <a href="#soluzione">Piani</a>
+  <a href="https://app.lialenergy.it/login">Accedi</a>
+  <a href="#contatti" style="color:var(--orange)">Inizia Ora →</a>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 1 — HERO
+══════════════════════════════════════════════════════════ -->
+<section id="hero">
+  <div id="particles" aria-hidden="true"></div>
+
+  <div class="hero-inner">
+    <div class="hero-badge">⚡ Lial Energy — Il Futuro dell'Energia</div>
+
+    <h1 class="hero-h1">
+      Paghi le bollette<br>
+      ogni mese…<br>
+      e quei soldi <br />non tornano più?
+    </h1>
+
+    <p class="hero-sub">
+      Non importa quanto cambi compagnia <br />alla fine spendi sempre.<br>
+    </p>
+
+    <h1 class="hero-h1">
+      <span class="grad-text">Finché non scopri un modo radicalmente diverso.</span>
+    </h1>
+
+    <div class="hero-btns">
+      <a href="#soluzione"     class="btn-prim">Scopri il Sistema ⚡</a>
+      <a href="#come-funziona" class="btn-sec">Come Funziona →</a>
+    </div>
+  </div>
+
+  <div class="hero-scroll" aria-hidden="true">
+    <span>Scorri</span>
+    <div class="scroll-line"></div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 2 — IL PROBLEMA
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-alt" id="problema">
+  <div class="container">
+    <div class="two-col">
+
+      <div class="sec-text fade">
+        <span class="label">Il Problema</span>
+        <h2>Luce e gas sono costi <span class="grad-text">inevitabili.</span><br>Ma devono restare tali?</h2>
+        <p>Ogni mese paghi. Ogni anno spendi migliaia di euro. E la verità è semplice: sei senza controllo.</p>
+        <p>I soldi escono e non tornano mai indietro. Anno dopo anno, una cifra enorme che si accumula in silenzio.</p>
+      </div>
+
+      <div class="stat-grid fade d2">
+        <div class="stat-card">
+          <span class="stat-num" data-target="1800">0</span>
+          <div class="stat-lbl">€ spesi in energia ogni anno (media famiglia)</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" data-target="18000">0</span>
+          <div class="stat-lbl">€ in 10 anni senza recuperare nulla</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" data-target="100" data-suffix="%">0</span>
+          <div class="stat-lbl">cashback possibile con Lial Energy</div>
+        </div>
+        <div class="stat-card accent">
+          <span class="stat-num" style="-webkit-text-fill-color:var(--orange);color:var(--orange)">€ 0</span>
+          <div class="stat-lbl">tornati indietro senza il sistema giusto</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 3 — LA CONFUSIONE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-white">
+  <div class="container">
+    <div class="conf-center fade">
+      <span class="label">Il Caos del Mercato</span>
+      <h2>Offerte ovunque.<br><span class="grad-text">Promesse su promesse.</span><br>Ma alla fine…</h2>
+
+      <div class="tags">
+        <span class="tag">Offerta speciale!</span>
+        <span class="tag">Risparmia il 30%</span>
+        <span class="tag">Tariffa bloccata</span>
+        <span class="tag">Call center ogni giorno</span>
+        <span class="tag">Prezzi che cambiano</span>
+        <span class="tag">Promozioni confuse</span>
+        <span class="tag">Contratti complicati</span>
+        <span class="tag">Bollette sorpresa</span>
+        <span class="tag">Preventivi ingannevoli</span>
+        <span class="tag">Offerte limitate</span>
+        <span class="tag">Fisso o variabile?</span>
+        <span class="tag">Cambio fornitore</span>
+      </div>
+
+      <p class="conf-end">Tutti promettono risparmio, ma alla fine… <strong>sono tutti uguali.</strong></p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     PHOTO BAND 1 — Wind turbines · "I tuoi soldi svaniscono"
+══════════════════════════════════════════════════════════ -->
+<section class="photo-band pb-1" aria-label="Turbine eoliche al tramonto">
+  <div class="pb-inner fade">
+    <p class="pb-quote">I tuoi soldi <em>svaniscono</em><br>ogni mese. In silenzio.</p>
+    <p class="pb-sub">Migliaia di euro spesi in energia ogni anno, senza mai recuperarne neppure uno.</p>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 4 — LE CONSEGUENZE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-warm s-conseq">
+  <div class="container">
+    <div class="two-col">
+
+      <div class="money-vis fade">
+        <div class="money-big" id="mCounter">€ 0</div>
+        <div class="money-lbl">persi in 10 anni</div>
+        <div class="bars">
+          <div class="bar-row">
+            <span class="bar-key">Luce</span>
+            <div class="bar-track"><div class="bar-fill" data-w="75"></div></div>
+            <span class="bar-val">€ 800/a</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-key">Gas</span>
+            <div class="bar-track"><div class="bar-fill" data-w="60"></div></div>
+            <span class="bar-val">€ 700/a</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-key">Altro</span>
+            <div class="bar-track"><div class="bar-fill" data-w="30"></div></div>
+            <span class="bar-val">€ 300/a</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="conseq-text fade d2">
+        <span class="label">Le Conseguenze</span>
+        <h2>Perdi <span class="grad-text">ogni mese</span><br>senza accorgertene.</h2>
+        <ul class="conseq-list">
+          <li><p>Continui a pagare senza mai recuperare nulla</p></li>
+          <li><p>Perdi soldi ogni mese, mese dopo mese</p></li>
+          <li><p>La cifra accumulata nel tempo diventa enorme</p></li>
+          <li><p>Sei intrappolato in un sistema che non lavora per te</p></li>
+          <li><p>Il tuo denaro alimenta gli altri, non te</p></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 5 — IL PUNTO DI ROTTURA
+══════════════════════════════════════════════════════════ -->
+<section class="s-break">
+  <div class="container">
+    <div class="break-inner fade">
+      <span class="label">Il Momento di Cambiare</span>
+      <h2>Ma davvero deve<br>continuare così?</h2>
+      <p>Devi davvero pagare per sempre<br>senza avere <span class="acc white-u">nulla indietro?</span></p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 6 — LA SOLUZIONE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-white" id="soluzione">
+  <div class="container">
+
+    <div class="sol-head fade">
+      <span class="label">La Soluzione</span>
+      <h2>E se ogni bolletta<br><span class="grad-text">ti tornasse indietro?</span></h2>
+      <p>Nasce Lial Energy — il sistema che trasforma un costo inevitabile in valore reale e concreto.</p>
+    </div>
+
+    <div class="sol-banner fade d1">
+      <span style="font-size:1.6rem;flex-shrink:0">💡</span>
+      <div>
+        Attivi il tuo conto <strong>cashback energia circolare</strong> — e l'importo versato
+        ti viene <strong>immediatamente accreditato in MamiCash</strong> sul tuo wallet.
+        <strong>Il tuo investimento iniziale torna subito.</strong>
+      </div>
+    </div>
+
+    <div class="pricing-row fade d2">
+
+      <!-- Privati -->
+      <div class="p-card">
+        <span class="p-icon">🏠</span>
+        <div class="p-type">Privati</div>
+        <div class="p-name">Piano Casa</div>
+        <div class="p-price"><sup>€</sup>149</div>
+        <div class="p-note">contributo una tantum<br>subito accreditato in MamiCash</div>
+        <ul class="p-feats">
+          <li>Cashback 100% su ogni bolletta</li>
+          <li>MamiCash sul wallet immediato</li>
+          <li>App dedicata inclusa</li>
+          <li>AI ottimizzazione tariffe</li>
+          <li>Supporto community</li>
+        </ul>
+        <a href="#contatti" class="p-btn p-btn-ol">Inizia Ora</a>
+      </div>
+
+      <!-- Piccole Imprese — featured -->
+      <div class="p-card feat">
+        <div class="p-badge">⭐ Più Scelto</div>
+        <span class="p-icon">🏢</span>
+        <div class="p-type">Piccole Imprese</div>
+        <div class="p-name">Piano Business</div>
+        <div class="p-price"><sup>€</sup>249</div>
+        <div class="p-note">contributo una tantum<br>subito accreditato in MamiCash</div>
+        <ul class="p-feats">
+          <li>Cashback 100% su tutte le bollette</li>
+          <li>MamiCash sul wallet immediato</li>
+          <li>Dashboard aziendale avanzata</li>
+          <li>AI ottimizzazione contratti</li>
+          <li>Supporto prioritario</li>
+          <li>Programma referral incluso</li>
+        </ul>
+        <a href="#contatti" class="p-btn p-btn-fi">Inizia Ora →</a>
+      </div>
+
+      <!-- Aziende & Condomini -->
+      <div class="p-card">
+        <span class="p-icon">🏗️</span>
+        <div class="p-type">Aziende &amp; Condomini</div>
+        <div class="p-name">Piano Corporate</div>
+        <div class="p-price"><sup>€</sup>349</div>
+        <div class="p-note">contributo una tantum<br>subito accreditato in MamiCash</div>
+        <ul class="p-feats">
+          <li>Cashback 100% su volumi elevati</li>
+          <li>MamiCash sul wallet immediato</li>
+          <li>Gestione multi-utenza</li>
+          <li>AI ottimizzazione avanzata</li>
+          <li>Account manager dedicato</li>
+          <li>Lial Terzo Settore incluso</li>
+        </ul>
+        <a href="#contatti" class="p-btn p-btn-ol">Inizia Ora</a>
+      </div>
+
+    </div><!-- /pricing-row -->
+
+    <div class="cb-strip fade d3">
+      <div class="cb-item"><div class="cb-ico">⚡</div><div class="cb-txt"><h4>Contributo Immediato</h4><p>Versato e subito accreditato in MamiCash</p></div></div>
+      <div class="cb-div"></div>
+      <div class="cb-item"><div class="cb-ico">🔄</div><div class="cb-txt"><h4>100% Cashback Mensile</h4><p>Ogni bolletta ritorna completamente</p></div></div>
+      <div class="cb-div"></div>
+      <div class="cb-item"><div class="cb-ico">📱</div><div class="cb-txt"><h4>Tutto Automatico</h4><p>App semplice, trasparente, sempre attiva</p></div></div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     PHOTO BAND 2 — Solar panels · "Il futuro è già qui"
+══════════════════════════════════════════════════════════ -->
+<section class="photo-band pb-2" aria-label="Pannelli solari visti dall'alto">
+  <div class="pb-inner fade">
+    <p class="pb-quote">Il cambiamento<br>inizia con <em>una scelta.</em></p>
+    <p class="pb-sub">Centinaia di famiglie e aziende hanno già trasformato le loro bollette in cashback reale.</p>
+    <a href="#soluzione" class="pb-btn">Scegli il tuo piano →</a>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 7 — COME FUNZIONA
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-alt" id="come-funziona">
+  <div class="container">
+
+    <div class="sec-head fade">
+      <span class="label">Come Funziona</span>
+      <h2>Più semplice di<br><span class="grad-text">quello che pensi.</span></h2>
+      <p>Quattro passi per trasformare le tue bollette in valore concreto, ogni mese.</p>
+    </div>
+
+    <div class="timeline">
+      <div class="t-item fade">
+        <div class="t-num">1</div>
+        <div class="t-body">
+          <h3>Attivi il Contratto</h3>
+          <p>Scegli il piano adatto a te e versa il contributo iniziale. Il tuo account Lial Energy è attivo in pochi minuti — e il contributo ti viene subito accreditato in MamiCash.</p>
+        </div>
+      </div>
+      <div class="t-item fade d1">
+        <div class="t-num">2</div>
+        <div class="t-body">
+          <h3>Paghi le Bollette Normalmente</h3>
+          <p>Continui a pagare luce e gas esattamente come hai sempre fatto. Nessun cambiamento nella tua routine, nessun costo aggiuntivo nascosto.</p>
+        </div>
+      </div>
+      <div class="t-item fade d2">
+        <div class="t-num">3</div>
+        <div class="t-body">
+          <h3>Ricevi il 100% in MamiCash</h3>
+          <p>Ogni mese il sistema elabora i tuoi pagamenti e accredita automaticamente il cashback sul tuo wallet. Tutto automatico, direttamente sull'app.</p>
+        </div>
+      </div>
+      <div class="t-item fade d3">
+        <div class="t-num">4</div>
+        <div class="t-body">
+          <h3>Usi il Tuo MamiCash</h3>
+          <p>Crediti reali e spendibili subito: acquisti, prodotti, servizi, gift card. I tuoi soldi tornano davvero — non punti virtuali, valore concreto.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 8 — IL CUORE DEL SISTEMA (AI)
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-white">
+  <div class="container">
+    <div class="ai-grid">
+
+      <div class="ai-vis fade">
+        <div class="ai-orbit">
+          <div class="ai-core">
+            <span class="ai-em">🤖</span>
+            <span class="ai-tag">AI Engine</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-body fade d2">
+        <span class="label">Il Cuore del Sistema</span>
+        <h2>Un'intelligenza artificiale<br><span class="grad-text">lavora per te.</span></h2>
+        <p>Il nostro algoritmo analizza costantemente il mercato energetico per garantirti sempre le condizioni migliori — in automatico, senza che tu debba fare nulla.</p>
+        <div class="ai-feats">
+          <div class="ai-feat"><span class="fi">📊</span><span class="ft">Analisi real-time del mercato energetico</span></div>
+          <div class="ai-feat"><span class="fi">🎯</span><span class="ft">Ottimizzazione automatica delle tariffe</span></div>
+          <div class="ai-feat"><span class="fi">🔔</span><span class="ft">Aggiornamenti automatici quando conviene</span></div>
+          <div class="ai-feat"><span class="fi">🛡️</span><span class="ft">Sempre nella condizione migliore per te</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 9 — IL VALORE REALE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-alt">
+  <div class="container">
+
+    <div class="sec-head fade">
+      <span class="label">Il Valore Reale</span>
+      <h2>Non è un risparmio.<br><span class="grad-text">È un recupero totale.</span></h2>
+    </div>
+
+    <div class="eq-row fade d1">
+      <div class="v-box">
+        <span class="va">€ 100</span>
+        <span class="vl">Bolletta pagata</span>
+      </div>
+      <div class="v-op">=</div>
+      <div class="v-box cb">
+        <span class="va">€ 100</span>
+        <span class="vl">MamiCash ricevuto</span>
+      </div>
+    </div>
+
+    <div style="text-align:center">
+      <div class="mami-badge fade d2">
+        <span class="mi">💳</span>
+        <span class="mt">MamiCash — da usare subito per acquisti reali, prodotti, servizi e gift card</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     PHOTO BAND 3 — City at night · "Energia per te 24h"
+══════════════════════════════════════════════════════════ -->
+<section class="photo-band pb-3" aria-label="Skyline di città di notte">
+  <div class="pb-inner fade">
+    <p class="pb-quote">L'energia lavora<br>per te. <em>24 ore su 24.</em></p>
+    <p class="pb-sub">Il sistema AI di Lial Energy ottimizza continuamente le tue tariffe, ogni giorno, in automatico.</p>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 10 — I BENEFICI
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-white" id="benefici">
+  <div class="container">
+
+    <div class="sec-head fade">
+      <span class="label">I Benefici</span>
+      <h2>Quello che prima usciva,<br><span class="grad-text">ora ritorna.</span></h2>
+    </div>
+
+    <div class="ben-grid">
+      <div class="ben-card fade">    <span class="ben-ico">🔄</span><div class="ben-title">Energia Circolare</div><p class="ben-desc">I tuoi soldi non svaniscono più. Entrano nel sistema e tornano a te ogni mese, completamente automatico.</p></div>
+      <div class="ben-card fade d1"> <span class="ben-ico">💰</span><div class="ben-title">Controllo Totale</div><p class="ben-desc">Sai esattamente quanto spendi e quanto recuperi. Nessuna sorpresa, solo trasparenza e prevedibilità.</p></div>
+      <div class="ben-card fade d2"> <span class="ben-ico">📱</span><div class="ben-title">Tutto in App</div><p class="ben-desc">Dashboard chiara, cashback in tempo reale, storico completo. Il tuo portafoglio energetico sempre in tasca.</p></div>
+      <div class="ben-card fade d3"> <span class="ben-ico">🤖</span><div class="ben-title">AI Automatica</div><p class="ben-desc">L'intelligenza artificiale ottimizza le tue tariffe continuamente. Nessun intervento richiesto da parte tua.</p></div>
+      <div class="ben-card fade d4"> <span class="ben-ico">🎁</span><div class="ben-title">MamiCash Reale</div><p class="ben-desc">Non punti virtuali. Credito reale spendibile in acquisti concreti, prodotti fisici, servizi e gift card.</p></div>
+      <div class="ben-card fade d5"> <span class="ben-ico">🚀</span><div class="ben-title">Vantaggio Continuo</div><p class="ben-desc">Una spesa obbligatoria si trasforma in un vantaggio permanente. Il sistema lavora ogni mese, per sempre.</p></div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 11 — COMMUNITY E PROTEZIONE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-warm">
+  <div class="container">
+    <div class="two-col-lg">
+
+      <div class="comm-text fade">
+        <span class="label">Community &amp; Protezione</span>
+        <h2>Entri in una community<br><span class="grad-text">che ti supporta davvero.</span></h2>
+        <p>Non sei solo. Con Lial Energy entri in un gruppo di persone che si aiutano concretamente — anche nei momenti più difficili, con aiuti reali e non solo parole.</p>
+        <div class="comm-feats">
+          <div class="c-feat"><span class="ci">🤝</span><div><h4>Supporto Concreto</h4><p>Aiuti reali nei momenti di necessità, non solo parole.</p></div></div>
+          <div class="c-feat"><span class="ci">👥</span><div><h4>Rete di Condivisione</h4><p>Una comunità che cresce insieme e si protegge a vicenda.</p></div></div>
+          <div class="c-feat"><span class="ci">🛡️</span><div><h4>Protezione Reale</h4><p>Benefici concreti anche in situazioni di emergenza.</p></div></div>
+        </div>
+      </div>
+
+      <div class="comm-vis fade d2">
+        <div class="rings" aria-hidden="true">
+          <div class="ring ring1"></div>
+          <div class="ring ring2"></div>
+          <div class="ring ring3"></div>
+          <div class="ring ring4"></div>
+          <div class="ring-mid">🌐</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 12 — OPPORTUNITÀ
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-alt">
+  <div class="container">
+    <div class="opp-center fade">
+
+      <span class="label">Opportunità</span>
+      <h2>Condividi il sistema.<br><span class="grad-text">Ottieni ancora di più.</span></h2>
+      <p>Condividendo Lial Energy con chi conosci costruisci un ritorno costante nel tempo. Ogni 5 clienti dalle tue segnalazioni ricevi benefici concreti.</p>
+
+      <div class="ref-visual">
+        <div class="ref-icon">
+          <div class="ri">👤</div>
+          <span>Tu</span>
+        </div>
+        <div class="ref-arr">→</div>
+        <div class="ref-icon">
+          <div class="ri" style="width:40px;height:40px;font-size:1.2rem">👤</div>
+          <span>× 5 clienti</span>
+        </div>
+        <div class="ref-arr">→</div>
+        <div class="ref-result">
+          <div class="rri">🎁</div>
+          <div>
+            <h4>Ogni 5 clienti</h4>
+            <p>Benefici concreti per te</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="opp-note">Le tue segnalazioni generano valore sia per chi le riceve, sia per te.<br><strong>Nel tempo, costruisci un ritorno costante.</strong></p>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     PHOTO BAND 4 — People · "Unisciti alla community"
+══════════════════════════════════════════════════════════ -->
+<section class="photo-band pb-4" aria-label="Persone felici in comunità">
+  <div class="pb-inner fade">
+    <p class="pb-quote">Unisciti a chi ha già<br>scelto di <em>evolvere.</em></p>
+    <p class="pb-sub">Una community reale che cresce ogni giorno. Supporto concreto, benefici concreti.</p>
+    <a href="#contatti" class="pb-btn">Inizia Ora ⚡</a>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 13 — VISIONE
+══════════════════════════════════════════════════════════ -->
+<section class="s-pad bg-white">
+  <div class="container">
+    <div class="vis-inner fade">
+
+      <span class="label">Visione</span>
+      <h2>Finalmente un sistema<br>che <span class="grad-text">lavora per te.</span></h2>
+      <p>Un gruppo di acquisto che ti sostiene davvero, anche in caso di necessità. Non solo un fornitore di energia, ma un ecosistema di valore condiviso.</p>
+
+      <div class="ts-badge">
+        <span style="font-size:1.4rem">🌱</span>
+        <div>
+          <strong>Lial Energy Terzo Settore</strong>
+          <small>Scopri come partecipiamo al bene comune</small>
+        </div>
+      </div>
+
+      <p>Evolvi con l'energia. Inizia il tuo cambiamento oggi.</p>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SLIDE 14 — CALL TO ACTION
+══════════════════════════════════════════════════════════ -->
+<section id="contatti">
+  <div class="container">
+    <div class="cta-inner fade">
+
+      <span class="label">Inizia Ora</span>
+      <h2>
+        Vuoi continuare<br>
+        a perdere…<br>
+        <span class="grad-text">o iniziare a recuperare?</span>
+      </h2>
+      <p>
+        Pensa a quanto spendi ogni mese in bollette.<br>
+        Ora immagina di riaverli indietro, ogni mese.
+      </p>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:1.2rem">
+        <a href="mailto:info@lialenergy.it" class="cta-btn">
+          ⚡ Inizia il Tuo Cambiamento
+        </a>
+        <div class="cta-trust">
+          <span>🔒</span>
+          <span>Contributo immediatamente accreditato in MamiCash — Nessun rischio</span>
+        </div>
+      </div>
+
+      <div class="cta-stats">
+        <div class="cs-item"><div class="cs-num">100%</div><div class="cs-lbl">Cashback Mensile</div></div>
+        <div class="cs-div"></div>
+        <div class="cs-item"><div class="cs-num">3</div><div class="cs-lbl">Piani Disponibili</div></div>
+        <div class="cs-div"></div>
+        <div class="cs-item"><div class="cs-num">€ 0</div><div class="cs-lbl">Rischio Aderendo</div></div>
+        <div class="cs-div"></div>
+        <div class="cs-item"><div class="cs-num">AI</div><div class="cs-lbl">Gestione Automatica</div></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════════════════════ -->
+<footer>
+  <div class="container">
+    <div class="ft-grid">
+
+      <div class="ft-brand">
+        <img src="img/logo.jpeg" alt="Lial Energy">
+        <p>Trasformiamo un costo inevitabile in valore reale. Il sistema di energia circolare con cashback al 100% tramite MamiCash.</p>
+      </div>
+
+      <div class="ft-col">
+        <h4>Prodotto</h4>
+        <ul>
+          <li><a href="#come-funziona">Come Funziona</a></li>
+          <li><a href="#benefici">I Benefici</a></li>
+          <li><a href="#soluzione">I Piani</a></li>
+          <li><a href="#contatti">Inizia Ora</a></li>
+        </ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Azienda</h4>
+        <ul>
+          <li><a href="#">Chi Siamo</a></li>
+          <li><a href="#">Lial Terzo Settore</a></li>
+          <li><a href="#">Community</a></li>
+          <li><a href="#contatti">Contatti</a></li>
+        </ul>
+      </div>
+
+      <div class="ft-col">
+        <h4>Legale</h4>
+        <ul>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Termini di Servizio</a></li>
+          <li><a href="#">Cookie Policy</a></li>
+          <li><a href="#">GDPR</a></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="ft-bot">
+      <p>© 2025 Lial Energy. Tutti i diritti riservati.</p>
+      <div class="socials">
+        <a href="#" class="soc" title="Facebook"  aria-label="Facebook">f</a>
+        <a href="#" class="soc" title="Instagram" aria-label="Instagram">in</a>
+        <a href="#" class="soc" title="LinkedIn"  aria-label="LinkedIn">lk</a>
+        <a href="#" class="soc" title="YouTube"   aria-label="YouTube">▶</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Script -->
+<script src="js/app.js"></script>
+</body>
+</html>

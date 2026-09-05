@@ -1,0 +1,76 @@
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (max-width: 1024px) {
+  .pricing-row {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .p-card.feat { transform: scale(1); }
+  .p-card.feat:hover { transform: translateY(-8px); }
+  .ft-grid { grid-template-columns: 1fr 1fr; }
+  .ai-grid { gap: 3rem; }
+}
+
+@media (max-width: 768px) {
+  /* Disable parallax on mobile (iOS bug) */
+  .photo-band { background-attachment: scroll; min-height: 320px; }
+  .pb-quote   { font-size: 1.7rem; }
+  /* Logo mobile */
+  .nav-brand img { height: 48px; }
+
+  /* Nav */
+  .nav-links  { display: none; }
+  .hamburger  { display: flex; }
+
+  /* Grids → single column */
+  .two-col,
+  .two-col-lg,
+  .ai-grid { grid-template-columns: 1fr; gap: 3rem; }
+
+  .money-vis { order: -1; }
+
+  /* Benefits 2 cols on tablet */
+  .ben-grid   { grid-template-columns: 1fr 1fr; }
+
+  /* Footer */
+  .ft-grid    { grid-template-columns: 1fr; gap: 2rem; }
+
+  /* Cashback strip */
+  .cb-strip   { flex-direction: column; gap: 1.5rem; }
+  .cb-div     { width: 80%; height: 1px; }
+
+  /* Stat cards */
+  .stat-grid  { grid-template-columns: 1fr 1fr; }
+
+  /* CTA stats */
+  .cta-stats  { gap: 1.5rem; }
+
+  /* Section padding */
+  .s-pad      { padding: 5rem 0; }
+  .s-break,
+  #contatti   { padding: 5rem 0; }
+
+  #hero { min-height: 90vh; }
+}
+
+@media (max-width: 480px) {
+  .ben-grid,
+  .stat-grid       { grid-template-columns: 1fr; }
+  .hero-btns       { flex-direction: column; align-items: center; }
+  .btn-prim,
+  .btn-sec         { width: 100%; max-width: 280px; justify-content: center; }
+  .eq-row          { gap: .9rem; }
+  .v-op            { font-size: 2rem; }
+  .ref-visual      { gap: .7rem; }
+  .cta-btn         { padding: 1.1rem 2.2rem; font-size: 1rem; }
+  .hero-h1         { font-size: 1.8rem; }
+  .hero-h1-little  { font-size: 1.8rem; }
+  .s-break h2      { font-size: 2rem; }
+  .cta-inner h2    { font-size: 2.2rem; }
+  .money-big       { font-size: 3.5rem; }
+  .container       { padding: 0 1.25rem; }
+}

@@ -1,0 +1,90 @@
+/* ============================================================
+   BASE · UTILITIES · ANIMATIONS
+============================================================ */
+
+/* --- Layout utility --- */
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* --- Gradient text --- */
+.grad-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* --- Section label --- */
+.label {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--orange);
+  display: inline-block;
+  margin-bottom: .9rem;
+}
+
+/* --- Scroll fade-in --- */
+.fade {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity .75s var(--ease), transform .75s var(--ease);
+}
+.fade.on { opacity: 1; transform: none; }
+
+.d1 { transition-delay: .1s; }
+.d2 { transition-delay: .2s; }
+.d3 { transition-delay: .3s; }
+.d4 { transition-delay: .4s; }
+.d5 { transition-delay: .5s; }
+.d6 { transition-delay: .6s; }
+
+/* ============================================================
+   KEYFRAMES
+============================================================ */
+@keyframes aFadeDown {
+  from { opacity: 0; transform: translateY(-18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes aFadeUp {
+  from { opacity: 0; transform: translateY(26px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ptFloat {
+  0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+  10%  { opacity: .28; }
+  90%  { opacity: .12; }
+  100% { transform: translateY(-40px) scale(1); opacity: 0; }
+}
+@keyframes scrollPulse {
+  0%, 100% { opacity: .25; }
+  50%       { opacity: 1; }
+}
+@keyframes aiGlow {
+  0%, 100% { box-shadow: 0 0 40px rgba(255,107,0,.1); }
+  50%       { box-shadow: 0 0 70px rgba(255,107,0,.22); }
+}
+@keyframes aiRing {
+  0%, 100% { opacity: .18; transform: scale(1); }
+  50%       { opacity: .5;  transform: scale(1.04); }
+}
+@keyframes rPulse {
+  0%, 100% { opacity: .2; }
+  50%       { opacity: .6; }
+}
+@keyframes tPulse {
+  0%, 100% { opacity: .55; }
+  50%       { opacity: 1; }
+}
+@keyframes sPulse {
+  0%, 100% { opacity: .2; }
+  50%       { opacity: .8; }
+}
+@keyframes heroBadge {
+  from { opacity: 0; transform: translateY(-18px); }
+  to   { opacity: 1; transform: none; }
+}

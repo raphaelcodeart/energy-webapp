@@ -4,6 +4,77 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 22 — 2026-09-05 — Real domain (lialenergy.it), SMTP, public marketing site, promoter dashboard crash fix
+
+Picked up from a previous session that had gotten stuck mid-work: the `api`
+image had been left stale (built before the Session 21 wallets migration was
+committed) while the database had already been stamped to that migration's
+revision — `alembic upgrade head` on every `api`/`celery-worker`/`celery-beat`
+restart failed with `Can't locate revision identified by 'c9a1e4b6d2f3'`.
+Fixed by rebuilding all three images from current `main` and recreating the
+containers; no code or migration content was wrong, only the image was out of
+date.
+
+- **SMTP wired for real**: `noreply@lialenergy.it` (Aruba-hosted mailbox) via
+  `smtps.aruba.it:587` STARTTLS, verified with a live login + a real send
+  through `core/email.py` before considering it done. See
+  `server-migration-guide.md §4.6` (env var reference) and `§.env` section for
+  the exact values.
+- **Real domain replaces the temporary Hetzner rDNS hostname**, split into two
+  separate sites behind two separate Let's Encrypt certs:
+  - `lialenergy.it` / `www.lialenergy.it` — new static marketing/landing page
+    (client-supplied HTML/CSS/JS, now under `infrastructure/marketing-site/`,
+    served directly by nginx, no proxying). Added an "Accedi" nav button
+    (desktop + mobile menu) linking to `https://app.lialenergy.it/login` —
+    the two sites are deliberately separate, this link is the only connection
+    between them.
+  - `app.lialenergy.it` — the actual management app; `NEXT_PUBLIC_APP_URL` /
+    `PUBLIC_APP_BASE_URL` repointed here from the temp hostname.
+  - `infrastructure/nginx/nginx.conf` restructured into two `server { listen
+    443 ssl; }` blocks (marketing site with its own `root`, app block kept as
+    `default_server` with the old temp hostname and `_` as aliases so direct-IP
+    and old-hostname access keep working). Full write-up and the current
+    two-cert layout: `server-migration-guide.md §4.6`.
+  - Real-world gotcha hit twice during DNS cutover: Aruba's own authoritative
+    nameservers (`dns.technorail.com`, `dns2.technorail.com`,
+    `dns3.arubadns.net`, `dns4.arubadns.cz`) took a while to sync a newly
+    added record across their own replicas — some public resolvers (1.1.1.1,
+    9.9.9.9) showed a cached positive answer for `app.lialenergy.it` well
+    before any of the four authoritative servers would answer it, and Let's
+    Encrypt's own validation (which queries authoritative directly) failed
+    with NXDOMAIN during that window. `dig +trace` (or querying each
+    authoritative NS by name directly) is the only reliable way to check
+    real DNS state during a cutover like this — public-resolver results and
+    third-party propagation checkers can show a false positive.
+- **Real bug found and fixed**: `nginx.conf`'s `http {}` block never had
+  `include mime.types;` / `default_type` — harmless while nginx only proxied
+  to Next.js/FastAPI (which set their own `Content-Type`), but now that it
+  also serves the marketing site's static files directly, everything
+  (`.css`, `.js`, images) was served as `text/plain`, so browsers silently
+  refused to apply the stylesheets — page loaded but completely unstyled.
+  Fixed by adding both directives.
+- **Real bug found and fixed**: `GET /api/network/mine`
+  (`domains/network/router.py`) hand-built its `AgentProfileRead` response and
+  never set `user_id` — a field the Session 21 wallets work had just made
+  required on that schema (see Session 21's note on `CustomerRead`/
+  `AgentProfileRead`), but missed updating this one call site. Broke the
+  screen for every promoter (or customer-who-is-also-promoter) login with a
+  Pydantic `ValidationError: Field required` surfaced to the user as "Qualcosa
+  è andato storto" on switching to the promoter dashboard. Fixed by passing
+  `user_id=agent.user_id` (and `is_blacklisted=agent.is_blacklisted`, also
+  present on the model but not passed) — verified by re-running the exact
+  query + construction for the two agent IDs seen failing in the API logs.
+- Removed the "Area Demo & Test" role-autofill panel and its
+  `fillTestCredentials()` helper from `apps/dashboard/app/login/page.tsx` —
+  cosmetic/security cleanup for a login page real customers now see, not tied
+  to any of the above.
+- **Not done / left for later**: DKIM/SPF/DMARC records for `lialenergy.it`
+  (mail deliverability to Gmail/Outlook inboxes rather than spam — Aruba's
+  default hosted-mailbox setup was used as-is, no DNS records added for this);
+  the marketing site has no analytics/tracking wired up; the vestigial
+  `static.164.127.225.46.clients.your-server.de` Let's Encrypt cert still
+  renews via cron but is no longer referenced by any active nginx config.
+
 ## Session 21 — 2026-09-04 — Internal EUR wallet (cashback, peer transfers)
 
 New `wallets` domain: every user (customer or promoter) gets an internal EUR

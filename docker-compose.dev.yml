@@ -139,6 +139,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/marketing-site:/usr/share/nginx/marketing:ro
       # Managed by certbot on the host (see scripts/renew-cert.sh) -- nginx only
       # ever reads these, never writes them.
       - ./certbot/conf:/etc/letsencrypt:ro
