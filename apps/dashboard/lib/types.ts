@@ -188,6 +188,7 @@ export type AgentListItemRead = {
   rejection_reason: string | null;
   email: string | null;
   is_blacklisted: boolean;
+  user_id: string | null;
 };
 
 export type RootPromoterCreateResponse = {
@@ -409,6 +410,7 @@ export type WalletRead = {
   address: string;
   balance_cents: number;
   currency: string;
+  can_transfer: boolean;
   created_at: string;
 };
 

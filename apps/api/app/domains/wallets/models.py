@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +47,15 @@ class Wallet(UUIDPKMixin, TimestampMixin, Base):
     address: Mapped[str] = mapped_column(String(42), index=True)
     balance_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    # Peer-to-peer sending (POST /wallets/transfer) is denied by default for
+    # every wallet -- customer or promoter -- and enabled individually per
+    # promoter by an admin (PATCH /wallets/admin/{user_id}/transfer-permission,
+    # wallet.manage-gated). Deliberately per-wallet, not a role permission:
+    # the business rule is "these specific two promoters today", not "all
+    # promoters", so a role-based grant would be wrong the moment a second
+    # promoter needs enabling without opening it for everyone. See
+    # docs/business-rules.md#internal-wallet.
+    can_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class WalletTransaction(UUIDPKMixin, TimestampMixin, Base):

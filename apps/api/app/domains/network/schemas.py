@@ -131,6 +131,7 @@ class AgentListItemRead(BaseModel):
     # (AgentProfile.user_id is nullable) -- never guess an email for those.
     email: str | None = None
     is_blacklisted: bool = False
+    user_id: uuid.UUID | None = None
 
 
 class AgentCreateRequest(BaseModel):

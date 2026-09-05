@@ -44,6 +44,11 @@ export function AdminWalletsPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reversingId, setReversingId] = useState<string | null>(null);
   const [reverseError, setReverseError] = useState<string | null>(null);
+  const [topUpForUserId, setTopUpForUserId] = useState<string | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [topUpNote, setTopUpNote] = useState("");
+  const [topUpLoading, setTopUpLoading] = useState(false);
+  const [topUpError, setTopUpError] = useState<string | null>(null);
 
   const { data: wallets, error: walletsError } = useQuery({
     queryKey: ["admin", "wallets", "all"],
@@ -83,6 +88,43 @@ export function AdminWalletsPanel() {
       setReverseError(err.message || "Impossibile stornare la transazione.");
     } finally {
       setReversingId(null);
+    }
+  }
+
+  function openTopUp(userId: string) {
+    setTopUpForUserId(topUpForUserId === userId ? null : userId);
+    setTopUpAmount("");
+    setTopUpNote("");
+    setTopUpError(null);
+  }
+
+  async function handleTopUp(e: React.FormEvent, userId: string) {
+    e.preventDefault();
+    const amountCents = Math.round(parseFloat(topUpAmount.replace(",", ".")) * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      setTopUpError("Inserisci un importo valido.");
+      return;
+    }
+    setTopUpLoading(true);
+    setTopUpError(null);
+    try {
+      const res = await fetch("/api/proxy/wallets/admin/topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          amount_cents: amountCents,
+          note: topUpNote || null,
+          idempotency_key: crypto.randomUUID(),
+        }),
+      });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      setTopUpForUserId(null);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "wallets"] });
+    } catch (err: any) {
+      setTopUpError(err.message || "Impossibile ricaricare il wallet.");
+    } finally {
+      setTopUpLoading(false);
     }
   }
 
@@ -132,24 +174,71 @@ export function AdminWalletsPanel() {
                 <th className="py-2 px-5">Ruoli</th>
                 <th className="py-2 px-5">Indirizzo</th>
                 <th className="py-2 px-5 text-right">Saldo</th>
+                <th className="py-2 px-5 text-right">Azioni</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {wallets === undefined ? (
-                <tr><td colSpan={4} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
+                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
               ) : filteredWallets.length === 0 ? (
-                <tr><td colSpan={4} className="text-center py-6 text-slate-500">Nessun wallet trovato.</td></tr>
+                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Nessun wallet trovato.</td></tr>
               ) : (
                 filteredWallets.map((w) => (
-                  <tr key={w.id} className="text-slate-300 light:text-slate-600">
-                    <td className="py-2 px-5">
-                      <div className="font-medium text-white light:text-slate-900">{w.owner_display_name}</div>
-                      <div className="text-[10px] text-slate-500">{w.owner_email}</div>
-                    </td>
-                    <td className="py-2 px-5">{w.owner_roles.join(", ") || "—"}</td>
-                    <td className="py-2 px-5 font-mono text-[10px]">{w.address}</td>
-                    <td className="py-2 px-5 text-right font-semibold text-orange-400">{euro(w.balance_cents)}</td>
-                  </tr>
+                  <Fragment key={w.id}>
+                    <tr className="text-slate-300 light:text-slate-600">
+                      <td className="py-2 px-5">
+                        <div className="font-medium text-white light:text-slate-900">{w.owner_display_name}</div>
+                        <div className="text-[10px] text-slate-500">{w.owner_email}</div>
+                      </td>
+                      <td className="py-2 px-5">{w.owner_roles.join(", ") || "—"}</td>
+                      <td className="py-2 px-5 font-mono text-[10px]">{w.address}</td>
+                      <td className="py-2 px-5 text-right font-semibold text-orange-400">{euro(w.balance_cents)}</td>
+                      <td className="py-2 px-5 text-right">
+                        <button
+                          onClick={() => openTopUp(w.user_id)}
+                          className="px-2.5 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-[11px] font-semibold transition cursor-pointer"
+                        >
+                          {topUpForUserId === w.user_id ? "Annulla" : "Ricarica"}
+                        </button>
+                      </td>
+                    </tr>
+                    {topUpForUserId === w.user_id && (
+                      <tr className="bg-white/2 light:bg-slate-900/[0.02]">
+                        <td colSpan={5} className="px-5 py-3">
+                          <form onSubmit={(e) => handleTopUp(e, w.user_id)} className="flex items-end gap-2">
+                            <div className="space-y-1 flex-1 max-w-[160px]">
+                              <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (EUR)</label>
+                              <input
+                                required
+                                autoFocus
+                                inputMode="decimal"
+                                value={topUpAmount}
+                                onChange={(e) => setTopUpAmount(e.target.value)}
+                                placeholder="0,00"
+                                className="w-full rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                              />
+                            </div>
+                            <div className="space-y-1 flex-1">
+                              <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Nota (opzionale)</label>
+                              <input
+                                value={topUpNote}
+                                onChange={(e) => setTopUpNote(e.target.value)}
+                                placeholder="Cashback ordine..."
+                                className="w-full rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                              />
+                            </div>
+                            <button type="submit" disabled={topUpLoading}
+                              className="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50 shrink-0">
+                              {topUpLoading ? "..." : "Conferma"}
+                            </button>
+                          </form>
+                          {topUpError && (
+                            <div className="mt-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{topUpError}</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))
               )}
             </tbody>

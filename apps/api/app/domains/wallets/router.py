@@ -13,6 +13,7 @@ from app.domains.wallets.schemas import (
     WalletTopUpRequest,
     WalletTransactionRead,
     WalletTransactionReverseRequest,
+    WalletTransferPermissionUpdate,
     WalletTransferRequest,
 )
 
@@ -77,12 +78,30 @@ async def transfer(
         )
     except wallet_service.WalletNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except wallet_service.TransferNotAllowedError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     except (wallet_service.SelfTransferError, wallet_service.InsufficientBalanceError) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await wallet_service.hydrate_transactions(
         db, organization_id=current_user.organization_id, transactions=[txn]
     )
     return WalletTransactionRead(**rows[0])
+
+
+@router.patch("/admin/{user_id}/transfer-permission", response_model=WalletRead)
+async def set_transfer_permission(
+    user_id: uuid.UUID,
+    payload: WalletTransferPermissionUpdate,
+    current_user: CurrentUser = Depends(require_permission("wallet.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> WalletRead:
+    """Enables/disables peer-to-peer sending for one user's wallet --
+    denied by default for everyone, turned on individually per promoter.
+    See Wallet.can_transfer."""
+    wallet = await wallet_service.set_transfer_permission(
+        db, organization_id=current_user.organization_id, user_id=user_id, can_transfer=payload.can_transfer
+    )
+    return WalletRead.model_validate(wallet)
 
 
 @router.get("/admin", response_model=list[WalletAdminListItemRead])

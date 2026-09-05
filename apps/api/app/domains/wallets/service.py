@@ -31,6 +31,10 @@ class SelfTransferError(WalletError):
     pass
 
 
+class TransferNotAllowedError(WalletError):
+    pass
+
+
 def _generate_address() -> str:
     """Ethereum-style address. Uniqueness is enforced by uq_wallets_address,
     not guessed here -- same division of responsibility as
@@ -74,6 +78,20 @@ async def get_wallet_by_address(db: AsyncSession, *, organization_id: uuid.UUID,
     # though addresses are globally unique (multi-tenancy rule).
     stmt = select(Wallet).where(Wallet.organization_id == organization_id, Wallet.address == address)
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def set_transfer_permission(
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID, can_transfer: bool
+) -> Wallet:
+    """Admin-only toggle (wallet.manage) for whether this user's wallet may
+    send peer-to-peer transfers. Creates the wallet lazily if the target
+    never transacted -- enabling the permission shouldn't require them to
+    have a balance or history first."""
+    wallet = await get_or_create_wallet(db, organization_id=organization_id, user_id=user_id)
+    wallet.can_transfer = can_transfer
+    await db.commit()
+    await db.refresh(wallet)
+    return wallet
 
 
 async def _get_by_idempotency_key(db: AsyncSession, *, idempotency_key: str) -> WalletTransaction | None:
@@ -165,6 +183,12 @@ async def debit_and_transfer(
     existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
     if existing is not None:
         return existing
+
+    from_wallet = await db.get(Wallet, from_wallet_id)
+    if from_wallet is None:
+        raise WalletNotFoundError("Wallet not found")
+    if not from_wallet.can_transfer:
+        raise TransferNotAllowedError("Il tuo account non è abilitato a inviare bonifici wallet.")
 
     to_wallet = await get_wallet_by_address(db, organization_id=organization_id, address=to_address)
     if to_wallet is None:
@@ -475,6 +499,7 @@ async def list_all_wallets_for_org(db: AsyncSession, *, organization_id: uuid.UU
                 "address": wallet.address,
                 "balance_cents": wallet.balance_cents,
                 "currency": wallet.currency,
+                "can_transfer": wallet.can_transfer,
                 "created_at": wallet.created_at,
                 "owner_display_name": names.get(wallet.user_id, "—"),
                 "owner_email": emails.get(wallet.user_id, "—"),

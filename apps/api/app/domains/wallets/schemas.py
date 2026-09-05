@@ -15,6 +15,7 @@ class WalletRead(BaseModel):
     address: str
     balance_cents: int
     currency: str
+    can_transfer: bool
     created_at: datetime
 
 
@@ -71,6 +72,10 @@ class WalletTransferRequest(BaseModel):
     amount_cents: int = Field(gt=0, le=MAX_AMOUNT_CENTS)
     note: str | None = Field(default=None, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=128)
+
+
+class WalletTransferPermissionUpdate(BaseModel):
+    can_transfer: bool
 
 
 class WalletTransactionReverseRequest(BaseModel):

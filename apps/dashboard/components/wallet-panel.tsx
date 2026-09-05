@@ -133,7 +133,14 @@ export function WalletPanel() {
         )}
       </div>
 
-      {/* Send form */}
+      {/* Send form -- only for wallets with can_transfer enabled (denied by
+          default, turned on per promoter by an admin) */}
+      {wallet && !wallet.can_transfer ? (
+        <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+          <h3 className="text-sm font-semibold text-white light:text-slate-900 mb-2">Invia denaro</h3>
+          <p className="text-xs text-slate-500">L'invio di bonifici wallet non è abilitato per il tuo account.</p>
+        </div>
+      ) : wallet ? (
       <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
         <h3 className="text-sm font-semibold text-white light:text-slate-900 mb-4">Invia denaro</h3>
         <form onSubmit={handleSend} className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_2fr_auto] gap-3 items-end">
@@ -181,6 +188,7 @@ export function WalletPanel() {
           <div className="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">Pagamento inviato con successo.</div>
         )}
       </div>
+      ) : null}
 
       {/* Transaction history */}
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">

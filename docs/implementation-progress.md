@@ -74,6 +74,13 @@ date.
   the marketing site has no analytics/tracking wired up; the vestigial
   `static.164.127.225.46.clients.your-server.de` Let's Encrypt cert still
   renews via cron but is no longer referenced by any active nginx config.
+- **Also this session, design-only, zero code written**: a cashback system
+  was scoped out (customer redeems a partner supplier's invoice, e.g. Eviso,
+  as internal wallet credit, spendable at a configurable discount % on
+  external/dropshipping/partner products only, never on internal Lial
+  products). Full design + open decisions + phased plan:
+  `docs/cashback-partner-invoices-plan.md` — read that file first if asked to
+  continue this work, it has its own resume instructions.
 
 ## Session 21 — 2026-09-04 — Internal EUR wallet (cashback, peer transfers)
 

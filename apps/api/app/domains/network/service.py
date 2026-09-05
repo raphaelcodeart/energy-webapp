@@ -629,6 +629,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             AgentProfile.is_blacklisted,
             AgentProfile.first_name,
             AgentProfile.last_name,
+            AgentProfile.user_id,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -659,6 +660,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "is_blacklisted": r[11],
             "first_name": r[12],
             "last_name": r[13],
+            "user_id": r[14],
         }
         for r in rows
     ]

@@ -7,7 +7,7 @@ import { AdminPromoterNetworkModal } from "@/components/admin-promoter-network-m
 import { friendlyApiError } from "@/lib/api-error";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/config";
 import { downloadCsv } from "@/lib/csv-export";
-import type { AgentListItemRead, PromoterCodeRead, RankEvaluationChangeRead, RankRead, RootPromoterCreateResponse } from "@/lib/types";
+import type { AgentListItemRead, PromoterCodeRead, RankEvaluationChangeRead, RankRead, RootPromoterCreateResponse, WalletAdminListItemRead } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -25,6 +25,12 @@ const STATUS_LABELS: Record<string, string> = {
 async function fetchAgents(): Promise<AgentListItemRead[]> {
   const res = await fetch("/api/proxy/network/agents");
   if (!res.ok) throw new Error("Impossibile caricare la rete commerciale.");
+  return res.json();
+}
+
+async function fetchWallets(): Promise<WalletAdminListItemRead[]> {
+  const res = await fetch("/api/proxy/wallets/admin");
+  if (!res.ok) throw new Error("Impossibile caricare i wallet.");
   return res.json();
 }
 
@@ -62,6 +68,28 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
     queryKey: ["admin", "ranks"],
     queryFn: fetchRanks,
   });
+  const { data: wallets } = useQuery({
+    queryKey: ["admin", "wallets", "all"],
+    queryFn: fetchWallets,
+  });
+  const canTransferByUserId = new Map((wallets ?? []).map((w) => [w.user_id, w.can_transfer]));
+  const [transferToggleId, setTransferToggleId] = useState<string | null>(null);
+
+  async function handleToggleTransfer(userId: string, next: boolean) {
+    setTransferToggleId(userId);
+    try {
+      const res = await fetch(`/api/proxy/wallets/admin/${userId}/transfer-permission`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ can_transfer: next }),
+      });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      await queryClient.invalidateQueries({ queryKey: ["admin", "wallets"] });
+    } finally {
+      setTransferToggleId(null);
+    }
+  }
+
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? "ALL");
@@ -561,6 +589,23 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
+                          {a.user_id && (() => {
+                            const enabled = canTransferByUserId.get(a.user_id) ?? false;
+                            return (
+                              <button
+                                onClick={() => handleToggleTransfer(a.user_id!, !enabled)}
+                                disabled={transferToggleId === a.user_id}
+                                title={enabled ? "Disabilita l'invio di bonifici wallet per questo promoter" : "Abilita l'invio di bonifici wallet per questo promoter"}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer disabled:opacity-50 ${
+                                  enabled
+                                    ? "bg-emerald-600/10 hover:bg-emerald-600/20 border-emerald-500/20 text-emerald-400"
+                                    : "bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600"
+                                }`}
+                              >
+                                {transferToggleId === a.user_id ? "..." : enabled ? "Bonifico: ON" : "Bonifico: OFF"}
+                              </button>
+                            );
+                          })()}
                           {a.status === "ACTIVE" && (
                             <>
                               <button
