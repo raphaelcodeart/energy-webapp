@@ -16,15 +16,18 @@ from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.customers import models as _customers_models  # noqa: F401
 from app.domains.documents import models as _documents_models  # noqa: F401
+from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.notifications import models as _notifications_models  # noqa: F401
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.organizations.models import Organization
 from app.domains.outbox import models as _outbox_models  # noqa: F401
+from app.domains.partners import models as _partners_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.support import models as _support_models  # noqa: F401
 from app.domains.users import models as _users_models  # noqa: F401
+from app.domains.wallets import models as _wallets_models  # noqa: F401
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://lial:lial_dev_pw@localhost:5432/lial_energy_test"

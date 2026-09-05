@@ -25,12 +25,16 @@ from app.domains.documentation import models as _documentation_models  # noqa: F
 from app.domains.documentation.router import router as documentation_router
 from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.documents.router import router as documents_router
+from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
+from app.domains.invoice_redemptions.router import router as invoice_redemptions_router
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.network.router import router as network_router
 from app.domains.notifications import models as _notifications_models  # noqa: F401
 from app.domains.notifications.router import router as notifications_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
 from app.domains.outbox import models as _outbox_models  # noqa: F401
+from app.domains.partners import models as _partners_models  # noqa: F401
+from app.domains.partners.router import router as partners_router
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.referral.router import authenticated_router as referral_authenticated_router
@@ -75,6 +79,8 @@ app.include_router(documents_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(documentation_router, prefix="/api")
 app.include_router(wallets_router, prefix="/api")
+app.include_router(partners_router, prefix="/api")
+app.include_router(invoice_redemptions_router, prefix="/api")
 
 
 @app.on_event("startup")

@@ -22,6 +22,16 @@ class Product(UUIDPKMixin, TimestampMixin, Base):
     energy_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ELECTRICITY / GAS / DUAL_FUEL
     customer_type: Mapped[str] = mapped_column(String(32))  # PRIVATE / SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
+    # INTERNAL (Lial Energy's own supply -- bollette circolari, never
+    # discountable in credits, bank transfer only) / DROPSHIPPING (imported
+    # from an external supplier) / PARTNER (added on behalf of a
+    # collaborator, e.g. merchandise). Orthogonal to product_type, which
+    # describes WHAT the product is, not WHO supplies it or how it may be
+    # paid -- see ProductVersion.credit_discount_percentage and
+    # docs/cashback-partner-invoices-plan.md. Defaults to the safe/most
+    # restrictive category (no credit discount) so an admin must opt a
+    # product INTO accepting credits, never the reverse.
+    category: Mapped[str] = mapped_column(String(16), default="INTERNAL")
 
 
 class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
@@ -61,3 +71,11 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     valid_from: Mapped[datetime] = mapped_column()
     valid_to: Mapped[datetime | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
+    # 0-100: how much of THIS version's price the checkout may let a customer
+    # pay from their internal wallet credit instead of bank transfer -- the
+    # rest is always bank transfer, same as today. Versioned (not on Product)
+    # because it's an economic term that can change release to release, same
+    # reasoning as commission_tokens above. Enforced at the service layer
+    # (catalog/service.py) to stay 0 whenever the parent Product.category is
+    # INTERNAL -- see docs/cashback-partner-invoices-plan.md.
+    credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=0)

@@ -15,6 +15,7 @@ import { RecruitForm } from "@/components/recruit-form";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import { WalletPanel } from "@/components/wallet-panel";
+import { InvoiceRedemptionPanel } from "@/components/invoice-redemption-panel";
 import type { AgentProfileRead, BranchMemberRead, PromoterCodeRead, RankRead } from "@/lib/types";
 
 interface PromoterClientPageProps {
@@ -112,6 +113,16 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "cashback",
+    label: "Riscatta Cashback",
+    notificationTypes: ["INVOICE_REDEMPTION_VERIFIED", "INVOICE_REDEMPTION_REJECTED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
 ];
 
 const QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
@@ -168,7 +179,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
 ];
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
   const router = useRouter();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
 
@@ -366,6 +377,13 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
             <div className="space-y-6">
               <SectionBanner image="wallets" alt="Wallet" />
               <WalletPanel />
+            </div>
+          )}
+
+          {activeTab === "cashback" && (
+            <div className="space-y-6">
+              <SectionBanner image="wallets" alt="Riscatta Cashback" />
+              <InvoiceRedemptionPanel />
             </div>
           )}
         </div>

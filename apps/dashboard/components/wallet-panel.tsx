@@ -11,6 +11,21 @@ const TYPE_LABELS: Record<string, string> = {
   REVERSAL: "Storno",
 };
 
+// Finer-grained label than TYPE_LABELS alone -- distinguishes a plain admin
+// top-up from the two lines a partner-invoice redemption always writes
+// together (see docs/cashback-partner-invoices-plan.md), without needing to
+// read the free-text note.
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL_ADMIN: "Ricarica manuale",
+  INVOICE_REDEMPTION_BASE: "Riscatto fattura",
+  INVOICE_REDEMPTION_BONUS: "Bonus 3% riscatto fattura",
+};
+
+function transactionLabel(t: { type: string; source: string | null }): string {
+  const sourceLabel = t.source ? SOURCE_LABELS[t.source] : undefined;
+  return sourceLabel ?? TYPE_LABELS[t.type] ?? t.type;
+}
+
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
@@ -217,7 +232,7 @@ export function WalletPanel() {
                   const isOutgoing = t.from_wallet_id === wallet?.id;
                   return (
                     <tr key={t.id} className="text-slate-300 light:text-slate-600">
-                      <td className="py-2 px-5">{TYPE_LABELS[t.type] ?? t.type}</td>
+                      <td className="py-2 px-5">{transactionLabel(t)}</td>
                       <td className="py-2 px-5">
                         {isOutgoing ? (t.to_display_name ?? "Sistema") : (t.from_display_name ?? "Sistema")}
                       </td>

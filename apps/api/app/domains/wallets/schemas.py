@@ -46,7 +46,9 @@ class WalletTransactionRead(BaseModel):
     amount_cents: int
     currency: str
     type: str
+    source: str | None
     reference_contract_id: uuid.UUID | None
+    reference_invoice_redemption_id: uuid.UUID | None
     reverses_transaction_id: uuid.UUID | None
     note: str | None
     actor_user_id: uuid.UUID | None

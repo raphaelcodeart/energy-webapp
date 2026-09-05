@@ -10,6 +10,7 @@ import { DocumentationFeed } from "@/components/documentation-feed";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import { WalletPanel } from "@/components/wallet-panel";
+import { InvoiceRedemptionPanel } from "@/components/invoice-redemption-panel";
 import { friendlyApiError } from "@/lib/api-error";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
 
@@ -165,11 +166,21 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "cashback",
+    label: "Riscatta Cashback",
+    notificationTypes: ["INVOICE_REDEMPTION_VERIFIED", "INVOICE_REDEMPTION_REJECTED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation" | "wallet">("products");
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -422,6 +433,13 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
         <div className="space-y-6">
           <SectionBanner image="wallets" alt="Wallet" />
           <WalletPanel />
+        </div>
+      )}
+
+      {activeTab === "cashback" && (
+        <div className="space-y-6">
+          <SectionBanner image="wallets" alt="Riscatta Cashback" />
+          <InvoiceRedemptionPanel />
         </div>
       )}
     </AppShell>

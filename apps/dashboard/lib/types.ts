@@ -226,6 +226,7 @@ export type ProductVersionRead = {
   vat_percentage: number | null;
   contract_duration_months: number | null;
   commission_tokens: Record<string, number>;
+  credit_discount_percentage: number;
   valid_from: string;
   valid_to: string | null;
   status: string;
@@ -239,6 +240,7 @@ export type ProductRead = {
   energy_type: string | null;
   customer_type: string;
   status: string;
+  category: "INTERNAL" | "DROPSHIPPING" | "PARTNER";
 };
 
 export type ProductWithVersionsRead = ProductRead & {
@@ -431,10 +433,38 @@ export type WalletTransactionRead = {
   amount_cents: number;
   currency: string;
   type: string;
+  source: string | null;
   reference_contract_id: string | null;
+  reference_invoice_redemption_id: string | null;
   reverses_transaction_id: string | null;
   note: string | null;
   actor_user_id: string | null;
   created_at: string;
+};
+
+export type PartnerRead = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  is_active: boolean;
+};
+
+export type InvoiceRedemptionRead = {
+  id: string;
+  partner_id: string;
+  partner_name: string;
+  customer_user_id: string;
+  customer_display_name: string;
+  original_filename: string;
+  content_type: string;
+  declared_amount_cents: number;
+  confirmed_amount_cents: number | null;
+  payment_due_cents: number | null;
+  payment_reference_code: string | null;
+  status: "SUBMITTED" | "PAYMENT_PENDING" | "CREDITED" | "REJECTED";
+  rejection_reason: string | null;
+  created_at: string;
+  verified_at: string | null;
+  credited_at: string | null;
 };
 

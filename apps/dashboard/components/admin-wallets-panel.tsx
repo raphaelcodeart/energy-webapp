@@ -18,6 +18,21 @@ const TYPE_COLORS: Record<string, string> = {
   REVERSAL: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
 
+// Finer-grained label than TYPE_LABELS alone -- distinguishes a plain admin
+// top-up from the two lines a partner-invoice redemption always writes
+// together (see docs/cashback-partner-invoices-plan.md), without needing to
+// read the free-text note.
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL_ADMIN: "Ricarica manuale",
+  INVOICE_REDEMPTION_BASE: "Riscatto fattura",
+  INVOICE_REDEMPTION_BONUS: "Bonus 3% riscatto fattura",
+};
+
+function transactionLabel(t: { type: string; source: string | null }): string {
+  const sourceLabel = t.source ? SOURCE_LABELS[t.source] : undefined;
+  return sourceLabel ?? TYPE_LABELS[t.type] ?? t.type;
+}
+
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
@@ -133,7 +148,7 @@ export function AdminWalletsPanel() {
       `wallet_transazioni_${new Date().toISOString().slice(0, 10)}`,
       ["ID", "Tipo", "Da", "A", "Importo (EUR)", "Nota", "Data"],
       (transactions ?? []).map((t) => [
-        t.id, TYPE_LABELS[t.type] ?? t.type, t.from_display_name ?? "Sistema", t.to_display_name ?? "Sistema",
+        t.id, transactionLabel(t), t.from_display_name ?? "Sistema", t.to_display_name ?? "Sistema",
         (t.amount_cents / 100).toFixed(2), t.note ?? "", t.created_at,
       ])
     );
@@ -305,7 +320,7 @@ export function AdminWalletsPanel() {
                     <td className="py-3 px-5">{t.to_display_name ?? "Sistema"}</td>
                     <td className="py-3 px-5">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${TYPE_COLORS[t.type] ?? ""}`}>
-                        {TYPE_LABELS[t.type] ?? t.type}
+                        {transactionLabel(t)}
                       </span>
                     </td>
                     <td className="py-3 px-5 text-right font-semibold text-orange-400">{euro(t.amount_cents)}</td>

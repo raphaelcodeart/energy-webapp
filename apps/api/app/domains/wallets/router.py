@@ -179,6 +179,7 @@ async def top_up(
         type_="ADMIN_CREDIT",
         actor_user_id=current_user.user_id,
         reference_contract_id=payload.reference_contract_id,
+        source="MANUAL_ADMIN",
         note=payload.note,
         idempotency_key=payload.idempotency_key,
     )

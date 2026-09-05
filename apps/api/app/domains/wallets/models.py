@@ -98,6 +98,16 @@ class WalletTransaction(UUIDPKMixin, TimestampMixin, Base):
     reference_contract_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("contracts.id"), nullable=True
     )
+    # WHY this ADMIN_CREDIT row exists, as a structured tag rather than free
+    # text -- MANUAL_ADMIN (a plain top-up/correction) / INVOICE_REDEMPTION_BASE
+    # / INVOICE_REDEMPTION_BONUS (the two lines a confirmed partner-invoice
+    # redemption always writes together, see invoice_redemptions/service.py).
+    # NULL for TRANSFER/REVERSAL rows, where `type` alone already says enough.
+    # See docs/cashback-partner-invoices-plan.md.
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reference_invoice_redemption_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoice_redemptions.id"), nullable=True
+    )
     # Self-FK: set only on a REVERSAL row, pointing back at the
     # ADMIN_CREDIT/TRANSFER row it corrects. The original row is never
     # mutated -- mirrors CommissionReversal.original_movement_id.

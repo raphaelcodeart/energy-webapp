@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
@@ -17,6 +17,14 @@ from app.domains.contracts.models import Contract
 
 class ProductDeletionError(Exception):
     """Raised when a product can't be deleted -- see delete_product()."""
+
+
+def _clamp_credit_discount(category: str, requested: int) -> int:
+    """An INTERNAL product (Lial's own supply) is never discountable in wallet
+    credits, no matter what the caller asks for -- this is the single place
+    that invariant is enforced, so it can never drift out of sync between
+    create/add-version/update-version call sites."""
+    return requested if category != "INTERNAL" else 0
 
 
 async def list_products(db: AsyncSession, *, organization_id: uuid.UUID) -> list[Product]:
@@ -81,6 +89,7 @@ async def create_product(
         product_type=payload.product_type,
         energy_type=payload.energy_type,
         customer_type=payload.customer_type,
+        category=payload.category,
         status="ACTIVE",
     )
     db.add(product)
@@ -99,6 +108,7 @@ async def create_product(
         tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         contract_duration_months=payload.contract_duration_months,
         commission_tokens=payload.commission_tokens,
+        credit_discount_percentage=_clamp_credit_discount(payload.category, payload.credit_discount_percentage),
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -142,6 +152,7 @@ async def add_product_version(
         tax_configuration={"vat_percentage": payload.vat_percentage} if payload.vat_percentage is not None else {},
         contract_duration_months=payload.contract_duration_months,
         commission_tokens=payload.commission_tokens,
+        credit_discount_percentage=_clamp_credit_discount(product.category, payload.credit_discount_percentage),
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -195,6 +206,8 @@ async def update_product_version(
         version.contract_duration_months = payload.contract_duration_months
     if payload.commission_tokens is not None:
         version.commission_tokens = payload.commission_tokens
+    if payload.credit_discount_percentage is not None:
+        version.credit_discount_percentage = _clamp_credit_discount(product.category, payload.credit_discount_percentage)
     if payload.status is not None:
         version.status = payload.status
 
@@ -266,6 +279,16 @@ async def update_product(
         product.product_type = payload.product_type
     if payload.energy_type is not None:
         product.energy_type = payload.energy_type
+    if payload.category is not None:
+        product.category = payload.category
+        if payload.category == "INTERNAL":
+            # Switching back to INTERNAL must not leave a stale nonzero
+            # discount sitting on any version -- see _clamp_credit_discount.
+            await db.execute(
+                update(ProductVersion)
+                .where(ProductVersion.product_id == product_id)
+                .values(credit_discount_percentage=0)
+            )
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,

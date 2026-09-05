@@ -4,6 +4,40 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 23 — 2026-09-05 (same day, continued) — Partner-invoice cashback (Phases 0-2), wallet transfer default-deny
+
+Full implementation of the cashback design scoped out earlier the same
+session (Session 22's note, and the artifact "Cashback Circolare"). Complete
+technical detail, what's built vs. not, and open decisions all live in
+`docs/cashback-partner-invoices-plan.md` (kept as a living resumable status
+file, not duplicated here) -- summary only:
+
+- **New domains**: `partners` (external supplier anagrafica, e.g. Eviso) and
+  `invoice_redemptions` (a customer/promoter redeems part of what they paid a
+  partner supplier as internal wallet credit: upload proof → admin verifies
+  the real amount → customer pays 3% by bank transfer → admin confirms →
+  wallet credited 100%+3%, as two separate ledger rows, never one combined
+  row). New migrations `0020`/`0021`.
+- **Product categorization**: `Product.category` (INTERNAL/DROPSHIPPING/
+  PARTNER) + `ProductVersion.credit_discount_percentage`, enforced server-side
+  to stay 0 for INTERNAL regardless of what's requested. Checkout itself
+  doesn't read these yet -- see "Not done" in the plan doc, this is Phase 4.
+- **Unrelated same-session request, same wallets domain**: peer-to-peer
+  wallet transfer (`POST /wallets/transfer`) is now denied by default for
+  every wallet and enabled individually per promoter (`Wallet.can_transfer`,
+  migration `0019`) -- enabled today for Alessandro Pantano and Marco Web
+  only. Admin toggle in "Anagrafiche Promoter".
+- **Verified live end-to-end via real HTTP calls** (multipart upload
+  included, not just service-layer calls): submit → verify → confirm-payment
+  produced an exact 82,40E credit (80E base + 2,40E bonus) as two distinct
+  wallet_transactions sharing one `reference_invoice_redemption_id`; permission
+  gating, validation, and the double-confirm guard all confirmed. Test data
+  created during verification was fully cleaned up (no leftover fake
+  partners/redemptions or altered balances).
+- **Deliberately not built**: real OCR (manual amount entry + human
+  verification only, by design -- see the plan doc for why), the checkout
+  spend side (Phase 4), and an automatic duplicate-invoice check.
+
 ## Session 22 — 2026-09-05 — Real domain (lialenergy.it), SMTP, public marketing site, promoter dashboard crash fix
 
 Picked up from a previous session that had gotten stuck mid-work: the `api`

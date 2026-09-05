@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     smtp_from_address: str = "no-reply@lialenergy.demo"
     smtp_use_tls: bool = True
 
+    # Bank account customers wire the 3% redemption payment to (see
+    # invoice_redemptions/router.py's GET /payment-info). Left empty on
+    # purpose until a real company account is provided -- the redemption
+    # wizard shows "contact administration" instead of a fake IBAN when
+    # unset, same "safe empty default, functional once configured" pattern
+    # as SMTP_HOST above.
+    company_bank_iban: str = ""
+    company_bank_holder: str = "Lial Energy"
+
     # Base URL the dashboard is reachable at, used to build the link inside a
     # password-reset email (the API has no other way to know its own public
     # hostname -- it's never addressed directly by end users, see nginx.conf).

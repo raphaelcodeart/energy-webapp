@@ -489,6 +489,52 @@ money, by design.
   looking at a user who never transacted sees "no wallet yet");
   `GET /wallets/admin/transactions` is the global ledger, filterable by
   type/user, with CSV export in the dashboard.
+- **Peer-to-peer transfer is denied by default** (`Wallet.can_transfer`,
+  added Session 23) for every wallet, customer or promoter -- an admin must
+  enable it individually per promoter (`PATCH
+  /wallets/admin/{user_id}/transfer-permission`, `wallet.manage`-gated).
+  Deliberately per-wallet, not a role grant: opening it for "all promoters"
+  would be wrong the first time only some of them should have it, which is
+  exactly today's situation.
+
+## Partner-invoice cashback (added Session 23)
+
+A second, entirely separate way wallet credit enters the system, alongside
+the plain admin `ADMIN_CREDIT` top-up above -- see
+`docs/cashback-partner-invoices-plan.md` for the full design rationale and
+`database-model.md` for the schema. Summary:
+
+- **What it is**: Lial Energy brokers for external energy suppliers
+  (`partners`, e.g. Eviso). A customer or promoter who already pays one of
+  these directly can redeem part of that spend as internal wallet credit,
+  by uploading proof of payment (`invoice_redemptions`) and then paying Lial
+  3% of the confirmed amount by bank transfer. Once that 3% is confirmed
+  received, the wallet is credited 100% + a further 3% bonus.
+- **Cardinal rule**: credit is minted **only** against a real, admin-confirmed
+  external bank transfer (the 3%) -- never against spending existing credit.
+  Paying a Lial product with wallet credit (once Phase 4/checkout exists)
+  must never itself generate more credit, or the system would create value
+  from nothing.
+- **Lifecycle**: `SUBMITTED` (uploaded) → `PAYMENT_PENDING` (an admin
+  confirmed the real amount and a payment reference code was generated) →
+  `CREDITED` (an admin confirmed the 3% arrived; two `wallet_transactions`
+  rows are written -- `INVOICE_REDEMPTION_BASE` and `INVOICE_REDEMPTION_BONUS`,
+  never one combined row, both carrying `reference_invoice_redemption_id`).
+  `REJECTED` is reachable from `SUBMITTED` or `PAYMENT_PENDING`.
+- **No OCR today**: the customer types the amount they read; an admin always
+  verifies against the uploaded document before anything is unlocked. This
+  is a deliberate simplification, not a stub -- the flow is fully functional
+  without automated reading, just slower per-request for the admin.
+- **Where the document lives**: NOT the `documents` table (that one's
+  `contract_id` is NOT NULL by design, for contract KYC documents) --
+  `invoice_redemptions` carries its own `storage_key` in the same private
+  bucket via `core/storage.py`.
+- **Spending side (Phase 4, not yet built)**: `Product.category`
+  (`INTERNAL`/`DROPSHIPPING`/`PARTNER`) and
+  `ProductVersion.credit_discount_percentage` (0-100, enforced to 0 for
+  `INTERNAL`) already exist and are configurable per product, but no
+  checkout/contract-creation flow reads them yet to actually let a customer
+  pay part of a purchase in credits.
 
 ## GDPR notes
 

@@ -27,6 +27,12 @@ const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   ENERGY_INTENSIVE: "Energivori",
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  INTERNAL: "Interno Lial Energy",
+  DROPSHIPPING: "Dropshipping",
+  PARTNER: "Partner / collaboratore",
+};
+
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
@@ -82,6 +88,11 @@ interface ProductFormState {
   // fields) -- the personal token this product pays at that rank, see
   // catalog/models.py::ProductVersion.commission_tokens.
   commissionTokens: Record<string, string>;
+  // 0-100, string for the same reason every other numeric field here is a
+  // string (lets the input hold "" while the user is typing). Only
+  // meaningful when the product's category isn't INTERNAL -- see
+  // catalog/service.py::_clamp_credit_discount.
+  creditDiscountPercentage: string;
 }
 
 const EMPTY_FORM: ProductFormState = {
@@ -95,16 +106,22 @@ const EMPTY_FORM: ProductFormState = {
   vatPercentage: "10",
   contractDurationMonths: "12",
   commissionTokens: {},
+  creditDiscountPercentage: "0",
 };
 
 function ProductFormFields({
   form,
   onChange,
   ranks,
+  category,
 }: {
   form: ProductFormState;
   onChange: (patch: Partial<ProductFormState>) => void;
   ranks: RankRead[];
+  /** Whether the "sconto in crediti" field is usable -- INTERNAL products
+      (Lial's own supply) are never discountable in wallet credits, see
+      docs/cashback-partner-invoices-plan.md. */
+  category: string;
 }) {
   return (
     <>
@@ -182,6 +199,30 @@ function ProductFormFields({
         </div>
       </div>
 
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
+          Sconto pagabile in crediti (%)
+        </label>
+        {category === "INTERNAL" ? (
+          <p className="text-[10px] text-slate-500">
+            Non disponibile per i prodotti Interno Lial Energy -- pagabili solo in bonifico.
+          </p>
+        ) : (
+          <>
+            <input
+              inputMode="numeric"
+              value={form.creditDiscountPercentage}
+              onChange={(e) => onChange({ creditDiscountPercentage: e.target.value })}
+              placeholder="0"
+              className="w-full max-w-[140px] rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
+            />
+            <p className="text-[10px] text-slate-500">
+              Quanta parte del prezzo un cliente può pagare con i crediti wallet nel checkout -- il resto resta bonifico.
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="space-y-1 pt-2 border-t border-white/5 light:border-slate-200">
         <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
           Gettone provvigionale per grado (EUR)
@@ -228,6 +269,7 @@ export function AdminProductsPanel() {
   const [productType, setProductType] = useState("ENERGY_CONTRACT");
   const [energyType, setEnergyType] = useState("ELECTRICITY");
   const [customerType, setCustomerType] = useState("PRIVATE");
+  const [category, setCategory] = useState("INTERNAL");
   const [createForm, setCreateForm] = useState<ProductFormState>(EMPTY_FORM);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -247,6 +289,7 @@ export function AdminProductsPanel() {
     setProductType(product.product_type);
     setEnergyType(product.energy_type ?? "ELECTRICITY");
     setCustomerType(product.customer_type);
+    setCategory(product.category);
     setCreateForm({
       name: v ? `${v.name} (copia)` : "",
       description: v?.description ?? "",
@@ -258,6 +301,7 @@ export function AdminProductsPanel() {
       vatPercentage: v?.vat_percentage != null ? String(v.vat_percentage) : "",
       contractDurationMonths: v?.contract_duration_months != null ? String(v.contract_duration_months) : "",
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
+      creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
     });
     setCreateError(null);
     setIsDuplicating(true);
@@ -277,6 +321,7 @@ export function AdminProductsPanel() {
           product_type: productType,
           energy_type: productType === "ENERGY_CONTRACT" ? energyType : null,
           customer_type: customerType,
+          category,
           name: createForm.name,
           description: createForm.description,
           image_url: createForm.imageUrl.trim() || null,
@@ -289,6 +334,7 @@ export function AdminProductsPanel() {
             ? parseInt(createForm.contractDurationMonths, 10)
             : null,
           commission_tokens: commissionTokensToCents(createForm.commissionTokens),
+          credit_discount_percentage: category === "INTERNAL" ? 0 : (parseInt(createForm.creditDiscountPercentage, 10) || 0),
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -317,6 +363,7 @@ export function AdminProductsPanel() {
       vatPercentage: v?.vat_percentage != null ? String(v.vat_percentage) : "",
       contractDurationMonths: v?.contract_duration_months != null ? String(v.contract_duration_months) : "",
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
+      creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
     });
     setEditError(null);
     setEditingProduct(product);
@@ -343,6 +390,7 @@ export function AdminProductsPanel() {
             ? parseInt(editForm.contractDurationMonths, 10)
             : null,
           commission_tokens: commissionTokensToCents(editForm.commissionTokens),
+          credit_discount_percentage: editingProduct.category === "INTERNAL" ? 0 : (parseInt(editForm.creditDiscountPercentage, 10) || 0),
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -415,6 +463,7 @@ export function AdminProductsPanel() {
             setProductType("ENERGY_CONTRACT");
             setEnergyType("ELECTRICITY");
             setCustomerType("PRIVATE");
+            setCategory("INTERNAL");
             setCreateForm(EMPTY_FORM);
             setCreateError(null);
             setIsDuplicating(false);
@@ -501,6 +550,16 @@ export function AdminProductsPanel() {
                     {p.current_version.description}
                   </p>
                 )}
+                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600">
+                    {CATEGORY_LABELS[p.category] ?? p.category}
+                  </span>
+                  {p.category !== "INTERNAL" && p.current_version && p.current_version.credit_discount_percentage > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                      {p.current_version.credit_discount_percentage}% in crediti
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-400 light:text-slate-500">
                     Target: {CUSTOMER_TYPE_LABELS[p.customer_type] ?? p.customer_type}
@@ -573,17 +632,28 @@ export function AdminProductsPanel() {
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Cliente Target</label>
-                <select value={customerType} onChange={(e) => setCustomerType(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
-                  {Object.entries(CUSTOMER_TYPE_LABELS).map(([code2, label]) => (
-                    <option key={code2} value={code2}>{label}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Cliente Target</label>
+                  <select value={customerType} onChange={(e) => setCustomerType(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
+                    {Object.entries(CUSTOMER_TYPE_LABELS).map(([code2, label]) => (
+                      <option key={code2} value={code2}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Categoria</label>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)}
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
+                    {Object.entries(CATEGORY_LABELS).map(([code2, label]) => (
+                      <option key={code2} value={code2}>{label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <ProductFormFields form={createForm} onChange={(patch) => setCreateForm((f) => ({ ...f, ...patch }))} ranks={ranks} />
+              <ProductFormFields form={createForm} onChange={(patch) => setCreateForm((f) => ({ ...f, ...patch }))} ranks={ranks} category={category} />
 
               {createError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{createError}</div>
@@ -635,7 +705,7 @@ export function AdminProductsPanel() {
             )}
 
             <form onSubmit={handleEditSave} className="space-y-4">
-              <ProductFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} ranks={ranks} />
+              <ProductFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} ranks={ranks} category={editingProduct?.category ?? "INTERNAL"} />
 
               {editError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{editError}</div>

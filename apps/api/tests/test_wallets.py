@@ -28,6 +28,19 @@ async def _get_or_create_role(db, organization_id, *, role_code: str) -> Role:
     return role
 
 
+async def _enable_transfer(db, wallet):
+    """Peer-to-peer transfer is denied by default (Wallet.can_transfer,
+    added Session 23) -- tests that exercise debit_and_transfer's OWN logic
+    (insufficient balance, self-transfer, cross-org lookup, idempotency) opt
+    the sender wallet in explicitly so they keep testing what they're named
+    for, not the permission gate. See test_transfer_is_denied_by_default_
+    and_can_be_enabled below for that gate itself."""
+    wallet.can_transfer = True
+    await db.commit()
+    await db.refresh(wallet)
+    return wallet
+
+
 async def _make_user_with_role(db, organization_id, *, role_code: str = "CUSTOMER"):
     user = User(
         organization_id=organization_id, email=f"{role_code.lower()}-{uuid.uuid4().hex[:6]}@example.demo",
@@ -87,6 +100,7 @@ async def test_transfer_happy_path_moves_balance_between_wallets(db, organizatio
     receiver_user = await _make_user_with_role(db, organization_id)
     sender_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=sender_user.id)
     receiver_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=receiver_user.id)
+    await _enable_transfer(db, sender_wallet)
 
     await wallet_service.credit_wallet(
         db, organization_id=organization_id, wallet_id=sender_wallet.id, amount_cents=10000, type_="ADMIN_CREDIT",
@@ -112,6 +126,7 @@ async def test_transfer_with_insufficient_balance_leaves_both_wallets_untouched(
     receiver_user = await _make_user_with_role(db, organization_id)
     sender_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=sender_user.id)
     receiver_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=receiver_user.id)
+    await _enable_transfer(db, sender_wallet)
 
     with pytest.raises(wallet_service.InsufficientBalanceError):
         await wallet_service.debit_and_transfer(
@@ -130,6 +145,7 @@ async def test_self_transfer_is_rejected(db, organization_id):
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     user = await _make_user_with_role(db, organization_id)
     wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=user.id)
+    await _enable_transfer(db, wallet)
     await wallet_service.credit_wallet(
         db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=1000, type_="ADMIN_CREDIT",
         actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
@@ -140,6 +156,38 @@ async def test_self_transfer_is_rejected(db, organization_id):
             db, organization_id=organization_id, from_wallet_id=wallet.id, to_address=wallet.address,
             amount_cents=100, actor_user_id=user.id, idempotency_key=str(uuid.uuid4()),
         )
+
+
+@pytest.mark.asyncio
+async def test_transfer_is_denied_by_default_and_can_be_enabled(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    sender_user = await _make_user_with_role(db, organization_id)
+    receiver_user = await _make_user_with_role(db, organization_id)
+    sender_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=sender_user.id)
+    receiver_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=receiver_user.id)
+    assert sender_wallet.can_transfer is False
+
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=sender_wallet.id, amount_cents=10000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    with pytest.raises(wallet_service.TransferNotAllowedError):
+        await wallet_service.debit_and_transfer(
+            db, organization_id=organization_id, from_wallet_id=sender_wallet.id, to_address=receiver_wallet.address,
+            amount_cents=100, actor_user_id=sender_user.id, idempotency_key=str(uuid.uuid4()),
+        )
+    unchanged = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=sender_user.id)
+    assert unchanged.balance_cents == 10000  # untouched -- the CAS update never ran
+
+    enabled = await wallet_service.set_transfer_permission(
+        db, organization_id=organization_id, user_id=sender_user.id, can_transfer=True
+    )
+    assert enabled.can_transfer is True
+    txn = await wallet_service.debit_and_transfer(
+        db, organization_id=organization_id, from_wallet_id=sender_wallet.id, to_address=receiver_wallet.address,
+        amount_cents=100, actor_user_id=sender_user.id, idempotency_key=str(uuid.uuid4()),
+    )
+    assert txn.amount_cents == 100
 
 
 @pytest.mark.asyncio
@@ -155,6 +203,7 @@ async def test_transfer_to_a_wallet_in_another_organization_is_not_found(db, org
     other_org_user = await _make_user_with_role(db, other_org.id)
     sender_wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=sender_user.id)
     other_org_wallet = await wallet_service.get_or_create_wallet(db, organization_id=other_org.id, user_id=other_org_user.id)
+    await _enable_transfer(db, sender_wallet)
 
     with pytest.raises(wallet_service.WalletNotFoundError):
         await wallet_service.debit_and_transfer(
