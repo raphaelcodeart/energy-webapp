@@ -445,6 +445,14 @@ export type WalletTransactionRead = {
 export type OrganizationSettingsRead = {
   bank_iban: string | null;
   bank_account_holder: string | null;
+  bank_transfer_instructions: string | null;
+};
+
+export type PaymentSettingsRead = {
+  stripe_publishable_key: string | null;
+  stripe_secret_key_configured: boolean;
+  stripe_secret_key_last4: string | null;
+  stripe_webhook_secret_configured: boolean;
 };
 
 export type PartnerRead = {
@@ -465,6 +473,7 @@ export type OrderRead = {
   credit_applied_cents: number;
   residual_amount_cents: number;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  payment_method: "BANK_TRANSFER" | "CARD";
   note: string | null;
   paid_at: string | null;
   cancelled_at: string | null;
@@ -479,6 +488,8 @@ export type OrderQuoteRead = {
   credit_discount_percentage: number;
   max_creditable_cents: number;
   customer_wallet_balance_cents: number;
+  bank_transfer_available: boolean;
+  card_available: boolean;
 };
 
 export type InvoiceRedemptionRead = {

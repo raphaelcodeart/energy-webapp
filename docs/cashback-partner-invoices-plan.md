@@ -1,12 +1,13 @@
 # Piano: Cashback da riscatto fatture fornitori-partner
 
-**Stato: Fasi 0, 1, 2, 3 (senza OCR reale) E 4 sono tutte implementate e
-verificate end-to-end via HTTP reale il 2026-09-05.** Il progetto è
-funzionalmente completo: un cliente può riscattare una fattura partner in
-crediti, e quei crediti si possono davvero spendere per pagare (in parte) un
-prodotto dropshipping/partner nel nuovo dominio `orders`. Resta solo l'OCR
-vero (deliberatamente rimandato) e il self-checkout diretto del cliente
-(per ora solo admin crea gli ordini, per scelta esplicita dell'utente).
+**Stato: Fasi 0-4 implementate e verificate end-to-end via HTTP reale il
+2026-09-05, PIÙ self-checkout cliente e pagamento con carta (Stripe) aggiunti
+in una sessione successiva lo stesso giorno (Session 26).** Il progetto è
+ora completo dal riscatto alla spesa E dal lato admin che dal lato cliente:
+un cliente riscatta una fattura partner in crediti, poi può acquistare da
+solo un prodotto dropshipping/partner dallo Shop, pagando il residuo in
+bonifico o (quando configurato) con carta. Resta solo l'OCR vero
+(deliberatamente rimandato -- vedi sotto).
 
 Se stai riprendendo questo lavoro dopo un crash/reset di sessione, questo file
 ti dice esattamente a che punto siamo — leggilo prima di chiedere di nuovo
@@ -181,6 +182,101 @@ riga `REVERSAL` (non un accredito generico), doppio annullamento/doppia
 conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
 `POST /contracts`. Dati di test rimossi.
 
+## Session 26 (stesso giorno) — self-checkout cliente + pagamento con carta (Stripe)
+
+Due domande poste all'utente prima di scrivere codice (dato il costo di
+sbagliare a questo livello): integrare Stripe subito o rimandare, e aprire
+il self-checkout cliente o lasciarlo solo admin. Risposte: **integra Stripe
+ora** (chiavi configurabili da un pannello, attivabile in un secondo
+momento) e **sì, apri l'acquisto diretto**.
+
+**Backend**:
+- `orders` (esteso): nuovi campi `payment_method` (`BANK_TRANSFER`/`CARD`,
+  irrilevante se il credito copre il 100%) e `stripe_checkout_session_id`
+  (unique, sovrascritto a ogni nuovo tentativo di checkout -- solo l'ultimo
+  conta). `create_order()` ora valida il metodo di pagamento SOLO quando
+  c'è un residuo da pagare, e SOLO se quel metodo è realmente configurato
+  (`get_available_payment_methods()`), altrimenti solleva
+  `PaymentMethodNotAvailableError` -- questo è il lato server di "il
+  bottone non è cliccabile se non configurato": anche aggirando il
+  frontend, la richiesta viene comunque rifiutata.
+- **Nuovo dominio `payments`**: `create_checkout_session_for_order()` crea
+  una vera Stripe Checkout Session per il solo residuo (mai il prezzo
+  pieno) e salva l'id sessione sull'ordine; `handle_webhook_event()`
+  verifica la firma con il webhook secret DI QUELLA organizzazione e, su
+  `checkout.session.completed`, chiama `mark_paid_via_stripe()` --
+  l'unico punto in cui un ordine passa a `PAID` senza alcun admin coinvolto.
+  Endpoint webhook `POST /payments/stripe/webhook/{organization_id}`
+  deliberatamente SENZA autenticazione (la firma Stripe è l'autenticazione),
+  con l'id organizzazione nell'URL per restare corretto in un deployment
+  multi-tenant.
+- `organizations` (esteso): `bank_transfer_instructions` (testo libero
+  mostrato insieme a IBAN/intestatario) aggiunto a `organization.manage`
+  (già SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN); nuovo permesso separato e più
+  stretto **`organization.manage_payments` (SOLO SUPER_ADMIN)** per le
+  chiavi Stripe (`GET`/`PATCH /organizations/me/payment-settings`) --
+  richiesta esplicita dell'utente: chi tocca i pagamenti con carta è un
+  cerchio più piccolo di chi tocca dove va il bonifico. La chiave segreta e
+  quella del webhook non vengono mai restituite per intero da nessun
+  endpoint (solo "configurata sì/no" + ultime 4 cifre) -- stesso principio
+  di una password mai ritornata in chiaro.
+- Nuovi endpoint self-checkout: `GET /orders/quote/mine`, `POST
+  /orders/mine`, `GET /orders/mine`, `POST
+  /orders/mine/{id}/checkout-session` -- tutti aperti a qualunque utente
+  autenticato, `customer_user_id` sempre forzato al chiamante (mai
+  accettato dal body), stessa regola di `POST /wallets/transfer`.
+- **IBAN reale configurato** in produzione:
+  `IT66W0883330410000000015702`, intestatario "Lial Energy Srl" (fornito
+  dall'utente il 2026-09-05, salvato subito nel pannello, non in `.env`).
+
+**Frontend**:
+- `product-checkout-modal.tsx` (nuovo): preventivo live, slider crediti
+  (precompilato al massimo utilizzabile), scelta bonifico/carta -- **il
+  bottone di un metodo non configurato non compare affatto**, non
+  semplicemente disabilitato -- poi o messaggio di successo (100% crediti),
+  o istruzioni bonifico (IBAN + intestatario + testo libero + codice
+  ordine), o redirect a Stripe Checkout.
+- `customer-products-panel.tsx` (esteso): bottone "Acquista" su ogni
+  prodotto non-INTERNAL, SOLO nella vista Shop del cliente (`!referralCode`
+  -- la vista "Condividi" del promoter resta invariata, non acquista per
+  conto proprio da lì).
+- `admin-organization-settings-panel.tsx` (esteso): campo istruzioni
+  bonifico; nuova card Stripe visibile solo quando `isSuperAdmin` è vero
+  (calcolato server-side in `app/admin/page.tsx` decodificando i ruoli dal
+  JWT di sessione -- UX soltanto, l'enforcement vero è il permesso
+  `organization.manage_payments` lato backend), con l'URL webhook esatto da
+  incollare su Stripe (id organizzazione già inserito, non un
+  segnaposto).
+- **Due prodotti di test creati su richiesta esplicita** (non dati di
+  verifica da rimuovere): `PARTNER-TEST-01` "Zaino Outdoor Partner (TEST)",
+  categoria PARTNER, 69,00€, 30% sconto crediti; `DROPSHIP-TEST-01` "Power
+  Bank 20000mAh (TEST)", categoria DROPSHIPPING, 39,00€, 0% sconto crediti
+  (paga sempre il 100% in bonifico o carta). Restano nel catalogo finché
+  qualcuno non li disattiva/elimina dal pannello prodotti.
+
+**Verificato live** (HTTP reale): preventivo self-service corretto
+(`bank_transfer_available`/`card_available` riflettono lo stato reale);
+ordine self-checkout in bonifico creato con successo; lo stesso ordine con
+`payment_method: CARD` correttamente rifiutato finché Stripe non è
+configurato; `ADMIN` riceve 403 su `GET/PATCH
+/organizations/me/payment-settings` (solo `SUPER_ADMIN` passa); chiavi
+Stripe di test impostate → `card_available` diventa `true` → rimosse →
+torna `false`; libreria `stripe` (v15) verificata contro una chiave/firma
+finte per confermare che solleva esattamente gli errori attesi
+(`AuthenticationError`, `SignatureVerificationError`) prima di scrivere il
+codice di produzione contro di essa. Suite completa: **139/139 test
+passati**, `ruff`/`mypy` puliti (stessi falsi positivi preesistenti su
+`Result.rowcount`).
+
+**Limite dichiarato**: verificato il rendering server-side delle nuove pagine
+(nessun crash, tutte le nuove tab/voci di menu presenti nell'HTML) tramite
+sessioni autenticate reali costruite con token validi, ma **non è stato
+possibile un click-through completo in un vero browser** in questo ambiente
+headless (nessuno strumento browser disponibile in sessione, e non era
+ragionevole reimpostare la password di un account cliente reale solo per
+un test). La logica è comunque coperta a fondo dai test automatici e dalle
+chiamate HTTP dirette sopra elencate.
+
 ## Cosa NON è stato costruito
 
 - [ ] **OCR reale**: il wizard chiede l'importo a mano al cliente; non c'è
@@ -190,13 +286,10 @@ conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
       sempre a mano quindi il sistema è già pienamente funzionante senza.
 - [ ] Controllo automatico anti-duplicato (stessa fattura caricata due
       volte) -- oggi previene solo la verifica umana.
-- [ ] **Self-checkout cliente**: il cliente non può ancora creare da solo un
-      ordine dal marketplace -- per scelta esplicita dell'utente, per ora
-      resta un'azione admin (come già oggi per i contratti). Se in futuro si
-      vuole aprire il self-checkout, l'endpoint `POST /orders` andrebbe
-      riaperto a un ruolo cliente con `customer_user_id` forzato al chiamante
-      (non passato liberamente come oggi), non serve altro cambiamento di
-      modello dati.
+- [ ] **Chiavi Stripe reali**: il pannello Super Admin esiste e funziona,
+      ma nessuna chiave vera è stata inserita -- oggi "Paga con carta" non
+      compare da nessuna parte finché il Super Admin non le configura.
+- [ ] **Click-through completo in browser**: vedi "Limite dichiarato" sopra.
 
 ## Decisioni prese
 
@@ -211,15 +304,23 @@ conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
 - [x] **Modello dati checkout**: nuovo dominio `orders` separato da
       `Contract`, non un'estensione di quest'ultimo. Confermato con l'utente
       il 2026-09-05 (opzione "consigliata" della domanda posta).
-- [x] **Chi avvia un ordine**: solo admin per ora, niente self-checkout
-      cliente. Confermato con l'utente il 2026-09-05.
-- [x] **Chi può confermare riscatti/pagamenti**: `ADMIN` (non solo
+- [x] **Chi avvia un ordine**: sia admin sia il cliente stesso
+      (self-checkout aggiunto Session 26, confermato con l'utente).
+- [x] **Chi può confermare riscatti/pagamenti bonifico**: `ADMIN` (non solo
       `SUPER_ADMIN`) può già farlo -- verificato nel DB, `wallet.manage` è
       concesso a SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN. Nessuna modifica
       necessaria, era già così.
-- [x] **Pagamento del residuo nel checkout**: bonifico + conferma admin,
-      stesso meccanismo già esistente per i contratti (nessun
-      `PaymentProvider` reale nel sistema, non è cambiato con questa fase).
+- [x] **Chi può configurare Stripe**: SOLO `SUPER_ADMIN`, deliberatamente
+      più stretto del bonifico -- richiesta esplicita dell'utente Session 26.
+- [x] **Pagamento del residuo nel checkout**: bonifico (confermato da un
+      admin, come i contratti) O carta (Stripe, confermato automaticamente
+      dal webhook) -- entrambi offerti solo se effettivamente configurati.
+- [x] **Bottone non cliccabile se non configurato**: sia lato UI (il
+      bottone non compare proprio, non è solo disabilitato) sia lato server
+      (`create_order` rifiuta comunque la richiesta) -- richiesta esplicita
+      dell'utente Session 26.
+- [x] **IBAN reale**: `IT66W0883330410000000015702`, "Lial Energy Srl" --
+      fornito e configurato dall'utente il 2026-09-05.
 
 ## Decisioni ancora da prendere
 
@@ -229,25 +330,27 @@ conferma bloccati, prodotto `INTERNAL` rifiutato con messaggio che rimanda a
 - [ ] **Anagrafica fornitori-partner**: bastano nome/logo (quello che c'è
       oggi), o servono anche referente/accordo di partnership/percentuale
       commissione ricevuta da loro?
-- [ ] **IBAN aziendale reale**: nessuno inserito ancora (né in `.env`, né
-      nel nuovo pannello admin). Il wizard cliente funziona ma mostra
-      "contatta l'amministrazione" finché non viene compilato. **Non serve
-      più modificare `.env`** -- da questa sessione l'IBAN si inserisce
-      dalla dashboard: tab admin "Impostazioni" (`GET`/`PATCH
-      /organizations/me/settings`, salvato in `Organization.settings`
-      JSONB, gated `organization.manage` -- SUPER_ADMIN/ORGANIZATION_ADMIN/
-      ADMIN). `COMPANY_BANK_IBAN` in `.env` resta come fallback di bootstrap
-      se il pannello non è ancora stato compilato, ma il valore DB vince
-      sempre quando presente.
+- [x] ~~IBAN aziendale reale~~ **Risolto Session 26**: `IT66W0883330410000000015702`,
+      "Lial Energy Srl", inserito dall'utente e già configurato nel pannello
+      admin "Impostazioni" (`Organization.settings` JSONB, gated
+      `organization.manage`). `COMPANY_BANK_IBAN` in `.env` resta come
+      fallback di bootstrap ma non è più usato: il valore DB c'è già.
+- [ ] **Chiavi Stripe reali**: il pannello Super Admin esiste e funziona
+      (verificato con chiavi di test), ma nessuna chiave vera Stripe è
+      stata inserita -- da fare quando l'utente le avrà pronte.
 
 ## Come riprendere se una sessione futura parte da zero
 
 1. Leggi questo file per intero prima di fare qualunque altra cosa: **tutte
-   le Fasi 0-4 sono FATTE e verificate** (Fase 3 senza OCR reale, per
-   scelta), non richiederle da capo. Il progetto è funzionalmente completo
-   da riscatto a spesa.
+   le Fasi 0-4 sono FATTE e verificate, self-checkout cliente e pagamento
+   con carta (Stripe) sono FATTI e verificati (Session 26)**, non
+   richiederli da capo. Il progetto è funzionalmente completo dal riscatto
+   fattura fino all'acquisto da parte del cliente stesso.
 2. Se l'utente chiede di continuare, i pezzi mancanti sono solo: OCR reale,
-   controllo anti-duplicato fatture, self-checkout cliente (vedi "Cosa NON è
-   stato costruito") -- tutti extra/rifiniture, non fondamenta mancanti.
+   controllo anti-duplicato fatture, inserimento delle chiavi Stripe VERE
+   (il pannello per farlo esiste già, aspetta solo le chiavi), un
+   click-through completo in browser (mai fatto in questo ambiente
+   headless) -- vedi "Cosa NON è stato costruito". Tutti extra/rifiniture,
+   non fondamenta mancanti.
 3. Per le decisioni ancora aperte sopra, chiedi solo quelle.
 4. Aggiorna le checkbox di questo file mano a mano che qualcosa cambia.

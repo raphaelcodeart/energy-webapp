@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ProductCatalogRead } from "@/lib/types";
+import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 
 const ENERGY_LABELS: Record<string, string> = {
   ELECTRICITY: "Luce",
@@ -21,6 +22,12 @@ const BILLING_LABELS: Record<string, string> = {
   QUARTERLY: "/trimestre",
   ANNUAL: "/anno",
 };
+
+const CATEGORY_TABS: { key: "INTERNAL" | "DROPSHIPPING" | "PARTNER"; label: string }[] = [
+  { key: "INTERNAL", label: "Lial Energy" },
+  { key: "PARTNER", label: "Prodotti Partner" },
+  { key: "DROPSHIPPING", label: "Dropshipping" },
+];
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
@@ -45,10 +52,13 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
     queryFn: fetchProducts,
   });
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<"INTERNAL" | "DROPSHIPPING" | "PARTNER">("INTERNAL");
+  const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
 
-  const catalog = (products ?? []).filter(
+  const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
   );
+  const catalog = activeProducts.filter((p) => p.category === activeCategory);
 
   function shareProduct(productId: string, productName: string) {
     if (!referralCode || typeof window === "undefined") return;
@@ -92,9 +102,31 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
         </p>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {CATEGORY_TABS.map((tab) => {
+          const count = activeProducts.filter((p) => p.category === tab.key).length;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveCategory(tab.key)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                activeCategory === tab.key
+                  ? "bg-orange-600 border-orange-600 text-white"
+                  : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+              }`}
+            >
+              {tab.label}
+              {count > 0 && <span className="ml-1.5 opacity-70">({count})</span>}
+            </button>
+          );
+        })}
+      </div>
+
       {catalog.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-12">
-          Nessun prodotto disponibile al momento. Contatta il tuo promoter di riferimento per maggiori informazioni.
+          {activeCategory === "INTERNAL"
+            ? "Nessun prodotto disponibile al momento. Contatta il tuo promoter di riferimento per maggiori informazioni."
+            : "Nessun prodotto in questa categoria al momento."}
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -119,9 +151,16 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                   )}
                 </div>
                 <div className="p-5">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                    {typeLabel}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                      {typeLabel}
+                    </span>
+                    {p.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                        Fino al {v.credit_discount_percentage}% in crediti
+                      </span>
+                    )}
+                  </div>
                   <h4 className="text-base font-semibold text-white light:text-slate-900 mt-3 mb-1">{v.name}</h4>
                   {v.description && (
                     <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-3">{v.description}</p>
@@ -160,11 +199,27 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                       )}
                     </button>
                   )}
+                  {!referralCode && p.category !== "INTERNAL" && (
+                    <button
+                      onClick={() => setCheckoutTarget({ versionId: v.id, name: v.name })}
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition cursor-pointer"
+                    >
+                      Acquista
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {checkoutTarget && (
+        <ProductCheckoutModal
+          productVersionId={checkoutTarget.versionId}
+          productName={checkoutTarget.name}
+          onClose={() => setCheckoutTarget(null)}
+        />
       )}
     </div>
   );

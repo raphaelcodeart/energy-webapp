@@ -37,6 +37,7 @@ class InvoiceRedemptionUrlRead(BaseModel):
 class PaymentInfoRead(BaseModel):
     iban: str | None
     holder: str
+    instructions: str | None
 
 
 class InvoiceRedemptionVerifyRequest(BaseModel):

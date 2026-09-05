@@ -12,9 +12,21 @@ from app.core.security import hash_password
 from app.domains.catalog import service as catalog_service
 from app.domains.catalog.schemas import ProductCreate
 from app.domains.orders import service as orders_service
+from app.domains.organizations import service as organizations_service
+from app.domains.organizations.schemas import OrganizationSettingsUpdate, PaymentSettingsUpdate
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users.models import User
 from app.domains.wallets import service as wallet_service
+
+
+async def _configure_bank_transfer(db, organization_id):
+    """Bank transfer (and card) are both gated off by default (Session 26) --
+    tests exercising a residual paid by BANK_TRANSFER (the create_order
+    default) need it explicitly configured first, same as a real deployment
+    would via the admin settings panel."""
+    await organizations_service.update_settings(
+        db, organization_id=organization_id, payload=OrganizationSettingsUpdate(bank_iban="IT66W0883330410000000015702")
+    )
 
 
 async def _get_or_create_role(db, organization_id, *, role_code: str) -> Role:
@@ -59,6 +71,7 @@ async def _make_product_version(db, organization_id, actor_user_id, *, category=
 
 @pytest.mark.asyncio
 async def test_partial_credit_debits_wallet_and_leaves_residual_awaiting_payment(db, organization_id):
+    await _configure_bank_transfer(db, organization_id)
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer = await _make_user_with_role(db, organization_id)
     version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
@@ -131,6 +144,7 @@ async def test_credit_over_cap_is_rejected(db, organization_id):
 
 @pytest.mark.asyncio
 async def test_credit_exceeding_balance_raises_and_creates_no_order(db, organization_id):
+    await _configure_bank_transfer(db, organization_id)
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer = await _make_user_with_role(db, organization_id)
     version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=50)
@@ -148,6 +162,7 @@ async def test_credit_exceeding_balance_raises_and_creates_no_order(db, organiza
 
 @pytest.mark.asyncio
 async def test_cancel_refunds_the_exact_credit_debit(db, organization_id):
+    await _configure_bank_transfer(db, organization_id)
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer = await _make_user_with_role(db, organization_id)
     version = await _make_product_version(db, organization_id, admin.id, price_cents=10000, discount_pct=10)
@@ -192,3 +207,77 @@ async def test_internal_category_product_is_not_orderable(db, organization_id):
             db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
             credit_applied_cents=0, actor_user_id=admin.id,
         )
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_payment_method_is_rejected_and_creates_no_order(db, organization_id):
+    """Session 26: bank transfer and card are both off by default (an admin
+    must configure an IBAN / Stripe keys first) -- this is the server-side
+    half of "the button isn't even clickable if it's not configured"."""
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=0)
+    # deliberately NOT calling _configure_bank_transfer -- nothing is set up
+
+    with pytest.raises(orders_service.PaymentMethodNotAvailableError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=0, actor_user_id=admin.id, payment_method="BANK_TRANSFER",
+        )
+    with pytest.raises(orders_service.PaymentMethodNotAvailableError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=0, actor_user_id=admin.id, payment_method="CARD",
+        )
+
+    orders = await orders_service.list_orders(db, organization_id=organization_id)
+    assert all(o.customer_user_id != customer.id for o in orders)
+
+
+@pytest.mark.asyncio
+async def test_card_requires_both_stripe_keys_configured(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=0)
+
+    # Only the publishable key set -- still not enough, both are required.
+    await organizations_service.update_payment_settings(
+        db, organization_id=organization_id, payload=PaymentSettingsUpdate(stripe_publishable_key="pk_test_abc")
+    )
+    with pytest.raises(orders_service.PaymentMethodNotAvailableError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=0, actor_user_id=admin.id, payment_method="CARD",
+        )
+
+    await organizations_service.update_payment_settings(
+        db, organization_id=organization_id, payload=PaymentSettingsUpdate(stripe_secret_key="sk_test_xyz")
+    )
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=0, actor_user_id=admin.id, payment_method="CARD",
+    )
+    assert order.status == "AWAITING_PAYMENT"
+    assert order.payment_method == "CARD"
+
+
+@pytest.mark.asyncio
+async def test_full_credit_ignores_unconfigured_payment_method(db, organization_id):
+    """residual == 0 means nothing is ever actually charged, so an
+    unavailable (or even invalid) payment_method must not block the order --
+    it's stored but never acted upon."""
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=3000, discount_pct=100)
+
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=3000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=3000, actor_user_id=admin.id, payment_method="CARD",  # unconfigured, irrelevant here
+    )
+    assert order.status == "PAID"

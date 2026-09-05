@@ -4,24 +4,33 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser, require_permission
+from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.domains.orders import service as orders_service
 from app.domains.orders.schemas import (
+    CheckoutSessionRead,
     OrderCancelRequest,
     OrderCreateRequest,
     OrderQuoteRead,
     OrderRead,
+    OrderSelfCreateRequest,
 )
+from app.domains.payments import service as payments_service
 from app.domains.wallets import service as wallets_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
-# Admin-only for now (no self-checkout yet -- see
-# docs/cashback-partner-invoices-plan.md), gated at the same sensitivity
-# tier as the rest of the wallet-adjacent surface (wallet.manage:
-# SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN, deliberately not
-# BACK_OFFICE_OPERATOR/SALES_MANAGER) since creating an order can debit a
-# customer's wallet.
+# Two ways in: an admin creating/managing any order (wallet.manage-gated --
+# same sensitivity tier as the rest of the wallet-adjacent surface, since
+# this can debit a customer's wallet) and self-checkout (added Session 26,
+# "/mine" routes) where a customer only ever touches their own wallet/orders,
+# the same authorization principle as POST /wallets/transfer.
+
+
+def _order_error_to_http(exc: orders_service.OrderError) -> HTTPException:
+    if isinstance(exc, (orders_service.ProductNotEligibleError, orders_service.InvalidCreditAmountError,
+                         orders_service.InvalidPaymentMethodError, orders_service.PaymentMethodNotAvailableError)):
+        return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
 
 
 @router.get("/quote", response_model=OrderQuoteRead)
@@ -44,6 +53,26 @@ async def get_order_quote(
     return OrderQuoteRead(**quote)
 
 
+@router.get("/quote/mine", response_model=OrderQuoteRead)
+async def get_my_order_quote(
+    product_version_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrderQuoteRead:
+    """Self-service version of the quote above -- any authenticated user can
+    see their OWN wallet balance and this product's cap/payment-method
+    availability, no permission beyond authentication (mirrors
+    GET /wallets/me)."""
+    try:
+        quote = await orders_service.get_quote(
+            db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id,
+            product_version_id=product_version_id,
+        )
+    except orders_service.ProductNotEligibleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return OrderQuoteRead(**quote)
+
+
 @router.post("", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
 async def create_order(
     payload: OrderCreateRequest,
@@ -54,15 +83,73 @@ async def create_order(
         order = await orders_service.create_order(
             db, organization_id=current_user.organization_id, customer_user_id=payload.customer_user_id,
             product_version_id=payload.product_version_id, credit_applied_cents=payload.credit_applied_cents,
-            actor_user_id=current_user.user_id, note=payload.note,
+            actor_user_id=current_user.user_id, payment_method=payload.payment_method, note=payload.note,
         )
-    except orders_service.ProductNotEligibleError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    except orders_service.InvalidCreditAmountError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except orders_service.OrderError as exc:
+        raise _order_error_to_http(exc) from exc
     except wallets_service.InsufficientBalanceError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.post("/mine", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
+async def create_my_order(
+    payload: OrderSelfCreateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrderRead:
+    """Self-checkout: customer_user_id is always the caller's own id, never
+    taken from the request body -- same rule as POST /wallets/transfer's
+    from_wallet_id. No permission beyond authentication: a customer can only
+    ever spend their own wallet credit and create an order in their own
+    name."""
+    try:
+        order = await orders_service.create_order(
+            db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id,
+            product_version_id=payload.product_version_id, credit_applied_cents=payload.credit_applied_cents,
+            actor_user_id=current_user.user_id, payment_method=payload.payment_method, note=payload.note,
+        )
+    except orders_service.OrderError as exc:
+        raise _order_error_to_http(exc) from exc
+    except wallets_service.InsufficientBalanceError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.get("/mine", response_model=list[OrderRead])
+async def list_my_orders(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[OrderRead]:
+    orders = await orders_service.list_orders_for_customer(
+        db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id
+    )
+    return [OrderRead(**d) for d in await orders_service.hydrate(db, orders)]
+
+
+@router.post("/mine/{order_id}/checkout-session", response_model=CheckoutSessionRead)
+async def create_my_order_checkout_session(
+    order_id: uuid.UUID,
+    success_url: str,
+    cancel_url: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CheckoutSessionRead:
+    """Only the order's own customer may request a checkout session for it
+    -- 404 (not 403) for someone else's order, same information-hiding
+    reasoning as the rest of this codebase's ownership checks."""
+    order = await orders_service.get_org_scoped(db, organization_id=current_user.organization_id, order_id=order_id)
+    if order is None or order.customer_user_id != current_user.user_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    if order.status != "AWAITING_PAYMENT":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Cannot pay an order in status {order.status}")
+    try:
+        checkout_url = await payments_service.create_checkout_session_for_order(
+            db, organization_id=current_user.organization_id, order=order,
+            success_url=success_url, cancel_url=cancel_url,
+        )
+    except payments_service.StripeNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return CheckoutSessionRead(checkout_url=checkout_url)
 
 
 @router.get("", response_model=list[OrderRead])

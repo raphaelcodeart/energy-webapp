@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ifNP11bhPRlZza3uzzvWrR5z0zBgJyRM3SoLesmodiOIwwNBsfML0UBQakbqJQN
+\restrict ztagYhvccX6Vijx3SgLf843zw1AEUemTUbDxynRT1Z1QWkI2qOCWlsJNefAVrpY
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -601,6 +601,8 @@ CREATE TABLE public.orders (
     cancelled_by_user_id uuid,
     cancelled_at timestamp with time zone,
     cancellation_reason character varying(500),
+    payment_method character varying(16) DEFAULT 'BANK_TRANSFER'::character varying NOT NULL,
+    stripe_checkout_session_id character varying(255),
     CONSTRAINT ck_orders_ck_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
     CONSTRAINT ck_orders_ck_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents))
 );
@@ -1424,6 +1426,14 @@ ALTER TABLE ONLY public.invoice_redemptions
 
 ALTER TABLE ONLY public.invoice_redemptions
     ADD CONSTRAINT uq_invoice_redemptions_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: orders uq_orders_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.orders
+    ADD CONSTRAINT uq_orders_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
 
 
 --
@@ -3296,5 +3306,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ifNP11bhPRlZza3uzzvWrR5z0zBgJyRM3SoLesmodiOIwwNBsfML0UBQakbqJQN
+\unrestrict ztagYhvccX6Vijx3SgLf843zw1AEUemTUbDxynRT1Z1QWkI2qOCWlsJNefAVrpY
 

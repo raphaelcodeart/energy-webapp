@@ -38,6 +38,7 @@ from app.domains.organizations.router import router as organizations_router
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.partners import models as _partners_models  # noqa: F401
 from app.domains.partners.router import router as partners_router
+from app.domains.payments.router import router as payments_router
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.referral.router import authenticated_router as referral_authenticated_router
@@ -86,6 +87,7 @@ app.include_router(partners_router, prefix="/api")
 app.include_router(invoice_redemptions_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(organizations_router, prefix="/api")
+app.include_router(payments_router, prefix="/api")
 
 
 @app.on_event("startup")

@@ -529,24 +529,47 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   `contract_id` is NOT NULL by design, for contract KYC documents) --
   `invoice_redemptions` carries its own `storage_key` in the same private
   bucket via `core/storage.py`.
-- **Spending side (Phase 4, added Session 24)**: `Product.category`
-  (`INTERNAL`/`DROPSHIPPING`/`PARTNER`) and
-  `ProductVersion.credit_discount_percentage` (0-100, enforced to 0 for
-  `INTERNAL`) gate a new `orders` domain -- deliberately NOT `Contract`
-  (`Contract.supply_point_id` is NOT NULL by design, every contract is an
-  energy supply; an order for e.g. a partner t-shirt has no equivalent).
-  Admin picks a customer + a DROPSHIPPING/PARTNER product version and how
-  much wallet credit to apply (capped by both the product's percentage and
-  the customer's balance, previewed via `GET /orders/quote` first); that
-  amount is debited immediately via a new `PURCHASE_DEBIT` wallet-transaction
+- **Spending side (Phase 4, added Session 24; self-checkout + card payments
+  added Session 26)**: `Product.category` (`INTERNAL`/`DROPSHIPPING`/
+  `PARTNER`) and `ProductVersion.credit_discount_percentage` (0-100,
+  enforced to 0 for `INTERNAL`) gate a new `orders` domain -- deliberately
+  NOT `Contract` (`Contract.supply_point_id` is NOT NULL by design, every
+  contract is an energy supply; an order for e.g. a partner t-shirt has no
+  equivalent). Either an admin or the customer themselves (self-checkout)
+  picks a DROPSHIPPING/PARTNER product version and how much wallet credit
+  to apply (capped by both the product's percentage and the customer's
+  balance, previewed via `GET /orders/quote` or `/orders/quote/mine` first);
+  that amount is debited immediately via a `PURCHASE_DEBIT` wallet-transaction
   type (the mirror of `ADMIN_CREDIT`: `to_wallet_id` NULL instead of
-  `from_wallet_id` NULL). The residual is paid by bank transfer and confirmed
-  by an admin exactly like a contract's `PAID` transition; if credit alone
-  covers 100%, the order skips straight to `PAID`. Cancelling an
-  `AWAITING_PAYMENT` order reverses the exact `PURCHASE_DEBIT` row via
-  `reverse_transaction()` (extended to handle a debit with no recipient
-  wallet), refunding the customer precisely. No self-checkout yet -- admin
-  creates every order, same as contracts today.
+  `from_wallet_id` NULL). The residual is paid one of two ways: **bank
+  transfer**, confirmed by an admin exactly like a contract's `PAID`
+  transition, or **card via Stripe** (`app/domains/payments/`), confirmed
+  automatically by a webhook once `checkout.session.completed` fires -- the
+  only case in this domain where `PAID` is reached with no human actor. If
+  credit alone covers 100%, the order skips straight to `PAID` regardless of
+  payment method. Cancelling an `AWAITING_PAYMENT` order reverses the exact
+  `PURCHASE_DEBIT` row via `reverse_transaction()` (extended to handle a
+  debit with no recipient wallet), refunding the customer precisely.
+- **Payment method availability is gated, not just visually disabled**:
+  bank transfer requires an IBAN set in `Organization.settings`
+  (`bank_iban`, admin-editable, `organization.manage` permission); card
+  requires BOTH a Stripe secret key and publishable key set (a separate,
+  stricter `organization.manage_payments` permission -- **SUPER_ADMIN
+  only**, deliberately narrower than the bank IBAN's permission tier). A
+  frontend must never render a payment-method button for an unconfigured
+  method; `create_order()` independently rejects the request server-side
+  regardless (`PaymentMethodNotAvailableError`), so this is enforced even if
+  the frontend were bypassed. Stripe secret/webhook keys are never returned
+  in full by any endpoint, only "configured yes/no" plus the secret key's
+  last 4 characters -- same principle as a password never round-tripped in
+  plaintext.
+- **Stripe webhook is per-organization and unauthenticated by design**:
+  `POST /payments/stripe/webhook/{organization_id}` takes no auth
+  dependency -- the Stripe signature, verified against THAT organization's
+  own webhook secret, is the authentication. The organization id in the URL
+  is what a SUPER_ADMIN pastes into their own Stripe Dashboard's webhook
+  config, and is what keeps one endpoint correct for every tenant in
+  principle, even though this deployment currently has one organization.
 
 ## GDPR notes
 

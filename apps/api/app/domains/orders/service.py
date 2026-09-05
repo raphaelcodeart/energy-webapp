@@ -9,7 +9,8 @@ from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.network.models import AgentProfile
 from app.domains.notifications import service as notifications_service
-from app.domains.orders.models import Order
+from app.domains.orders.models import ORDER_PAYMENT_METHODS, Order
+from app.domains.organizations import service as organizations_service
 from app.domains.users.models import User
 from app.domains.wallets import service as wallets_service
 
@@ -27,6 +28,14 @@ class InvalidCreditAmountError(OrderError):
 
 
 class InvalidOrderStateError(OrderError):
+    pass
+
+
+class InvalidPaymentMethodError(OrderError):
+    pass
+
+
+class PaymentMethodNotAvailableError(OrderError):
     pass
 
 
@@ -50,6 +59,16 @@ def max_creditable_cents(*, amount_cents: int, credit_discount_percentage: int) 
     return round(amount_cents * credit_discount_percentage / 100)
 
 
+async def get_available_payment_methods(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:
+    """Gates what a checkout screen may even offer for the residual --
+    both create_order() (server-side enforcement) and every quote endpoint
+    (so the UI never shows a button that would just fail) read this."""
+    return {
+        "bank_transfer": await organizations_service.is_bank_transfer_configured(db, organization_id=organization_id),
+        "card": await organizations_service.is_stripe_configured(db, organization_id=organization_id),
+    }
+
+
 async def get_quote(
     db: AsyncSession, *, organization_id: uuid.UUID, customer_user_id: uuid.UUID, product_version_id: uuid.UUID
 ) -> dict:
@@ -59,6 +78,7 @@ async def get_quote(
     wallet = await wallets_service.get_wallet_by_user_id(
         db, organization_id=organization_id, user_id=customer_user_id
     )
+    methods = await get_available_payment_methods(db, organization_id=organization_id)
     return {
         "product_version_id": version.id,
         "product_name": version.name,
@@ -68,6 +88,8 @@ async def get_quote(
             amount_cents=version.base_price_cents, credit_discount_percentage=version.credit_discount_percentage
         ),
         "customer_wallet_balance_cents": wallet.balance_cents if wallet else 0,
+        "bank_transfer_available": methods["bank_transfer"],
+        "card_available": methods["card"],
     }
 
 
@@ -117,6 +139,7 @@ async def to_read_dict(db: AsyncSession, order: Order) -> dict:
         "credit_applied_cents": order.credit_applied_cents,
         "residual_amount_cents": order.amount_cents - order.credit_applied_cents,
         "status": order.status,
+        "payment_method": order.payment_method,
         "note": order.note,
         "paid_at": order.paid_at,
         "cancelled_at": order.cancelled_at,
@@ -137,6 +160,7 @@ async def create_order(
     product_version_id: uuid.UUID,
     credit_applied_cents: int,
     actor_user_id: uuid.UUID,
+    payment_method: str = "BANK_TRANSFER",
     note: str | None = None,
 ) -> Order:
     version, _product = await _get_sellable_product_version(
@@ -148,6 +172,20 @@ async def create_order(
         raise InvalidCreditAmountError(
             f"credit_applied_cents must be between 0 and {cap} for this product ({version.credit_discount_percentage}% of {amount_cents})"
         )
+
+    # Only matters when something is actually going to be charged -- if
+    # credit alone covers the price, payment_method is stored as-given but
+    # never acted upon (the order skips straight to PAID below), so an
+    # unavailable/garbage value there shouldn't block a 100%-credit order.
+    residual = amount_cents - credit_applied_cents
+    if residual > 0:
+        if payment_method not in ORDER_PAYMENT_METHODS:
+            raise InvalidPaymentMethodError(f"payment_method must be one of {ORDER_PAYMENT_METHODS}")
+        available = await get_available_payment_methods(db, organization_id=organization_id)
+        if payment_method == "BANK_TRANSFER" and not available["bank_transfer"]:
+            raise PaymentMethodNotAvailableError("Il pagamento con bonifico non è configurato.")
+        if payment_method == "CARD" and not available["card"]:
+            raise PaymentMethodNotAvailableError("Il pagamento con carta non è configurato.")
 
     wallet = None
     if credit_applied_cents > 0:
@@ -176,6 +214,7 @@ async def create_order(
         amount_cents=amount_cents,
         credit_applied_cents=credit_applied_cents,
         status="AWAITING_PAYMENT",
+        payment_method=payment_method,
         note=note,
     )
     db.add(order)
@@ -183,7 +222,6 @@ async def create_order(
 
     if credit_applied_cents > 0:
         assert wallet is not None
-        residual = amount_cents - credit_applied_cents
         if residual == 0:
             order.status = "PAID"
             order.paid_by_user_id = actor_user_id
@@ -219,6 +257,17 @@ async def list_orders(
     if status_filter:
         stmt = stmt.where(Order.status == status_filter)
     stmt = stmt.order_by(Order.created_at.desc())
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_orders_for_customer(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_user_id: uuid.UUID
+) -> list[Order]:
+    stmt = (
+        select(Order)
+        .where(Order.organization_id == organization_id, Order.customer_user_id == customer_user_id)
+        .order_by(Order.created_at.desc())
+    )
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -269,6 +318,57 @@ async def cancel_order(
     order.cancelled_by_user_id = actor_user_id
     order.cancelled_at = utcnow()
     order.cancellation_reason = reason
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+async def attach_stripe_checkout_session(db: AsyncSession, *, order: Order, session_id: str) -> Order:
+    """Records which Stripe Checkout Session is currently "live" for this
+    order's residual -- overwrites any previous session id rather than
+    appending, so only the customer's latest checkout attempt is ever
+    honored by the webhook (see payments/service.py). Does not change
+    order.status: the order stays AWAITING_PAYMENT until Stripe confirms
+    payment via the webhook, exactly like a bank transfer stays
+    AWAITING_PAYMENT until an admin confirms it."""
+    order.payment_method = "CARD"
+    order.stripe_checkout_session_id = session_id
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+async def mark_paid_via_stripe(
+    db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str
+) -> Order:
+    """Called only from the Stripe webhook (payments/router.py) once
+    checkout.session.completed fires -- the one case in this whole domain
+    where `PAID` is reached with no human actor, mirroring how
+    reference_invoice_redemption_id credits also have actor_user_id set to
+    whichever admin confirmed them, except here there IS no admin: paid_by_
+    user_id stays NULL, same as an ADMIN_CREDIT's actor_user_id can be NULL
+    for a system-originated row."""
+    stmt = select(Order).where(
+        Order.organization_id == organization_id, Order.stripe_checkout_session_id == stripe_checkout_session_id
+    )
+    order = (await db.execute(stmt)).scalar_one_or_none()
+    if order is None:
+        raise OrderError("Order not found for this Stripe checkout session")
+    if order.status != "AWAITING_PAYMENT":
+        # Stripe can and does retry webhook delivery -- a second delivery
+        # for an already-PAID order is expected, not an error; no-op.
+        return order
+
+    order.status = "PAID"
+    order.paid_at = utcnow()
+
+    version = await db.get(ProductVersion, order.product_version_id)
+    await notifications_service.notify_user(
+        db, organization_id=organization_id, user_id=order.customer_user_id, type_="ORDER_PAID",
+        entity_type="order", entity_id=order.id,
+        title=f"Il tuo ordine per {version.name if version else 'un prodotto'} è confermato",
+        body="Pagamento con carta ricevuto.",
+    )
     await db.commit()
     await db.refresh(order)
     return order

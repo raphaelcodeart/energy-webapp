@@ -33,7 +33,7 @@ async def get_payment_info(
     settings = get_settings()
     iban = org_settings["bank_iban"] or settings.company_bank_iban or None
     holder = org_settings["bank_account_holder"] or settings.company_bank_holder
-    return PaymentInfoRead(iban=iban, holder=holder)
+    return PaymentInfoRead(iban=iban, holder=holder, instructions=org_settings["bank_transfer_instructions"])
 
 
 @router.post("", response_model=InvoiceRedemptionRead, status_code=status.HTTP_201_CREATED)

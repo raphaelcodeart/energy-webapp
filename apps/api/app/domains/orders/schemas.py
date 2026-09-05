@@ -18,6 +18,7 @@ class OrderRead(BaseModel):
     credit_applied_cents: int
     residual_amount_cents: int
     status: str
+    payment_method: str
     note: str | None
     paid_at: datetime | None
     cancelled_at: datetime | None
@@ -27,8 +28,13 @@ class OrderRead(BaseModel):
 
 class OrderQuoteRead(BaseModel):
     """What the checkout screen shows before an order is actually created --
-    lets the admin see the credit cap and the customer's balance before
-    committing to an amount."""
+    lets the buyer (customer self-checkout or admin) see the credit cap, the
+    customer's balance, and which payment methods for the residual are even
+    switched on before committing to anything. A frontend must grey out or
+    hide "Paga con bonifico"/"Paga con carta" entirely when the matching flag
+    is false -- the backend enforces this too (create_order rejects an
+    unavailable method), this is what lets the UI never offer it in the
+    first place."""
 
     product_version_id: uuid.UUID
     product_name: str
@@ -36,16 +42,38 @@ class OrderQuoteRead(BaseModel):
     credit_discount_percentage: int
     max_creditable_cents: int
     customer_wallet_balance_cents: int
+    bank_transfer_available: bool
+    card_available: bool
 
 
 class OrderCreateRequest(BaseModel):
     customer_user_id: uuid.UUID
     product_version_id: uuid.UUID
-    # 0 if paying the full amount by bank transfer -- never inferred, an
-    # admin always states explicitly how much credit to apply.
+    # 0 if the credit discount alone covers the price -- never inferred, the
+    # caller always states explicitly how much credit to apply.
     credit_applied_cents: int = Field(default=0, ge=0)
+    # Only meaningful when credit_applied_cents < amount_cents -- see
+    # ORDER_PAYMENT_METHODS. Ignored (order goes straight to PAID) when
+    # credit covers 100%.
+    payment_method: str = "BANK_TRANSFER"
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class OrderSelfCreateRequest(BaseModel):
+    """Same as OrderCreateRequest minus customer_user_id -- self-checkout
+    (POST /orders/mine) always forces the caller's own user_id server-side,
+    never accepts it from the body (same rule as wallet transfer's
+    from_wallet_id)."""
+
+    product_version_id: uuid.UUID
+    credit_applied_cents: int = Field(default=0, ge=0)
+    payment_method: str = "BANK_TRANSFER"
     note: str | None = Field(default=None, max_length=1000)
 
 
 class OrderCancelRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class CheckoutSessionRead(BaseModel):
+    checkout_url: str

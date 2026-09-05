@@ -21,6 +21,7 @@ dependencies = [
     "orjson>=3.10",
     "python-multipart>=0.0.12",
     "boto3>=1.35",
+    "stripe>=11.1",
 ]
 
 [project.optional-dependencies]

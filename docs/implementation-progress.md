@@ -4,6 +4,82 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 26 — 2026-09-05 (same day, continued) — Customer self-checkout, Stripe card payments, marketplace category tabs
+
+Closes the last gap in the cashback/orders project: a customer can now buy
+a DROPSHIPPING/PARTNER product themselves (not just an admin on their
+behalf), and pay the residual with a card via Stripe, not just bank
+transfer. Full detail in `docs/cashback-partner-invoices-plan.md`
+(kept current, not duplicated here) -- summary:
+
+- Two architecture questions put to the user before writing code (integrate
+  Stripe now vs. later; open self-checkout vs. keep admin-only) given the
+  cost of guessing wrong: **both yes** -- Stripe now (keys configurable,
+  activatable later), self-checkout now.
+- `orders` extended with `payment_method` (BANK_TRANSFER/CARD) and
+  `stripe_checkout_session_id`; `create_order()` validates the payment
+  method only when there's a residual to pay, and only accepts a method
+  that's actually configured -- server-side enforcement of "the button
+  isn't just disabled, it doesn't exist if not configured."
+- New `payments` domain: creates a real Stripe Checkout Session for exactly
+  the residual (never the full price), and a per-organization webhook
+  (`POST /payments/stripe/webhook/{organization_id}`, deliberately
+  unauthenticated -- the Stripe signature IS the auth) marks an order PAID
+  automatically on `checkout.session.completed`.
+- `organizations` extended with `bank_transfer_instructions` (free text
+  admins can set) and a new, stricter permission
+  `organization.manage_payments` (SUPER_ADMIN only, unlike the bank IBAN's
+  `organization.manage` which also includes ORGANIZATION_ADMIN/ADMIN) --
+  the user's own framing: whoever touches card payments is a smaller circle
+  than whoever touches where bonifico money goes. Stripe secret/webhook
+  keys are never echoed back in full by any endpoint, only "configured
+  yes/no" + last 4 chars.
+- New self-checkout endpoints (`/orders/quote/mine`, `/orders/mine` GET+POST,
+  `/orders/mine/{id}/checkout-session`) open to any authenticated user,
+  `customer_user_id` always forced to the caller, same rule as
+  `POST /wallets/transfer`.
+- Frontend: new `product-checkout-modal.tsx` (credit slider pre-filled to
+  the max usable amount, payment method buttons that simply don't render
+  when unavailable, then either a success message, bank transfer
+  instructions, or a Stripe redirect); "Acquista" button added to
+  `customer-products-panel.tsx` for non-INTERNAL products, only in the
+  customer's own Shop view (not the promoter's referral-sharing view of the
+  same component); Stripe settings card in the admin settings panel, shown
+  only when `isSuperAdmin` (computed server-side in `app/admin/page.tsx`
+  from the session JWT's roles -- a UX nicety, the real enforcement is the
+  backend permission).
+- Real IBAN configured in production per the user's own message:
+  `IT66W0883330410000000015702`, "Lial Energy Srl" -- saved via the admin
+  settings panel, not `.env`.
+- Two test products created on explicit request (not throwaway
+  verification data -- left in the catalog): `PARTNER-TEST-01` "Zaino
+  Outdoor Partner (TEST)" (69,00E, 30% credit discount) and
+  `DROPSHIP-TEST-01` "Power Bank 20000mAh (TEST)" (39,00E, 0% credit
+  discount -- always full bank transfer or card).
+- Customer Shop also got category tabs (Lial Energy / Prodotti Partner /
+  Dropshipping) in the same session, filtering `customer-products-panel.tsx`
+  by `Product.category` with a per-tab count.
+- Verified live via real HTTP calls: self-checkout quote correctly reports
+  payment-method availability; a BANK_TRANSFER self-checkout order
+  succeeds; the same order with CARD is correctly rejected while Stripe is
+  unconfigured; ADMIN gets 403 on the payment-settings endpoints (only
+  SUPER_ADMIN passes); setting/clearing test Stripe keys correctly flips
+  `card_available`; the `stripe` Python library (v15) was smoke-tested
+  against a fake key/signature to confirm it raises the expected error
+  types before writing production code against it. Full backend suite:
+  139/139 passing, ruff/mypy clean (same pre-existing rowcount
+  false-positives as before).
+- **Stated limitation**: verified server-rendered HTML for the new pages
+  (no crash, every new tab/nav item present) using real authenticated
+  sessions built from minted tokens, but did NOT do a full interactive
+  browser click-through -- no browser tool was available in this headless
+  session, and resetting a real customer's password just to test was
+  judged not worth the risk. The business logic is thoroughly covered by
+  the automated tests and direct HTTP calls above instead.
+- Not done: real Stripe keys (the panel works, verified with test keys, but
+  no live keys entered yet), invoice-redemption duplicate detection, real
+  OCR (unchanged from Session 23's decision).
+
 ## Session 25 — 2026-09-05 (same day, continued) — PWA home-screen icons, scheduled DB backups, admin-editable company IBAN
 
 Three independent items, none touching the cashback/orders work itself.

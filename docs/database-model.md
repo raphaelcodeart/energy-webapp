@@ -565,7 +565,7 @@ combined row -- see §9). `REJECTED` is reachable from `SUBMITTED` or
 verifies against the document before anything is unlocked -- see
 `docs/cashback-partner-invoices-plan.md`.
 
-## 11. Product credit categories & orders (added Sessions 23-24)
+## 11. Product credit categories & orders (added Sessions 23-24; payment method + self-checkout Session 26)
 
 ```
 products (extended)
@@ -587,8 +587,10 @@ orders                                    -- DROPSHIPPING/PARTNER purchases
   id, organization_id,
   customer_user_id (FK users.id -- whose wallet is debited),
   product_version_id (FK product_versions.id),
-  created_by_user_id (FK users.id -- the admin who created it; no
-    self-checkout yet),
+  created_by_user_id (FK users.id -- an admin, OR the customer themselves
+    for a self-checkout order added Session 26 -- POST /orders/mine forces
+    this to equal customer_user_id, same rule as wallet transfer's
+    from_wallet_id),
   amount_cents (frozen from product_version.base_price_cents at creation --
     same "frozen at the moment it happens" rule as everywhere else),
   credit_applied_cents (default 0, CHECK 0 <= credit_applied_cents <=
@@ -598,9 +600,18 @@ orders                                    -- DROPSHIPPING/PARTNER purchases
     cancelling can reverse that exact row rather than minting a fresh,
     less-traceable refund),
   status (AWAITING_PAYMENT / PAID / CANCELLED),
+  payment_method (BANK_TRANSFER default / CARD -- added Session 26, only
+    meaningful when there's a residual to pay; irrelevant and unenforced
+    when credit_applied_cents covers 100% of amount_cents),
+  stripe_checkout_session_id nullable, unique (added Session 26 -- set once
+    a Stripe Checkout Session is created for the residual; overwritten, not
+    appended, on a retried checkout attempt, so only the latest attempt is
+    ever honored by the webhook),
   note nullable,
-  paid_by_user_id/paid_at nullable, cancelled_by_user_id/cancelled_at/
-    cancellation_reason nullable
+  paid_by_user_id/paid_at nullable (paid_by_user_id stays NULL for a
+    Stripe-confirmed payment -- there is no human actor, see
+    orders/service.py::mark_paid_via_stripe), cancelled_by_user_id/
+    cancelled_at/cancellation_reason nullable
 ```
 
 Deliberately **not** an extension of `Contract` -- `Contract.supply_point_id`
@@ -608,24 +619,45 @@ is NOT NULL by design (every contract is an energy supply), which has no
 equivalent for e.g. a partner t-shirt; a new, much simpler domain was the
 lower-risk choice, confirmed with the user before building it. If
 `credit_applied_cents` covers 100% of `amount_cents` at creation, the order
-skips straight to `PAID` -- no bank transfer, no `AWAITING_PAYMENT` step.
-Cancelling an `AWAITING_PAYMENT` order reverses the exact
-`credit_debit_transaction_id` row (see §9's `PURCHASE_DEBIT` reversal) before
-marking itself `CANCELLED`, refunding the customer precisely.
+skips straight to `PAID` -- no bank transfer, no card, no `AWAITING_PAYMENT`
+step, `payment_method` is stored but never acted upon. Cancelling an
+`AWAITING_PAYMENT` order reverses the exact `credit_debit_transaction_id`
+row (see §9's `PURCHASE_DEBIT` reversal) before marking itself `CANCELLED`,
+refunding the customer precisely.
 
-## 12. Organization settings (added Session 25)
+**Self-checkout (Session 26)**: `POST /orders/mine`, `GET /orders/mine`,
+`GET /orders/quote/mine`, `POST /orders/mine/{id}/checkout-session` are all
+open to any authenticated user -- no permission beyond authentication,
+`customer_user_id` always the caller's own id. `create_order()` validates
+the requested `payment_method` only when a residual exists, and only
+accepts one that's actually configured for the organization (see §12) --
+`PaymentMethodNotAvailableError` otherwise, which is what makes "the button
+doesn't even render if unconfigured" a real guarantee rather than just a
+frontend nicety.
+
+## 12. Organization settings (added Session 25; Stripe keys Session 26)
 
 No new table -- `organizations.settings` (JSONB, existed since the original
-schema) is now actually read/written through a typed subset,
-`GET`/`PATCH /organizations/me/settings` (new `organization.manage`
-permission, same three roles as `wallet.manage`). Currently holds
-`bank_iban`/`bank_account_holder` -- the account customers wire bonifico
-payments to (invoice-redemption 3% payments today). An update merges into
-the existing dict (`{**org.settings, **updates}`, only the fields actually
-present in the PATCH), so an unrelated key living in the same JSONB blob is
-never clobbered by an admin only touching the bank fields. `.env`'s
-`COMPANY_BANK_IBAN`/`COMPANY_BANK_HOLDER` remain a bootstrap fallback only,
-read when the DB value is unset.
+schema) is now actually read/written through two typed subsets:
+`GET`/`PATCH /organizations/me/settings` (`organization.manage` permission
+-- SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN, same tier as `wallet.manage`) holds
+`bank_iban`/`bank_account_holder`/`bank_transfer_instructions` (the account
+and free-text instructions customers wire bonifico payments to); `GET`/
+`PATCH /organizations/me/payment-settings` (new, stricter
+`organization.manage_payments` permission -- **SUPER_ADMIN only**, per the
+user's explicit request that whoever configures card payments is a smaller
+circle than whoever configures bank transfer) holds
+`stripe_publishable_key`/`stripe_secret_key`/`stripe_webhook_secret`. The
+two secret Stripe fields are never returned in full by the read endpoint --
+only a `*_configured: bool` plus (for the secret key) its last 4 characters,
+same principle as a password never round-tripped in plaintext. Both
+endpoints merge into the existing dict (`{**org.settings, **updates}`, only
+fields actually present in the PATCH), so an unrelated key living in the
+same JSONB blob -- or an omitted secret field -- is never clobbered.
+`.env`'s `COMPANY_BANK_IBAN`/`COMPANY_BANK_HOLDER` remain a bootstrap
+fallback only, read when the DB value is unset; there is no `.env`
+fallback for Stripe keys (payment-processing credentials are DB-only,
+editable without a server restart).
 
 ## 13. ER diagram (core slice)
 

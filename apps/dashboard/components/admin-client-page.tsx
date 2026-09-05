@@ -35,6 +35,11 @@ interface AdminClientPageProps {
   initialContracts: ContractRead[];
   email?: string;
   organizationId?: string;
+  /** UX nicety only -- hides the Stripe settings section for anyone whose
+      token couldn't call it anyway. The backend's own
+      organization.manage_payments permission (SUPER_ADMIN only) is the
+      real enforcement, see docs/cashback-partner-invoices-plan.md. */
+  isSuperAdmin?: boolean;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -235,7 +240,7 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function AdminClientPage({ initialContracts, email, organizationId }: AdminClientPageProps) {
+export function AdminClientPage({ initialContracts, email, organizationId, isSuperAdmin }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
   const { data: customersForLookup } = useQuery({
     queryKey: ["admin", "customers"],
@@ -631,7 +636,7 @@ export function AdminClientPage({ initialContracts, email, organizationId }: Adm
         {activeTab === "settings" && (
           <div className="space-y-6">
             <SectionBanner image="documentation" alt="Impostazioni" />
-            <AdminOrganizationSettingsPanel />
+            <AdminOrganizationSettingsPanel isSuperAdmin={isSuperAdmin} organizationId={organizationId} />
           </div>
         )}
       </AppShell>
