@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CameraCaptureModal } from "@/components/camera-capture-modal";
 import { friendlyApiError } from "@/lib/api-error";
 import type { InvoiceRedemptionRead, PartnerRead } from "@/lib/types";
 
@@ -55,7 +56,7 @@ export function InvoiceRedemptionPanel() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: partners } = useQuery({ queryKey: ["invoice-redemptions", "partners"], queryFn: fetchPartners });
@@ -157,7 +158,7 @@ export function InvoiceRedemptionPanel() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={() => setCameraOpen(true)}
                   className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -178,14 +179,6 @@ export function InvoiceRedemptionPanel() {
                 </button>
               </div>
               <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                capture="environment"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="hidden"
-              />
-              <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,application/pdf"
@@ -199,6 +192,15 @@ export function InvoiceRedemptionPanel() {
                   </svg>
                   {file.name}
                 </p>
+              )}
+              {cameraOpen && (
+                <CameraCaptureModal
+                  onCapture={(captured) => {
+                    setFile(captured);
+                    setCameraOpen(false);
+                  }}
+                  onClose={() => setCameraOpen(false)}
+                />
               )}
             </div>
             <button

@@ -4,6 +4,45 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 29 — 2026-09-06 (same day, continued) — Verified credit-% checkout + contract-flow authority, product-showcase redesign, live camera capture, desktop nav bar
+
+Follow-up session: two things verified against the live database rather
+than re-explained from memory (both confirmed already correct, see
+`business-rules.md`'s "Session 29 follow-up" and "Who can move a contract
+through this pipeline" -- kept current there, not duplicated here), plus
+visual/UX polish:
+
+- Verified live: a PARTNER product's own `credit_discount_percentage`
+  correctly caps the wallet-credit amount a checkout will accept
+  (`GET /orders/quote/mine` on a 69,00€/30% product returned
+  `max_creditable_cents: 2070`) -- no bug found, no change needed.
+- Verified: the contract pipeline (DRAFT→...→ACTIVE) is staff-only
+  (`contracts.review`), never customer self-service beyond document
+  upload + IBAN -- confirmed by reading `rbac/models.py` and
+  `contracts/router.py`, not assumed.
+- `customer-products-panel.tsx` + `product-detail-modal.tsx` redesigned:
+  bigger/bolder price and a computed "crediti usabili" euro figure side by
+  side, a discount ribbon overlay on the photo, hover zoom/lift/fade-in
+  animations, full-width gradient buy button.
+- `header-energy.jpg` swapped again for a brighter, more striking aerial
+  solar-farm photo, per explicit "più luminose" feedback on the Session 28
+  pick.
+- New `camera-capture-modal.tsx`: a real live `getUserMedia` camera
+  viewfinder for the cashback-redemption upload, replacing the Session 27
+  `<input capture="environment">` approach, which silently did nothing on
+  desktop browsers (no webcam access) and only worked on some mobile ones.
+- `app-shell.tsx` gained a desktop top nav bar (big pill buttons, same
+  items as the mobile bottom bar, pinned under the header on every page)
+  and larger mobile bottom-bar touch targets -- this was built by a
+  parallel agent mid-session (observed via its own task notification,
+  reviewed and kept as correct/on-spec rather than re-done) to close a gap
+  left after Session 27 only shipped the mobile half of "primary tools as
+  big buttons, bottom on mobile / top on desktop."
+- Verified: `docker compose build` succeeded for the dashboard (TypeScript
+  compiled clean) including both this session's changes and the parallel
+  agent's `app-shell.tsx` work together; redeployed and confirmed healthy,
+  server-rendered pages return 200/307 as expected (no crash).
+
 ## Session 28 — 2026-09-06 (same day, continued) — E-commerce order flow, order-confirmation email, Stripe new-tab checkout, account freeze, brighter header photos
 
 Another multi-part request in one message, all detailed in

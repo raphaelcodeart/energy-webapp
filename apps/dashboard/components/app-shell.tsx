@@ -405,10 +405,9 @@ export function AppShell({
       )}
 
       {/* Mobile bottom tab bar -- app-style primary navigation for phones,
-          mirroring how a native app puts its main sections in a bottom bar
-          with icons. Desktop keeps its tools up top/side (the persistent
-          sidebar + header above already serve that role there). */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t border-white/5 light:border-slate-900/5 bg-slate-950/90 light:bg-white/90 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+          big touch-target buttons mirroring how a native app puts its main
+          sections in a bottom bar with icons. */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t border-white/5 light:border-slate-900/5 bg-slate-950/95 light:bg-white/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.2)]">
         {navItems.slice(0, MOBILE_TAB_COUNT).map((item) => {
           const active = item.key === activeKey;
           const hasUnread = item.notificationTypes?.some((t) => unreadTypes.has(t)) ?? false;
@@ -416,29 +415,35 @@ export function AppShell({
             <button
               key={item.key}
               onClick={() => onNavigate(item.key)}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 cursor-pointer transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 cursor-pointer transition-colors ${
                 active ? "text-orange-400" : "text-slate-400 light:text-slate-500"
               }`}
             >
-              <span className="relative flex h-5 w-5 items-center justify-center">
+              <span
+                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors [&_svg]:h-6 [&_svg]:w-6 ${
+                  active ? "bg-orange-500/15" : ""
+                }`}
+              >
                 {item.icon}
                 {hasUnread && (
-                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-500 border border-slate-950 light:border-white" />
+                  <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 border-2 border-slate-950 light:border-white" />
                 )}
               </span>
-              <span className="text-[9px] font-semibold truncate max-w-[64px]">{item.label}</span>
+              <span className="text-[10px] font-semibold truncate max-w-[72px]">{item.label}</span>
             </button>
           );
         })}
         {navItems.length > MOBILE_TAB_COUNT && (
           <button
             onClick={() => setMobileOpen(true)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 cursor-pointer text-slate-400 light:text-slate-500"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 cursor-pointer text-slate-400 light:text-slate-500"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-            <span className="text-[9px] font-semibold">Altro</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </span>
+            <span className="text-[10px] font-semibold">Altro</span>
           </button>
         )}
       </nav>
@@ -473,6 +478,34 @@ export function AppShell({
           <UserMenu email={email} roleLabel={roleLabel} />
         </div>
       </header>
+
+      {/* Desktop quick-nav bar -- the same "big app-style buttons" idea as the
+          mobile bottom bar, but as a fixed guide pinned under the header on
+          every page in desktop mode, so the primary sections are always one
+          big click away without depending on the (smaller-text) sidebar. */}
+      <nav className="hidden lg:flex sticky top-16 z-30 items-stretch gap-2 overflow-x-auto border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-6 py-3 lg:ml-64 [scrollbar-width:thin]">
+        {navItems.map((item) => {
+          const active = item.key === activeKey;
+          const hasUnread = item.notificationTypes?.some((t) => unreadTypes.has(t)) ?? false;
+          return (
+            <button
+              key={item.key}
+              onClick={() => onNavigate(item.key)}
+              className={`relative flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer [&_svg]:h-5 [&_svg]:w-5 ${
+                active
+                  ? "bg-gradient-to-r from-orange-600 to-amber-500 text-white shadow-lg shadow-orange-500/20"
+                  : "bg-white/5 light:bg-slate-900/5 text-slate-300 light:text-slate-600 hover:bg-white/10 light:hover:bg-slate-900/10 hover:text-white light:hover:text-slate-900"
+              }`}
+            >
+              {item.icon}
+              <span className="whitespace-nowrap">{item.label}</span>
+              {hasUnread && (
+                <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-rose-500 border-2 border-slate-950 light:border-white" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
       {/* Main content */}
       <div className="lg:pl-64">

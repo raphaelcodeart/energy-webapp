@@ -132,62 +132,89 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
             : "Nessun prodotto in questa categoria al momento."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {catalog.map((p) => {
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {catalog.map((p, i) => {
             const v = p.current_version!;
             const typeLabel = p.product_type === "ENERGY_CONTRACT"
               ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
               : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type;
             const purchasable = !referralCode && p.category !== "INTERNAL";
+            const maxCreditCents = Math.round((v.base_price_cents * v.credit_discount_percentage) / 100);
             return (
               <div
                 key={p.id}
-                className="glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/30 transition-all duration-200"
+                style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
+                className="group animate-slide-up glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/40 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-orange-500/10 transition-all duration-300"
               >
                 <button
                   type="button"
                   onClick={() => purchasable && setDetailTarget(p)}
                   disabled={!purchasable}
-                  className={`block w-full h-40 overflow-hidden ${purchasable ? "cursor-pointer" : "cursor-default"}`}
+                  className={`relative block w-full h-48 overflow-hidden ${purchasable ? "cursor-pointer" : "cursor-default"}`}
                 >
-                  <ProductThumbnail imageUrl={v.image_url} alt={v.name} iconClassName="w-12 h-12 text-orange-400/40" />
-                </button>
-                <div className="p-5">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                  <ProductThumbnail
+                    imageUrl={v.image_url}
+                    alt={v.name}
+                    className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+                    iconClassName="w-12 h-12 text-orange-400/40"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                  <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-950/70 backdrop-blur-sm text-white border border-white/10 shadow-lg">
                       {typeLabel}
                     </span>
-                    {p.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                        Fino al {v.credit_discount_percentage}% in crediti
-                      </span>
-                    )}
                   </div>
+                  {p.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
+                    <div className="absolute top-3 right-3">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-emerald-500 to-emerald-400 text-white shadow-lg shadow-emerald-500/30">
+                        -{v.credit_discount_percentage}% in crediti
+                      </span>
+                    </div>
+                  )}
+                  {purchasable && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/0 group-hover:bg-slate-950/30 transition-colors duration-300">
+                      <span className="opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-300 px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-[11px] font-bold shadow-lg">
+                        Vedi dettagli
+                      </span>
+                    </div>
+                  )}
+                </button>
+                <div className="p-5">
                   <h4
                     onClick={() => purchasable && setDetailTarget(p)}
-                    className={`text-base font-semibold text-white light:text-slate-900 mt-3 mb-1 ${purchasable ? "cursor-pointer hover:text-orange-400 transition" : ""}`}
+                    className={`text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug ${purchasable ? "cursor-pointer hover:text-orange-400 transition" : ""}`}
                   >
                     {v.name}
                   </h4>
                   {v.description && (
-                    <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-3">{v.description}</p>
+                    <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-2">{v.description}</p>
                   )}
-                  <div className="flex items-baseline gap-1 pt-3 border-t border-white/5 light:border-slate-200">
-                    <span className="text-xl font-bold text-orange-400">{euro(v.base_price_cents)}</span>
-                    <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
-                    {v.vat_percentage != null && (
-                      <span className="text-[10px] text-slate-500">(IVA {v.vat_percentage}% escl.)</span>
+
+                  <div className="flex items-end justify-between gap-3 pt-4 border-t border-white/5 light:border-slate-200">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
+                        <span className="text-[11px] text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
+                      </div>
+                      {v.initial_fee_cents > 0 && (
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          + {euro(v.initial_fee_cents)} attivazione
+                        </p>
+                      )}
+                    </div>
+                    {p.category !== "INTERNAL" && maxCreditCents > 0 && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Crediti usabili</p>
+                        <p className="text-lg font-extrabold text-emerald-400 tabular-nums">{euro(maxCreditCents)}</p>
+                      </div>
                     )}
                   </div>
-                  {v.initial_fee_cents > 0 && (
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      + {euro(v.initial_fee_cents)} contributo di attivazione
-                    </p>
-                  )}
+
                   {referralCode && (
                     <button
                       onClick={() => shareProduct(p.id, v.name)}
-                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
                     >
                       {copiedId === p.id ? (
                         <>
@@ -209,8 +236,11 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                   {purchasable && (
                     <button
                       onClick={() => setDetailTarget(p)}
-                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition cursor-pointer"
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
                     >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z" />
+                      </svg>
                       Vedi dettagli e acquista
                     </button>
                   )}

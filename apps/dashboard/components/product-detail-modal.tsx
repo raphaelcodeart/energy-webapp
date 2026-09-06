@@ -58,11 +58,11 @@ export function ProductDetailModal({
             )}
           </div>
 
-          <div className="flex flex-wrap items-end justify-between gap-4 p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
+          <div className="flex flex-wrap items-end gap-6 p-5 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
             <div>
-              <p className="text-[10px] text-slate-500 uppercase">Prezzo</p>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-orange-400">{euro(v.base_price_cents)}</span>
+                <span className="text-3xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
                 <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
               </div>
               {v.vat_percentage != null && (
@@ -74,13 +74,26 @@ export function ProductDetailModal({
                 </p>
               )}
             </div>
-            <button
-              onClick={() => onBuy(v.id, v.name)}
-              className="px-6 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 transition cursor-pointer"
-            >
-              Acquista ora
-            </button>
+            {product.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
+              <div className="pl-6 border-l border-white/10 light:border-slate-300">
+                <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Crediti usabili</p>
+                <p className="text-3xl font-extrabold text-emerald-400 tabular-nums">
+                  {euro(Math.round((v.base_price_cents * v.credit_discount_percentage) / 100))}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5">dal tuo wallet Lial Energy</p>
+              </div>
+            )}
           </div>
+
+          <button
+            onClick={() => onBuy(v.id, v.name)}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+          >
+            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z" />
+            </svg>
+            Acquista ora
+          </button>
         </div>
       </div>
     </div>

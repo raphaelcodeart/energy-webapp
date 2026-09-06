@@ -139,6 +139,25 @@ retroactively recomputed if the product version's duration later changes, matchi
 "frozen at the moment it happens" pattern used for network snapshots and commission
 calculations elsewhere in this document.
 
+**Who can move a contract through this pipeline (confirmed Session 29,
+since the user asked)**: every single transition above is staff-only --
+`PATCH /contracts/{id}/status` requires `contracts.review`, held by
+ADMIN/BACK_OFFICE_OPERATOR/SUPER_ADMIN/ORGANIZATION_ADMIN, **never** by
+CUSTOMER or PROMOTER (see `rbac/models.py`'s `DEFAULT_ROLE_PERMISSIONS`). A
+customer cannot submit, approve, or activate their own contract by taking
+any action in the dashboard. The customer's own self-service surface on a
+contract is narrower and explicit: uploading the documents required for
+their customer type (`documents.upload`, `ContractDocumentsPanel`) and
+setting/updating the direct-debit IBAN (`PATCH /contracts/{id}/iban`,
+owner-or-staff only). Everything else -- reviewing uploaded documents,
+moving DRAFT→SUBMITTED→...→ACTIVE, rejecting -- is a manual staff action
+in the admin contracts panel. This is a deliberate design (a human
+verifies eligibility/documents for a real utility-switching contract
+before it goes live), not a gap -- if self-service progression is ever
+wanted (e.g. an explicit "invia per la revisione" customer button once all
+required documents are uploaded), that would be new scope, not a fix to
+existing behavior.
+
 ## Commercial network rules
 
 - No cycles, no self-parenting, no duplicate active edges, no cross-organization
@@ -692,6 +711,55 @@ standard, per explicit request ("rendilo un ecommerce professionale"):
   replaced with brighter, distinct, locally-bundled photos per section
   (`apps/dashboard/public/images/header-*.jpg`) -- same "bundle it locally,
   don't hotlink" convention `documentation-header.jpg` already established.
+
+### Session 29 follow-up: verified, then polished further
+
+The user asked to re-verify two things before continuing -- both checked
+against the live database, not just the code:
+
+- **Per-product credit-discount percentage**: confirmed correct end-to-end,
+  no bug found. `ProductVersion.credit_discount_percentage` is clamped to 0
+  for `INTERNAL` products and 0-100 for DROPSHIPPING/PARTNER
+  (`catalog/service.py::_clamp_credit_discount`); `orders/service.py::
+  get_quote()`/`max_creditable_cents()` read that product's own value, never
+  a global constant. Live-verified: a 69,00€ PARTNER product with a
+  30%-in-credits version correctly quoted `max_creditable_cents: 2070`
+  (exactly 30% of 6900) via `GET /orders/quote/mine`.
+- **Contract flow authority**: see "Who can move a contract through this
+  pipeline" above -- confirmed staff-only, not a customer self-service
+  flow; documented since the user asked to double check their own mental
+  model of it.
+
+Then, cosmetic/UX polish on top of the already-correct backend:
+
+- **Product showcase redesign** (`customer-products-panel.tsx`): bigger,
+  bolder price and "crediti usabili" (computed from that product's own
+  price × discount %, shown in euro, not just a percentage badge) side by
+  side at the bottom of each card; a discount ribbon and category chip
+  overlaid on the photo; hover zoom on the image, card lift + glow, and a
+  staggered fade-in on the grid; the whole photo stays clickable through to
+  `product-detail-modal.tsx`, which got the same bigger price/credits
+  treatment plus a full-width gradient "Acquista ora" button.
+- **Energy header photo swapped again**: from a ground-level solar-panel
+  row to a bright aerial shot of a full solar farm (blue sky, vivid green)
+  -- more strikingly "energia" and more luminous than the previous pick,
+  per explicit feedback that the header art should lean into energy/light
+  themes and brightness specifically.
+- **Cashback-redemption camera capture upgraded to a real live viewfinder**
+  (`camera-capture-modal.tsx`, `getUserMedia` + a `<video>` preview +
+  canvas-frame capture) -- the previous "Scatta foto" button (Session 27)
+  used a plain `<input capture="environment">`, which only opens a camera
+  on some mobile browsers and does nothing at all on desktop (no webcam
+  access). The new modal opens an actual live camera preview everywhere a
+  camera exists, with a clear error+fallback state (close and use "Carica
+  file") when it can't get camera access at all.
+- **Desktop top nav bar added** alongside the existing sidebar
+  (`app-shell.tsx`) -- big pill buttons for every nav item, pinned under
+  the header on every page, mirroring the mobile bottom bar's "always one
+  tap away" idea; the mobile bottom bar's own touch targets were also
+  enlarged. This closes the gap left after Session 27 only shipped the
+  mobile half of "primary tools as big buttons, bottom on mobile / top on
+  desktop."
 
 ## Account freeze (Session 28)
 
