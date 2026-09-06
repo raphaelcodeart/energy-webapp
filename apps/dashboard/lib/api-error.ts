@@ -13,6 +13,7 @@
 const KNOWN_MESSAGES: Record<string, string> = {
   "Invalid email or password": "Email o password non corretti.",
   "Account temporarily locked, try again later": "Troppi tentativi: account bloccato temporaneamente. Riprova tra qualche minuto.",
+  "This account has been disabled. Contact the administrator.": "Questo account è stato disabilitato. Contatta l'amministratore.",
   "Invalid refresh token": "Sessione scaduta. Effettua di nuovo l'accesso.",
   "Refresh token expired": "Sessione scaduta. Effettua di nuovo l'accesso.",
   "Missing refresh token": "Sessione scaduta. Effettua di nuovo l'accesso.",

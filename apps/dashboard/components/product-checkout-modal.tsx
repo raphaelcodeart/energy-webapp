@@ -46,7 +46,7 @@ export function ProductCheckoutModal({
 
   const [creditAmount, setCreditAmount] = useState("0.00");
   const [paymentMethod, setPaymentMethod] = useState<"BANK_TRANSFER" | "CARD" | null>(null);
-  const [step, setStep] = useState<"choose" | "bank_instructions" | "success">("choose");
+  const [step, setStep] = useState<"choose" | "bank_instructions" | "card_redirect" | "success">("choose");
   const [placedOrder, setPlacedOrder] = useState<OrderRead | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -114,7 +114,11 @@ export function ProductCheckoutModal({
         );
         if (!sessionRes.ok) throw new Error(await friendlyApiError(sessionRes));
         const { checkout_url } = await sessionRes.json();
-        window.location.href = checkout_url;
+        // Opens in a NEW TAB rather than navigating away -- if the payment
+        // fails or Stripe hiccups, the customer never loses this page (and
+        // whatever else they had open in the dashboard).
+        window.open(checkout_url, "_blank", "noopener,noreferrer");
+        setStep("card_redirect");
         return;
       }
       setStep("bank_instructions");
@@ -149,6 +153,27 @@ export function ProductCheckoutModal({
             </svg>
             <p className="text-sm text-slate-300 light:text-slate-600">
               Ordine confermato -- pagato interamente con i tuoi crediti wallet.
+            </p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer"
+            >
+              Chiudi
+            </button>
+          </div>
+        )}
+
+        {step === "card_redirect" && placedOrder && (
+          <div className="text-center py-6 space-y-3">
+            <svg className="w-14 h-14 text-orange-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            <p className="text-sm text-slate-300 light:text-slate-600">
+              Abbiamo aperto Stripe in una nuova scheda per completare il pagamento di{" "}
+              <strong className="text-orange-400">{euro(placedOrder.residual_amount_cents)}</strong>.
+            </p>
+            <p className="text-xs text-slate-500">
+              Puoi tornare qui in qualsiasi momento: trovi l&apos;ordine anche in &ldquo;I miei Ordini&rdquo;.
             </p>
             <button
               onClick={onClose}

@@ -72,6 +72,7 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
             "privacy_accepted": (
                 users_by_id[c.user_id].privacy_accepted_at is not None if c.user_id in users_by_id else None
             ),
+            "user_status": users_by_id[c.user_id].status if c.user_id in users_by_id else None,
         }
         for c in customers
     ]

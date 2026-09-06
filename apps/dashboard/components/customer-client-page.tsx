@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
+import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
 import { DocumentationFeed } from "@/components/documentation-feed";
@@ -121,6 +122,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "orders",
+    label: "I miei Ordini",
+    notificationTypes: ["ORDER_PAID"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 2l1 4H4a1 1 0 00-1 1v1a1 1 0 001 1h16a1 1 0 001-1V7a1 1 0 00-1-1h-6l1-4M5 9v9a2 2 0 002 2h10a2 2 0 002-2V9M10 13h4" />
+      </svg>
+    ),
+  },
+  {
     key: "contracts",
     label: "I miei Contratti",
     icon: (
@@ -180,7 +191,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("products");
+  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -403,6 +414,13 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
           <SectionBanner image="products" alt="Shop" />
           <CustomerPromoterApplicationCard hideWhenActive />
           <CustomerProductsPanel />
+        </div>
+      )}
+
+      {activeTab === "orders" && (
+        <div className="space-y-6">
+          <SectionBanner image="products" alt="I miei Ordini" />
+          <CustomerOrdersPanel />
         </div>
       )}
 

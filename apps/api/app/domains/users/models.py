@@ -17,6 +17,11 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     )
     email: Mapped[str] = mapped_column(String(255), index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # ACTIVE / FROZEN (added Session 28 -- an admin-frozen account: login is
+    # refused and every existing session revoked immediately, but the row and
+    # all its data/history stay exactly as they were, see
+    # users/service.py::freeze_user/unfreeze_user and auth/service.py's
+    # authenticate() status check).
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
     email_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(default=0)

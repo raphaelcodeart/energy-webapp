@@ -95,7 +95,10 @@ const KIND_LABELS: Record<string, string> = {
 
 const PRIVATE_LIKE = new Set(["PRIVATE", "SOLE_PROPRIETOR"]);
 
-export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActiveOnly?: boolean } = {}) {
+export function AdminCustomersPanel({
+  initialActiveOnly = false,
+  isSuperAdmin = false,
+}: { initialActiveOnly?: boolean; isSuperAdmin?: boolean } = {}) {
   const queryClient = useQueryClient();
   const { data: customers, error: loadError } = useQuery({
     queryKey: ["admin", "customers"],
@@ -166,6 +169,24 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
       setTopUpError(err.message || "Impossibile ricaricare il wallet.");
     } finally {
       setTopUpLoading(false);
+    }
+  }
+
+  // Freeze/unfreeze login (SUPER_ADMIN only, see users/router.py)
+  const [freezeLoadingId, setFreezeLoadingId] = useState<string | null>(null);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
+
+  async function handleToggleFreeze(userId: string, currentlyFrozen: boolean) {
+    setFreezeLoadingId(userId);
+    setFreezeError(null);
+    try {
+      const res = await fetch(`/api/proxy/users/${userId}/${currentlyFrozen ? "unfreeze" : "freeze"}`, { method: "PATCH" });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      await queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+    } catch (err: any) {
+      setFreezeError(err.message || "Impossibile aggiornare lo stato dell'account.");
+    } finally {
+      setFreezeLoadingId(null);
     }
   }
 
@@ -394,6 +415,7 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
       </div>
 
       {loadError && <p className="text-sm text-rose-400">Impossibile caricare i clienti.</p>}
+      {freezeError && <p className="text-sm text-rose-400">{freezeError}</p>}
 
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
         <div className="overflow-x-auto">
@@ -447,6 +469,11 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                           >
                             Privacy {c.privacy_accepted ? "✓" : "✗"}
                           </span>
+                          {c.user_status === "FROZEN" && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold border bg-sky-500/10 text-sky-400 border-sky-500/20">
+                              Congelato
+                            </span>
+                          )}
                         </div>
                       )}
                     </td>
@@ -478,6 +505,28 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
+                        {isSuperAdmin && c.user_id && (
+                          <button
+                            onClick={() => handleToggleFreeze(c.user_id!, c.user_status === "FROZEN")}
+                            disabled={freezeLoadingId === c.user_id}
+                            title={c.user_status === "FROZEN" ? "Riattiva account" : "Congela account (blocca l'accesso)"}
+                            className={`p-1.5 rounded-lg border transition cursor-pointer disabled:opacity-50 ${
+                              c.user_status === "FROZEN"
+                                ? "bg-emerald-600/10 hover:bg-emerald-600/20 border-emerald-500/20 text-emerald-400"
+                                : "bg-sky-600/10 hover:bg-sky-600/20 border-sky-500/20 text-sky-400"
+                            }`}
+                          >
+                            {c.user_status === "FROZEN" ? (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 2h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

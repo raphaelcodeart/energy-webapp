@@ -570,13 +570,13 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
         {activeTab === "customers" && (
           <div className="space-y-6">
             <SectionBanner image="customers" alt="Clienti" />
-            <AdminCustomersPanel initialActiveOnly={pendingCustomerActiveOnly} />
+            <AdminCustomersPanel initialActiveOnly={pendingCustomerActiveOnly} isSuperAdmin={isSuperAdmin} />
           </div>
         )}
         {activeTab === "promoters" && (
           <div className="space-y-6">
             <SectionBanner image="network" alt="Promoter" />
-            <AdminPromotersPanel initialStatusFilter={pendingPromoterStatusFilter ?? undefined} />
+            <AdminPromotersPanel initialStatusFilter={pendingPromoterStatusFilter ?? undefined} isSuperAdmin={isSuperAdmin} />
           </div>
         )}
         {activeTab === "products" && (

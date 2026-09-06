@@ -1,9 +1,14 @@
+import logging
 import uuid
 
+import stripe
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import utcnow
+from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email_templates import render_email
 from app.domains.catalog.models import Product, ProductVersion
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
@@ -13,6 +18,8 @@ from app.domains.orders.models import ORDER_PAYMENT_METHODS, Order
 from app.domains.organizations import service as organizations_service
 from app.domains.users.models import User
 from app.domains.wallets import service as wallets_service
+
+logger = logging.getLogger(__name__)
 
 
 class OrderError(Exception):
@@ -134,6 +141,7 @@ async def to_read_dict(db: AsyncSession, order: Order) -> dict:
         "customer_display_name": customer_name,
         "product_version_id": order.product_version_id,
         "product_name": version.name if version else "—",
+        "product_image_url": version.image_url if version else None,
         "created_by_user_id": order.created_by_user_id,
         "amount_cents": order.amount_cents,
         "credit_applied_cents": order.credit_applied_cents,
@@ -240,7 +248,102 @@ async def create_order(
     else:
         await db.commit()
         await db.refresh(order)
+
+    await _send_order_confirmation_email(db, organization_id=organization_id, order=order, version=version)
     return order
+
+
+async def _send_order_confirmation_email(
+    db: AsyncSession, *, organization_id: uuid.UUID, order: Order, version: ProductVersion
+) -> None:
+    """Best-effort, fires after the order is already committed -- an SMTP
+    hiccup or (for a CARD order) a Stripe hiccup here must never undo an
+    order that has already been created. Explains exactly how to pay: the
+    IBAN for bank transfer, or a real Stripe payment link for card -- a
+    fresh Checkout Session created here specifically for the email, since
+    the residual/attempt the customer sees in their dashboard may create a
+    separate one later (see attach_stripe_checkout_session's "only the
+    latest attempt is honored" rule -- harmless, either link still works
+    until the customer actually pays)."""
+    user = await db.get(User, order.customer_user_id)
+    if user is None:
+        return
+
+    settings = get_settings()
+    residual_cents = order.amount_cents - order.credit_applied_cents
+    cta_label: str | None = None
+    cta_url: str | None = None
+
+    if order.status == "PAID":
+        heading = "Ordine confermato"
+        body_html = (
+            f"<p>Il tuo ordine per <strong>{version.name}</strong> è confermato.</p>"
+            f"<p>Totale: {order.amount_cents / 100:.2f} &euro;"
+            + (f" (di cui {order.credit_applied_cents / 100:.2f} &euro; da crediti wallet)" if order.credit_applied_cents else "")
+            + "</p><p>Non è richiesto alcun pagamento aggiuntivo.</p>"
+        )
+    elif order.payment_method == "CARD":
+        from app.domains.payments import service as payments_service
+
+        heading = "Completa il pagamento del tuo ordine"
+        body_html = (
+            f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
+            f"<p>Da pagare: <strong>{residual_cents / 100:.2f} &euro;</strong>"
+            + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
+            + "</p><p>Completa il pagamento con carta cliccando il pulsante qui sotto.</p>"
+        )
+        try:
+            cta_url = await payments_service.create_checkout_session_for_order(
+                db, organization_id=organization_id, order=order,
+                success_url=f"{settings.public_app_base_url}/customer",
+                cancel_url=f"{settings.public_app_base_url}/customer",
+            )
+            cta_label = "Paga con carta"
+        except payments_service.StripeNotConfiguredError:
+            logger.warning("Order %s confirmation email sent without a Stripe link (Stripe not configured)", order.id)
+        except stripe.error.StripeError:
+            # A real Stripe API problem (bad/revoked key, Stripe outage, ...)
+            # must never take the already-committed order down with it --
+            # the customer can still pay later from "I miei Ordini", which
+            # requests its own fresh session on demand.
+            logger.exception("Order %s confirmation email sent without a Stripe link (Stripe API error)", order.id)
+    else:
+        bank_settings = await organizations_service.get_settings(db, organization_id=organization_id)
+        iban = bank_settings.get("bank_iban")
+        heading = "Completa il pagamento del tuo ordine"
+        body_html = (
+            f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
+            f"<p>Da pagare tramite bonifico: <strong>{residual_cents / 100:.2f} &euro;</strong>"
+            + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
+            + "</p>"
+        )
+        if iban:
+            body_html += (
+                f"<p><strong>IBAN:</strong> {iban}<br>"
+                f"<strong>Intestatario:</strong> {bank_settings.get('bank_account_holder') or 'Lial Energy'}<br>"
+                f"<strong>Causale:</strong> Ordine {str(order.id)[:8]}</p>"
+            )
+            if bank_settings.get("bank_transfer_instructions"):
+                body_html += f"<p>{bank_settings['bank_transfer_instructions']}</p>"
+        else:
+            body_html += "<p>Contatta l'amministrazione per le coordinate bancarie.</p>"
+
+    html = render_email(
+        preheader=f"Riepilogo del tuo ordine -- {version.name}",
+        heading=heading,
+        body_html=body_html,
+        cta_label=cta_label,
+        cta_url=cta_url,
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject=f"Conferma ordine - {version.name} - Lial Energy",
+            html_body=html,
+            text_body=f"{heading}: {version.name}, totale {order.amount_cents / 100:.2f} EUR.",
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Order confirmation email for %s not sent (SMTP not configured), order=%s", user.email, order.id)
 
 
 async def get_org_scoped(db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID) -> Order | None:

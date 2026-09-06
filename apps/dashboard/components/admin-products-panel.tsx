@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhotoUpload } from "@/components/photo-upload";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
 import type { ProductCatalogRead, RankRead } from "@/lib/types";
 
@@ -485,15 +486,12 @@ export function AdminProductsPanel() {
         ) : (
           products.map((p) => (
             <div key={p.id} className="glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-              <div className="h-32 bg-slate-900 light:bg-slate-100 flex items-center justify-center overflow-hidden relative">
-                {p.current_version?.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- external, admin-supplied URLs; not part of the Next asset pipeline
-                  <img src={p.current_version.image_url} alt={p.current_version.name} className="w-full h-full object-cover" />
-                ) : (
-                  <svg className="w-10 h-10 text-slate-700 light:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 8h16M4 4h16v16H4V4z" />
-                  </svg>
-                )}
+              <div className="h-32 overflow-hidden relative">
+                <ProductThumbnail
+                  imageUrl={p.current_version?.image_url}
+                  alt={p.current_version?.name ?? p.code}
+                  iconClassName="w-10 h-10 text-orange-400/40"
+                />
                 <div className="absolute top-2 right-2 flex items-center gap-1.5">
                   <button
                     onClick={() => openDuplicate(p)}

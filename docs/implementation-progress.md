@@ -4,6 +4,72 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 28 — 2026-09-06 (same day, continued) — E-commerce order flow, order-confirmation email, Stripe new-tab checkout, account freeze, brighter header photos
+
+Another multi-part request in one message, all detailed in
+`business-rules.md`'s "Store orders vs. Lial Energy contracts" and "Account
+freeze" sections (kept current there, not duplicated here) -- summary:
+
+- **E-commerce polish for the DROPSHIPPING/PARTNER store** (explicitly NOT
+  Lial Energy contract products, which stay contract-only): a shared
+  `product-thumbnail.tsx` (photo or a standard placeholder icon) now
+  appears everywhere a product/order shows a picture, including a new
+  `OrderRead.product_image_url` field; a new `product-detail-modal.tsx`
+  shows the full product page before checkout instead of jumping straight
+  from the grid card to payment; a brand-new customer-facing "I miei
+  Ordini" tab (`customer-orders-panel.tsx`) lists every order with its
+  status and a "Paga ora" action, mirroring the existing admin gestionale
+  (`admin-orders-panel.tsx`, which also gained the same thumbnails).
+- **Order-confirmation email** (`orders/service.py::_send_order_confirmation_email`,
+  fires after `create_order()` already committed): explains exactly how to
+  pay -- IBAN+causale for bank transfer, a real freshly-minted Stripe link
+  for card, or "nothing to pay" when credit covered it all. Real bug caught
+  and fixed by the test suite before this shipped: the first version only
+  caught `payments_service.StripeNotConfiguredError` around the Stripe-link
+  creation, so a genuine Stripe API error (bad key, outage) propagated
+  uncaught and took the whole (already-committed) order creation down with
+  it -- broadened to also catch `stripe.error.StripeError`.
+- **Stripe checkout now opens in a new tab** (`window.open(...,"_blank")`)
+  instead of a full-page redirect, in both the checkout modal and the new
+  order list's "Paga ora" -- per explicit request, so a Stripe failure or a
+  change of mind never loses the dashboard tab underneath it.
+- **Account freeze**: `PATCH /users/{id}/freeze`/`/unfreeze`, a new
+  `users.manage_lifecycle` permission (SUPER_ADMIN only, migration 0027,
+  same seeding pattern as `organization.manage_payments`).
+  `auth/service.py::authenticate()` now checks `users.status` before the
+  password and revokes every existing session on freeze -- an
+  already-logged-in frozen account is kicked out immediately, not just
+  blocked on its next login. Buttons added to both
+  `admin-customers-panel.tsx` and `admin-promoters-panel.tsx`, gated on the
+  `isSuperAdmin` prop already computed server-side in `app/admin/page.tsx`.
+  **"Elimina utente" (hard delete) was explicitly deferred by the user**
+  after a clarifying question about the tradeoff (breaking other
+  promoters' commission history vs. Italian fiscal retention requirements
+  for contracts) -- freeze-only ships this session; delete/anonymize is
+  future work.
+- **Dashboard header images**: all `SectionBanner` images (previously
+  hotlinked from Wikimedia, several dim/dark, "commissions" and "wallets"
+  sharing one photo) replaced with brighter, distinct, locally-bundled
+  photos (`apps/dashboard/public/images/header-*.jpg`, sourced from
+  Unsplash, each one visually inspected before picking it) -- same
+  bundle-locally convention `documentation-header.jpg` already used.
+  `SectionBanner` itself switched from a raw `<img>` to `next/image` now
+  that every source is local.
+- **Not done this session**: the cashback-credited email was requested
+  again but was already shipped in Session 27 (`invoice_redemptions/
+  service.py::confirm_payment`) -- verified still correct, no changes
+  needed; product-photo *upload* (as opposed to display) already existed
+  from an earlier session (`POST /products/versions/{id}/photo`, wired to
+  `PhotoUpload` in the admin product edit form) and needed no changes
+  either.
+- Verified: full backend suite 154/154 passing (149 + 5 new for freeze/
+  unfreeze/self-freeze-guard/cross-org-guard/session-revocation), ruff
+  clean; `docker compose build` succeeded for both api and dashboard
+  (TypeScript compiled clean); live-verified freeze/unfreeze end-to-end
+  against a disposable test user on the real database (login correctly
+  423s while frozen, session revoked, unfreeze restores it, test user then
+  removed) rather than only against the automated test suite.
+
 ## Session 27 — 2026-09-06 — Real Stripe test keys, account gates (email verification/profile completion/promoter OTP), branded emails, nav redesign
 
 A large, multi-part request in one message. Summary by area:

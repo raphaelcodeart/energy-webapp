@@ -78,6 +78,13 @@ async def authenticate(
             await db.commit()
         raise AuthenticationError(GENERIC_AUTH_ERROR)
 
+    if user.status != "ACTIVE":
+        # An admin-frozen account (users/service.py::freeze_user) -- reuses
+        # AccountLockedError/423 rather than a new exception type, since the
+        # router-level handling ("locked out, contact support") is identical;
+        # the message is what actually tells the two cases apart.
+        raise AccountLockedError("This account has been disabled. Contact the administrator.")
+
     if user.locked_until and user.locked_until > datetime.now(UTC):
         raise AccountLockedError("Account temporarily locked, try again later")
 

@@ -685,6 +685,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             AgentProfile.collaboration_accepted_at,
             User.email_verified_at,
             User.privacy_accepted_at,
+            User.status,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -719,6 +720,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "collaboration_accepted_at": r[15],
             "email_verified": r[16] is not None,
             "privacy_accepted": r[17] is not None,
+            "user_status": r[18],
         }
         for r in rows
     ]

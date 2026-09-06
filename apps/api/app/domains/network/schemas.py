@@ -136,6 +136,7 @@ class AgentListItemRead(BaseModel):
     collaboration_accepted_at: datetime | None = None
     email_verified: bool = False
     privacy_accepted: bool = False
+    user_status: str | None = None
 
 
 class AgentCreateRequest(BaseModel):

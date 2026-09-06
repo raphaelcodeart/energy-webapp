@@ -13,6 +13,7 @@ class OrderRead(BaseModel):
     customer_display_name: str
     product_version_id: uuid.UUID
     product_name: str
+    product_image_url: str | None = None
     created_by_user_id: uuid.UUID
     amount_cents: int
     credit_applied_cents: int

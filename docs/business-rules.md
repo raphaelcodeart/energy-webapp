@@ -628,6 +628,98 @@ an SMTP hiccup is logged, never blocks the underlying action (ticket
 creation, cashback crediting, registration all already committed by the
 time the email send is attempted).
 
+## Store orders vs. Lial Energy contracts -- and the Session 28 e-commerce pass
+
+Two structurally different things both live under "products", and this
+distinction is load-bearing, not cosmetic:
+
+- **Lial Energy (`category=INTERNAL`) products** are the matrix a real
+  energy-supply **Contract** is created from (`POST /contracts`) -- these
+  are what a promoter earns commissions on, and what shows up in the
+  network/commission engine. They never go through the `orders` domain at
+  all (`orders/service.py::_get_sellable_product_version` explicitly
+  rejects INTERNAL products with a "si acquistano come contratto" error).
+- **DROPSHIPPING/PARTNER products** are a separate, purely additional perk:
+  a customer's cashback wallet balance can be spent on them via the `orders`
+  domain (self-checkout, `POST /orders/mine`) -- no commission, no network
+  effect, just an e-commerce-style purchase paid partly in wallet credit and
+  partly by bank transfer or card.
+
+**Session 28** brought the store/order side of this up to a real e-commerce
+standard, per explicit request ("rendilo un ecommerce professionale"):
+
+- **Product photo everywhere a product/order shows one**: `ProductVersion.
+  image_url` (already existed, admin-uploadable since an earlier session)
+  now also flows through to `OrderRead.product_image_url`
+  (`orders/service.py::to_read_dict` joins it in) -- the same photo appears
+  as a thumbnail on every order row, admin or customer side, not just the
+  shop grid. A shared `product-thumbnail.tsx` component renders it (or a
+  neutral package-icon placeholder when there is none) everywhere, so the
+  "no photo yet" look is consistent instead of each screen inventing its
+  own fallback.
+- **Product detail page before checkout**: clicking a purchasable
+  (DROPSHIPPING/PARTNER) product card opens `product-detail-modal.tsx`
+  first -- full description, price breakdown, photo -- rather than jumping
+  straight from the grid card into the checkout flow, matching how a real
+  storefront works. INTERNAL (Lial Energy) products never get this
+  treatment; those stay contract-only.
+- **"I miei Ordini"** (`customer-orders-panel.tsx`, new customer-dashboard
+  tab): every order the customer has placed, with its status (in attesa di
+  pagamento / pagato / annullato) and a "Paga ora" action on an unpaid one
+  -- exactly the "reservation list" the request asked for, so a customer
+  never has to remember what they bought or track down how to finish
+  paying for it. The existing `admin-orders-panel.tsx` (already a full
+  gestionale -- create, confirm bank transfer, cancel, filter by status)
+  gained the same photo thumbnails for consistency.
+- **Order-confirmation email** (`orders/service.py::_send_order_confirmation_email`,
+  fires at the end of `create_order()`, after the order is already
+  committed): summarizes what was bought and explains exactly how to pay --
+  the IBAN + causale for a bank-transfer residual, or a real, freshly-minted
+  Stripe payment link for a card residual, or a simple "no payment needed"
+  confirmation when credit covered everything. Best-effort like every other
+  email in this project: both `EmailNotConfiguredError` (SMTP off) and any
+  `stripe.error.StripeError` (bad/revoked key, Stripe outage) are caught so
+  a payment-provider hiccup can never take an already-created order down
+  with it -- the customer can still get a fresh Stripe link later from "I
+  miei Ordini".
+- **Stripe checkout opens in a new tab, never a full-page redirect**
+  (`window.open(checkout_url, "_blank", "noopener,noreferrer")` in both
+  `product-checkout-modal.tsx` and `customer-orders-panel.tsx`) -- per
+  explicit request: if Stripe fails or the customer changes their mind
+  mid-payment, the dashboard tab they were already on is never lost.
+- **Dashboard header images**: the Wikimedia-hotlinked `SectionBanner`
+  images (dim/dark, and "commissions"/"wallets" sharing one photo) were
+  replaced with brighter, distinct, locally-bundled photos per section
+  (`apps/dashboard/public/images/header-*.jpg`) -- same "bundle it locally,
+  don't hotlink" convention `documentation-header.jpg` already established.
+
+## Account freeze (Session 28)
+
+`PATCH /users/{id}/freeze` / `/unfreeze`, gated by a new, deliberately
+narrow `users.manage_lifecycle` permission (**SUPER_ADMIN only** -- the
+user's own explicit request, since this is more sensitive than the
+ADMIN/ORGANIZATION_ADMIN tier that already manages day-to-day
+customer/promoter records). Freezing sets `users.status = "FROZEN"`,
+which `auth/service.py::authenticate()` now checks before even looking at
+the password (reuses `AccountLockedError`/423, same as the existing
+too-many-failed-attempts lock, just with a different message) -- AND
+revokes every one of that user's existing sessions immediately
+(`revoke_all_sessions`), so an already-logged-in frozen account is kicked
+out right away, not just blocked on its next fresh login. Deliberately
+does **not** touch any other data -- contracts, orders, wallet history,
+network position all stay exactly as they were; unfreezing is a full,
+lossless undo. An admin cannot freeze their own account.
+
+**"Elimina utente" (hard delete/anonymize) was explicitly deferred by the
+user** after being shown the tradeoff: a true cascading delete of
+contracts/orders/wallet transactions risks breaking other promoters'
+commission history (their network position and commission chain reference
+this user) and conflicts with Italian fiscal record-retention requirements
+for contracts/invoices. Freeze-only ships for now; a real delete/anonymize
+flow is future work, to be designed once the user decides how to reconcile
+those two constraints (most likely: anonymize personal data while
+preserving the underlying ledger rows, not a literal `DELETE`).
+
 ## GDPR notes
 
 Consent versions, retention periods, and the legal basis for each processing purpose

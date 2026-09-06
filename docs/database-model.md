@@ -23,7 +23,9 @@ organizations
   id, name, legal_name, vat_number, status, settings jsonb, created_at
 
 users
-  id, organization_id, email (unique per org), password_hash, status,
+  id, organization_id, email (unique per org), password_hash,
+  status (ACTIVE/FROZEN -- FROZEN added Session 28, an admin-frozen account
+    that can never log in until unfrozen, see business-rules.md#account-freeze),
   email_verified_at, created_at,
   -- account gates, added Session 27 (see business-rules.md#account-gates):
   privacy_accepted_at nullable (set once at self-registration, NULL for

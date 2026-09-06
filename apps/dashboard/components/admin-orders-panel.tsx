@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
 import type { CustomerRead, OrderQuoteRead, OrderRead, ProductCatalogRead } from "@/lib/types";
 
@@ -286,21 +287,26 @@ export function AdminOrdersPanel() {
           orders.map((o) => (
             <div key={o.id} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-white light:text-slate-900">{o.customer_display_name}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[o.status]}`}>
-                      {STATUS_LABELS[o.status]}
-                    </span>
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-white/10 light:border-slate-200">
+                    <ProductThumbnail imageUrl={o.product_image_url} alt={o.product_name} iconClassName="w-5 h-5 text-orange-400/40" />
                   </div>
-                  <p className="text-xs text-slate-500">
-                    {o.product_name} · Totale {euro(o.amount_cents)}
-                    {o.credit_applied_cents > 0 && <> · Crediti {euro(o.credit_applied_cents)}</>}
-                    {" "}· Residuo {euro(o.residual_amount_cents)}
-                  </p>
-                  {o.cancellation_reason && (
-                    <p className="text-[11px] text-rose-400 mt-1">Motivo annullamento: {o.cancellation_reason}</p>
-                  )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-medium text-white light:text-slate-900">{o.customer_display_name}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[o.status]}`}>
+                        {STATUS_LABELS[o.status]}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {o.product_name} · Totale {euro(o.amount_cents)}
+                      {o.credit_applied_cents > 0 && <> · Crediti {euro(o.credit_applied_cents)}</>}
+                      {" "}· Residuo {euro(o.residual_amount_cents)}
+                    </p>
+                    {o.cancellation_reason && (
+                      <p className="text-[11px] text-rose-400 mt-1">Motivo annullamento: {o.cancellation_reason}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   {o.status === "AWAITING_PAYMENT" && (

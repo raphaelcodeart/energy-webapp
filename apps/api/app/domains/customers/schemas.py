@@ -23,6 +23,9 @@ class CustomerRead(BaseModel):
     # -- None (not False) when the customer has no login of its own.
     email_verified: bool | None = None
     privacy_accepted: bool | None = None
+    # None when there's no login (user_id is None); "ACTIVE"/"FROZEN"
+    # otherwise -- see users/service.py::freeze_user (Session 28).
+    user_status: str | None = None
 
 
 class CustomerCreate(BaseModel):

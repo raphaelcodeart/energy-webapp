@@ -147,6 +147,7 @@ export type CustomerRead = {
   created_at: string;
   email_verified: boolean | null;
   privacy_accepted: boolean | null;
+  user_status: "ACTIVE" | "FROZEN" | null;
 };
 
 export type AddressRead = {
@@ -195,6 +196,7 @@ export type AgentListItemRead = {
   collaboration_accepted_at: string | null;
   email_verified: boolean;
   privacy_accepted: boolean;
+  user_status: "ACTIVE" | "FROZEN" | null;
 };
 
 export type RootPromoterCreateResponse = {
@@ -474,6 +476,7 @@ export type OrderRead = {
   customer_display_name: string;
   product_version_id: string;
   product_name: string;
+  product_image_url: string | null;
   created_by_user_id: string;
   amount_cents: number;
   credit_applied_cents: number;

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ProductCatalogRead } from "@/lib/types";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
+import { ProductDetailModal } from "@/components/product-detail-modal";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 
 const ENERGY_LABELS: Record<string, string> = {
   ELECTRICITY: "Luce",
@@ -54,6 +56,7 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<"INTERNAL" | "DROPSHIPPING" | "PARTNER">("INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
+  const [detailTarget, setDetailTarget] = useState<ProductCatalogRead | null>(null);
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -135,21 +138,20 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
             const typeLabel = p.product_type === "ENERGY_CONTRACT"
               ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
               : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type;
+            const purchasable = !referralCode && p.category !== "INTERNAL";
             return (
               <div
                 key={p.id}
                 className="glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/30 transition-all duration-200"
               >
-                <div className="h-40 bg-gradient-to-br from-orange-500/10 to-amber-500/10 flex items-center justify-center overflow-hidden">
-                  {v.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- external, admin-supplied URLs
-                    <img src={v.image_url} alt={v.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <svg className="w-12 h-12 text-orange-400/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => purchasable && setDetailTarget(p)}
+                  disabled={!purchasable}
+                  className={`block w-full h-40 overflow-hidden ${purchasable ? "cursor-pointer" : "cursor-default"}`}
+                >
+                  <ProductThumbnail imageUrl={v.image_url} alt={v.name} iconClassName="w-12 h-12 text-orange-400/40" />
+                </button>
                 <div className="p-5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
@@ -161,7 +163,12 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                       </span>
                     )}
                   </div>
-                  <h4 className="text-base font-semibold text-white light:text-slate-900 mt-3 mb-1">{v.name}</h4>
+                  <h4
+                    onClick={() => purchasable && setDetailTarget(p)}
+                    className={`text-base font-semibold text-white light:text-slate-900 mt-3 mb-1 ${purchasable ? "cursor-pointer hover:text-orange-400 transition" : ""}`}
+                  >
+                    {v.name}
+                  </h4>
                   {v.description && (
                     <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-3">{v.description}</p>
                   )}
@@ -199,12 +206,12 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                       )}
                     </button>
                   )}
-                  {!referralCode && p.category !== "INTERNAL" && (
+                  {purchasable && (
                     <button
-                      onClick={() => setCheckoutTarget({ versionId: v.id, name: v.name })}
+                      onClick={() => setDetailTarget(p)}
                       className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition cursor-pointer"
                     >
-                      Acquista
+                      Vedi dettagli e acquista
                     </button>
                   )}
                 </div>
@@ -212,6 +219,17 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
             );
           })}
         </div>
+      )}
+
+      {detailTarget && (
+        <ProductDetailModal
+          product={detailTarget}
+          onClose={() => setDetailTarget(null)}
+          onBuy={(versionId, name) => {
+            setDetailTarget(null);
+            setCheckoutTarget({ versionId, name });
+          }}
+        />
       )}
 
       {checkoutTarget && (
