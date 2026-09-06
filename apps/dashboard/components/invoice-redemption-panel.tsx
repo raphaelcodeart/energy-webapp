@@ -59,7 +59,8 @@ export function InvoiceRedemptionPanel() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: partners } = useQuery({ queryKey: ["invoice-redemptions", "partners"], queryFn: fetchPartners });
+  const { data: partners, isLoading: partnersLoading } = useQuery({ queryKey: ["invoice-redemptions", "partners"], queryFn: fetchPartners });
+  const noPartnersConfigured = !partnersLoading && (partners ?? []).length === 0;
   const { data: mine, error: loadError } = useQuery({ queryKey: ["invoice-redemptions", "mine"], queryFn: fetchMine });
   const { data: paymentInfo } = useQuery({ queryKey: ["invoice-redemptions", "payment-info"], queryFn: fetchPaymentInfo });
 
@@ -114,7 +115,9 @@ export function InvoiceRedemptionPanel() {
           <h3 className="text-sm font-semibold text-white light:text-slate-900">Riscatta Cashback</h3>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer"
+            disabled={noPartnersConfigured}
+            title={noPartnersConfigured ? "Nessun fornitore partner configurato" : undefined}
+            className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {showForm ? "Annulla" : "Nuova richiesta"}
           </button>
@@ -123,6 +126,15 @@ export function InvoiceRedemptionPanel() {
           Hai già pagato una bolletta a uno dei nostri fornitori partner? Carica la foto e riscatta il suo valore in
           crediti, pagando solo il 3% del totale — riceverai il 100% + un ulteriore 3% di bonus.
         </p>
+
+        {noPartnersConfigured && (
+          <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex gap-2">
+            <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Nessun fornitore partner è ancora configurato: contatta l&apos;amministrazione per attivare questa funzione.</span>
+          </div>
+        )}
 
         {showForm && (
           <form onSubmit={handleSubmit} className="mt-4 pt-4 border-t border-white/5 light:border-slate-200 space-y-3">

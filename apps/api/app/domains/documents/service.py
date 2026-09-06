@@ -70,7 +70,50 @@ async def upload_document(
     )
     await db.commit()
     await db.refresh(document)
+
+    await _maybe_advance_to_under_review(
+        db, organization_id=organization_id, contract_id=contract_id, actor_user_id=actor_user_id
+    )
     return document
+
+
+async def _maybe_advance_to_under_review(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, actor_user_id: uuid.UUID
+) -> None:
+    """Once every required document type has at least one uploaded document
+    (any status -- staff still reviews/approves/rejects each one, this just
+    signals "the customer is done, ready for a human to look"), the contract
+    advances itself from SUBMITTED/DOCUMENTS_PENDING to UNDER_REVIEW. Part of
+    the Session 29 self-service contract flow -- see
+    business-rules.md#contract-self-service. A staff-created contract that
+    happens to have its documents uploaded via this same endpoint gets the
+    exact same courtesy advance; there's nothing self-service-specific about
+    the check itself."""
+    from app.domains.contracts import service as contracts_service
+    from app.domains.customers.models import Customer
+
+    contract = await db.get(Contract, contract_id)
+    if contract is None or contract.status not in ("SUBMITTED", "DOCUMENTS_PENDING"):
+        return
+
+    customer = await db.get(Customer, contract.customer_id)
+    customer_kind = customer.kind if customer else "PRIVATE"
+    rows = await get_contract_documents_status(
+        db, organization_id=organization_id, contract=contract, customer_kind=customer_kind
+    )
+    if not all(row["document"] is not None for row in rows):
+        return
+
+    if contract.status == "SUBMITTED":
+        contract = await contracts_service.transition_contract(
+            db, organization_id=organization_id, contract=contract, to_status="DOCUMENTS_PENDING",
+            actor_user_id=actor_user_id, reason=None, notes=None, correlation_id=str(uuid.uuid4()),
+        )
+    await contracts_service.transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="UNDER_REVIEW",
+        actor_user_id=actor_user_id, reason="Tutti i documenti richiesti sono stati caricati", notes=None,
+        correlation_id=str(uuid.uuid4()),
+    )
 
 
 async def list_documents_for_contract(

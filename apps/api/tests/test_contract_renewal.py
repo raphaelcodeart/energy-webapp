@@ -62,7 +62,7 @@ async def _make_contract_to_active(db, organization_id, *, duration_months=12):
         product_version_id=product_version.id, producer_agent_id=agent.id,
         actor_user_id=actor_user_id, correlation_id=str(uuid.uuid4()),
     )
-    for to_status in ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING", "ACTIVE"]:
+    for to_status in ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PAID"]:  # APPROVED auto-cascades into PAYMENT_PENDING, PAID auto-cascades through ACTIVATION_PENDING into ACTIVE (see contracts/service.py::AUTO_CASCADE_AFTER)
         contract = await contract_service.transition_contract(
             db, organization_id=organization_id, contract=contract, to_status=to_status,
             actor_user_id=actor_user_id, reason=None, notes=None, correlation_id=str(uuid.uuid4()),

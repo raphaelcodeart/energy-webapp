@@ -86,7 +86,17 @@ async function fetchProductsForLookup(): Promise<ProductCatalogRead[]> {
   return res.json();
 }
 
+async function fetchMyContracts(): Promise<ContractRead[]> {
+  const res = await fetch("/api/proxy/contracts/mine");
+  if (!res.ok) throw new Error("Impossibile caricare i contratti.");
+  return res.json();
+}
+
 interface CustomerClientPageProps {
+  /** Server-fetched at page load, used only as useQuery's initialData below
+      for a fast first paint -- the live client-side query is what actually
+      keeps this current (e.g. right after activating a contract via
+      contract-activation-wizard.tsx, which invalidates the same query key). */
   contracts: ContractRead[];
   email?: string;
 }
@@ -189,12 +199,17 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function CustomerClientPage({ contracts, email }: CustomerClientPageProps) {
+export function CustomerClientPage({ contracts: initialContracts, email }: CustomerClientPageProps) {
   // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
   const [activeTab, setActiveTab] = useState<"contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("products");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
+  const { data: contracts = initialContracts } = useQuery({
+    queryKey: ["customer", "contracts", "mine"],
+    queryFn: fetchMyContracts,
+    initialData: initialContracts,
+  });
   const { data: productsForLookup } = useQuery({
     queryKey: ["customer", "products", "lookup"],
     queryFn: fetchProductsForLookup,
@@ -252,6 +267,12 @@ export function CustomerClientPage({ contracts, email }: CustomerClientPageProps
               <p className="text-sm text-slate-500 mt-2">
                 Non abbiamo trovato nessun contratto di fornitura associato a questa utenza.
               </p>
+              <button
+                onClick={() => setActiveTab("products")}
+                className="mt-5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer"
+              >
+                Vai allo Shop e attiva un contratto
+              </button>
             </div>
           ) : (
             <div className="space-y-6">

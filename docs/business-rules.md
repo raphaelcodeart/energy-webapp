@@ -139,24 +139,84 @@ retroactively recomputed if the product version's duration later changes, matchi
 "frozen at the moment it happens" pattern used for network snapshots and commission
 calculations elsewhere in this document.
 
-**Who can move a contract through this pipeline (confirmed Session 29,
-since the user asked)**: every single transition above is staff-only --
-`PATCH /contracts/{id}/status` requires `contracts.review`, held by
+**Who can move a contract through this pipeline (confirmed, then extended,
+Session 29)**: `PATCH /contracts/{id}/status` (manual, per-hop transitions)
+still requires `contracts.review`, held by
 ADMIN/BACK_OFFICE_OPERATOR/SUPER_ADMIN/ORGANIZATION_ADMIN, **never** by
-CUSTOMER or PROMOTER (see `rbac/models.py`'s `DEFAULT_ROLE_PERMISSIONS`). A
-customer cannot submit, approve, or activate their own contract by taking
-any action in the dashboard. The customer's own self-service surface on a
-contract is narrower and explicit: uploading the documents required for
-their customer type (`documents.upload`, `ContractDocumentsPanel`) and
-setting/updating the direct-debit IBAN (`PATCH /contracts/{id}/iban`,
-owner-or-staff only). Everything else -- reviewing uploaded documents,
-moving DRAFT→SUBMITTED→...→ACTIVE, rejecting -- is a manual staff action
-in the admin contracts panel. This is a deliberate design (a human
-verifies eligibility/documents for a real utility-switching contract
-before it goes live), not a gap -- if self-service progression is ever
-wanted (e.g. an explicit "invia per la revisione" customer button once all
-required documents are uploaded), that would be new scope, not a fix to
-existing behavior.
+CUSTOMER or PROMOTER (see `rbac/models.py`'s `DEFAULT_ROLE_PERMISSIONS`) --
+a customer still cannot approve or activate a contract by taking a status-
+transition action directly. What changed: a customer CAN now originate and
+carry a Lial Energy contract most of the way there themselves, through a
+dedicated self-service path -- see "Self-service contract activation"
+below. The two surfaces coexist: `POST /contracts` (staff, any producer)
+and `POST /contracts/mine` (self-service, own account only, own referring
+promoter only) both land on the exact same `Contract` row shape and the
+exact same state machine.
+
+### Self-service contract activation ("Attiva Contratto", Session 29) {#contract-self-service}
+
+Per explicit request, a customer can now activate a Lial Energy (`category
+= INTERNAL`) product without any promoter/admin action to get it started:
+
+- **`POST /contracts/mine`** (`contracts/router.py::create_my_contract`,
+  no special permission -- `get_current_user` only, same "self-checkout,
+  own account only" shape as `POST /orders/mine`): takes a
+  `product_version_id` plus the supply-point details (address, POD/PDR,
+  meter number) collected by the new `contract-activation-wizard.tsx`.
+  `contracts/service.py::create_contract_self_service`:
+  1. Resolves the customer's own record from `current_user.user_id`.
+  2. Rejects anything that isn't an `INTERNAL` product (DROPSHIPPING/
+     PARTNER products go through `orders`, never here).
+  3. Resolves the commission producer from the customer's own referral
+     attribution (`_resolve_referring_agent_id_for_customer` -- same
+     `CustomerAttribution`→`PromoterCode` lookup "lavora con noi"
+     auto-activation uses) -- there is no self-service way to pick a
+     different one; registration being invite-only is exactly what
+     guarantees this attribution always exists. No attribution found ->
+     `SelfServiceContractError`, loudly, rather than silently attributing
+     to nobody and breaking commissions later.
+  4. Creates the `SupplyPoint`/`Address` (reusing
+     `customers/service.py::add_supply_point` directly -- bypassing its
+     normal `customers.update`-gated router, the same "call the service,
+     skip the staff-only endpoint" pattern used elsewhere for self-service).
+  5. Creates the `Contract` (`DRAFT`) and immediately transitions it
+     `SUBMITTED` → `DOCUMENTS_PENDING` -- self-service has no "save as
+     draft, decide whether to send it later" step the way a promoter/admin
+     building one up by hand does.
+- The customer then uploads the required documents through the same
+  `ContractDocumentsPanel` every contract already used (no new upload
+  mechanism) -- embedded directly in the wizard's second step, and always
+  available again later from "I miei Contratti".
+- **Auto-advance to `UNDER_REVIEW`** (`documents/service.py::
+  upload_document` → `_maybe_advance_to_under_review`): once every required
+  document type for the contract's customer kind has at least one uploaded
+  document (any status -- this only means "the customer is done", not "a
+  human already approved them"), the contract advances itself
+  `SUBMITTED|DOCUMENTS_PENDING` → `UNDER_REVIEW` with no staff action. Not
+  self-service-specific: a staff-created contract gets the identical
+  courtesy advance once its documents are all in.
+- **Two staff clicks left, by explicit product decision** (the user was
+  asked: auto-approve documents entirely, or keep one human check before
+  payment -- chose the latter): `contracts/service.py::transition_contract`
+  gained `AUTO_CASCADE_AFTER = {"APPROVED": "PAYMENT_PENDING", "PAID":
+  "ACTIVATION_PENDING", "ACTIVATION_PENDING": "ACTIVE"}` -- every hop is
+  still a real, individually audited `transition_contract()` call (network
+  snapshot, outbox event, `ContractStatusHistory` row, all per-hop, exactly
+  as if a human had clicked each one), just chained automatically. So:
+  - Staff clicks **"Approva"** (`UNDER_REVIEW`→`APPROVED`) after actually
+    looking at the uploaded documents -- the contract lands in
+    `PAYMENT_PENDING` without a second click.
+  - Staff clicks **"Conferma pagamento"** (`PAYMENT_PENDING`→`PAID`) once
+    the initial-fee bank transfer arrives -- the contract cascades through
+    `ACTIVATION_PENDING` straight into `ACTIVE` (which is exactly the hop
+    that enqueues the `ContractActivated` event and triggers commission
+    calculation, unchanged from before).
+  - This cascade is general, not gated to self-service-originated
+    contracts -- a staff-created contract gets the same two-click path.
+  - The admin contracts panel's status-transition dropdown needed **no
+    changes**: it already only ever offers the next state-machine-valid
+    target for a manual click; the cascade happens server-side, so picking
+    "APPROVED" there simply comes back already at `PAYMENT_PENDING`.
 
 ## Commercial network rules
 

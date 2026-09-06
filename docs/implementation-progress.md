@@ -4,6 +4,75 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 30 — 2026-09-06 (same day, continued) — Self-service Lial Energy contract activation ("Attiva Contratto")
+
+The user's follow-up after Session 29 confirmed contracts were staff-only:
+why not let the customer start one themselves? Full design in
+`business-rules.md#contract-self-service` (kept current there) -- summary:
+
+- A clarifying question was asked and answered before writing any code:
+  once a customer finishes uploading required documents, should approval
+  become fully automatic, or keep one staff document-check before payment?
+  Chosen: **keep one check** -- "un click admin prima del pagamento". This
+  shaped the whole design below.
+- New `POST /contracts/mine` (`get_current_user` only, same "self-checkout"
+  shape as `POST /orders/mine`) -- `contracts/service.py::
+  create_contract_self_service` resolves the commission producer from the
+  customer's own referral attribution (same lookup "lavora con noi" uses),
+  rejects anything not `category=INTERNAL`, creates the supply point
+  (reusing `customers/service.py::add_supply_point` directly, bypassing its
+  staff-only router) and the contract, then immediately submits it to
+  `DOCUMENTS_PENDING`.
+- `documents/service.py::upload_document` now auto-advances a contract
+  `SUBMITTED|DOCUMENTS_PENDING` → `UNDER_REVIEW` once every required
+  document type has an upload -- not self-service-specific, any contract
+  gets this once its documents are all in.
+- `contracts/service.py::transition_contract` gained `AUTO_CASCADE_AFTER`:
+  `APPROVED` auto-continues into `PAYMENT_PENDING`, `PAID` auto-continues
+  through `ACTIVATION_PENDING` into `ACTIVE` -- collapsing what used to be
+  5 staff clicks (UNDER_REVIEW→APPROVED→PAYMENT_PENDING→PAID→
+  ACTIVATION_PENDING→ACTIVE) into exactly 2 ("Approva", "Conferma
+  pagamento"), per the chosen option above. Every hop is still individually
+  transitioned/audited/outbox-enqueued -- the cascade is a loop inside
+  `transition_contract` calling itself, not a shortcut that skips any of
+  that. Applies to every contract, not just self-service-originated ones.
+- Real bug caught before it shipped: five existing tests
+  (`test_branch_summary.py`, `test_commission_engine_integration.py`,
+  `test_contract_renewal.py`, `test_rank_progress.py`,
+  `test_rank_evaluation.py`) manually walked every status one hop at a
+  time, including `PAYMENT_PENDING` and `ACTIVATION_PENDING` as their own
+  explicit `transition_contract()` calls -- with the cascade, the contract
+  was already past those by the time the loop tried to re-target them,
+  raising `InvalidTransitionError`. Fixed by trimming those five loops to
+  the still-manual hops only (`SUBMITTED`, `UNDER_REVIEW`, `APPROVED`,
+  `PAID`) -- the admin contracts panel needed no equivalent fix, since its
+  transition dropdown already only offers state-machine-valid next steps
+  and just reflects wherever the contract ends up after the cascade.
+- New `contract-activation-wizard.tsx` (2 steps: supply-point details incl.
+  POD/PDR depending on the product's energy type, then the existing
+  `ContractDocumentsPanel` embedded directly) wired to a new "Attiva
+  Contratto" button on Lial Energy product cards in
+  `customer-products-panel.tsx`. Real bug caught and fixed in the same
+  pass: "I miei Contratti" (`customer-client-page.tsx`) was rendering a
+  contracts list from a `Server Component`-fetched prop with no client-side
+  refetch path at all -- activating a contract would never have shown up
+  there without a full page reload. Converted to a `useQuery` seeded with
+  that same prop as `initialData`, so the wizard's post-activation
+  `invalidateQueries` call actually does something.
+- Verified: 8 new backend tests (attribution resolution, non-INTERNAL
+  rejection, no-customer-record rejection, no-referring-promoter rejection,
+  both cascades, both auto-advance-on-upload cases) plus the 5 fixed
+  existing tests, full suite 162/162 passing, ruff/mypy clean (same 30
+  pre-existing errors as every prior session, none in touched files).
+  `docker compose build` succeeded for both api and dashboard; redeployed
+  and live-verified against the real database with read-only/
+  validation-only calls (a fake product id correctly 400s "Product version
+  not found", a real PARTNER product id correctly 400s "Solo i prodotti
+  Lial Energy si attivano come contratto") -- deliberately did NOT create a
+  real self-service contract end-to-end against production data; the
+  create+cascade+auto-advance logic itself is covered by the 8 new
+  automated tests against a real Postgres engine instead.
+
 ## Session 29 — 2026-09-06 (same day, continued) — Verified credit-% checkout + contract-flow authority, product-showcase redesign, live camera capture, desktop nav bar
 
 Follow-up session: two things verified against the live database rather

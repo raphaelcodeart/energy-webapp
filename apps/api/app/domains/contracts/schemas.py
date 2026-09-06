@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.domains.customers.schemas import SupplyPointCreate
+
 IBAN_PATTERN = re.compile(r"^[A-Z]{2}[0-9A-Z]{13,32}$")
 
 
@@ -49,6 +51,15 @@ class ContractCreate(BaseModel):
     @classmethod
     def validate_iban(cls, v: str | None) -> str | None:
         return _validate_iban(v)
+
+
+class ContractSelfServiceCreate(BaseModel):
+    """'Attiva Contratto' -- POST /contracts/mine. No producer_agent_id (unlike
+    the staff-facing ContractCreate): the customer's own referring promoter is
+    resolved server-side, see contracts/service.py::create_contract_self_service."""
+
+    product_version_id: uuid.UUID
+    supply_point: SupplyPointCreate
 
 
 class ContractIbanUpdate(BaseModel):

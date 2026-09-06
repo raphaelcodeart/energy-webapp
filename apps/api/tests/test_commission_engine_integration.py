@@ -97,7 +97,7 @@ async def _setup_contract_ready_to_activate(db, organization_id, actor_user_id):
 
 
 async def _advance_to_active(db, organization_id, contract, actor_user_id):
-    for step in ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING", "ACTIVE"]:
+    for step in ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PAID"]:  # APPROVED auto-cascades into PAYMENT_PENDING, PAID auto-cascades through ACTIVATION_PENDING into ACTIVE (see contracts/service.py::AUTO_CASCADE_AFTER)
         contract = await contract_service.transition_contract(
             db, organization_id=organization_id, contract=contract, to_status=step,
             actor_user_id=actor_user_id, reason="test", notes=None, correlation_id=str(uuid.uuid4()),

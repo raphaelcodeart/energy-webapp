@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProductCatalogRead } from "@/lib/types";
+import { ContractActivationWizard } from "@/components/contract-activation-wizard";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { ProductThumbnail } from "@/components/product-thumbnail";
@@ -49,6 +50,7 @@ interface CustomerProductsPanelProps {
 }
 
 export function CustomerProductsPanel({ referralCode, organizationId }: CustomerProductsPanelProps = {}) {
+  const queryClient = useQueryClient();
   const { data: products, isLoading, error } = useQuery({
     queryKey: ["customer", "products"],
     queryFn: fetchProducts,
@@ -57,6 +59,7 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
   const [activeCategory, setActiveCategory] = useState<"INTERNAL" | "DROPSHIPPING" | "PARTNER">("INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
   const [detailTarget, setDetailTarget] = useState<ProductCatalogRead | null>(null);
+  const [activationTarget, setActivationTarget] = useState<ProductCatalogRead | null>(null);
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -139,6 +142,7 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
               ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
               : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type;
             const purchasable = !referralCode && p.category !== "INTERNAL";
+            const activatable = !referralCode && p.category === "INTERNAL" && p.product_type === "ENERGY_CONTRACT";
             const maxCreditCents = Math.round((v.base_price_cents * v.credit_discount_percentage) / 100);
             return (
               <div
@@ -244,6 +248,17 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
                       Vedi dettagli e acquista
                     </button>
                   )}
+                  {activatable && (
+                    <button
+                      onClick={() => setActivationTarget(p)}
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Attiva Contratto
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -267,6 +282,14 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
           productVersionId={checkoutTarget.versionId}
           productName={checkoutTarget.name}
           onClose={() => setCheckoutTarget(null)}
+        />
+      )}
+
+      {activationTarget && (
+        <ContractActivationWizard
+          product={activationTarget}
+          onClose={() => setActivationTarget(null)}
+          onActivated={() => queryClient.invalidateQueries({ queryKey: ["customer", "contracts"] })}
         />
       )}
     </div>

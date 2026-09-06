@@ -5,17 +5,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser, require_permission
+from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.contracts.schemas import (
     ContractCreate,
     ContractIbanUpdate,
     ContractRead,
+    ContractSelfServiceCreate,
     ContractStatusHistoryRead,
     ContractTransitionRequest,
 )
-from app.domains.contracts.service import InvalidProducerAgentError
+from app.domains.contracts.service import InvalidProducerAgentError, SelfServiceContractError
 from app.domains.contracts.state_machine import InvalidTransitionError
 from app.domains.customers.models import Customer
 from app.domains.support.service import actor_role_for
@@ -65,6 +66,31 @@ async def create_contract(
             iban=payload.iban,
         )
     except InvalidProducerAgentError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])
+
+
+@router.post("/mine", response_model=ContractRead, status_code=status.HTTP_201_CREATED)
+async def create_my_contract(
+    payload: ContractSelfServiceCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRead:
+    """'Attiva Contratto': any authenticated customer can self-activate a Lial
+    Energy product -- no contracts.create permission needed, same "self
+    checkout, own account only" pattern as POST /orders/mine. Creates the
+    supply point and the contract in one call, then immediately advances it
+    to DOCUMENTS_PENDING -- see contracts/service.py::create_contract_self_service."""
+    try:
+        contract = await contract_service.create_contract_self_service(
+            db,
+            organization_id=current_user.organization_id,
+            customer_user_id=current_user.user_id,
+            product_version_id=payload.product_version_id,
+            supply_point_payload=payload.supply_point,
+        )
+    except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])
