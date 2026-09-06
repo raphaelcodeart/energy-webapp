@@ -18,6 +18,7 @@ class AgentProfileRead(BaseModel):
     rank_code: str | None = None
     rejection_reason: str | None = None
     is_blacklisted: bool = False
+    collaboration_accepted_at: datetime | None = None
 
 
 class RankProgressRead(BaseModel):
@@ -132,6 +133,9 @@ class AgentListItemRead(BaseModel):
     email: str | None = None
     is_blacklisted: bool = False
     user_id: uuid.UUID | None = None
+    collaboration_accepted_at: datetime | None = None
+    email_verified: bool = False
+    privacy_accepted: bool = False
 
 
 class AgentCreateRequest(BaseModel):
@@ -199,6 +203,16 @@ class PromoterApplicationRequest(BaseModel):
     # knows a different name to use.
     first_name: str | None = None
     last_name: str | None = None
+    # Must be true: the "lavora con noi" form shows the collaboration
+    # agreement text with a checkbox that gates the submit button.
+    accept_contract: bool = False
+    # The 6-digit code emailed by POST /agents/apply/request-otp.
+    otp_code: str
+
+    @field_validator("otp_code", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v: object) -> object:
+        return v.strip() if isinstance(v, str) else v
 
 
 class AgentUpdateRequest(BaseModel):

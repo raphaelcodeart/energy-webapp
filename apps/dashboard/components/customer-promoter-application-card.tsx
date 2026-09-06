@@ -23,14 +23,42 @@ interface CustomerPromoterApplicationCardProps {
   hideWhenActive?: boolean;
 }
 
+const COLLABORATION_CONTRACT_TEXT = `Accettando questo contratto di collaborazione, dichiari di voler diventare Promoter Lial Energy e di aver preso visione delle condizioni di collaborazione: promuoverai i prodotti e servizi Lial Energy nel rispetto della normativa vigente e del codice di condotta aziendale, e riceverai le commissioni maturate secondo il piano provvigionale in vigore, accreditate sul tuo wallet Lial Energy. La collaborazione non costituisce rapporto di lavoro subordinato ed è revocabile in qualsiasi momento da entrambe le parti.`;
+
 export function CustomerPromoterApplicationCard({ hideWhenActive = false }: CustomerPromoterApplicationCardProps = {}) {
   const queryClient = useQueryClient();
   const { data: application, isLoading } = useQuery({
     queryKey: ["customer", "promoter-application"],
     queryFn: fetchMyApplication,
   });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [acceptContract, setAcceptContract] = useState(false);
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function openModal() {
+    setAcceptContract(false);
+    setOtpRequested(false);
+    setOtpCode("");
+    setError(null);
+    setModalOpen(true);
+  }
+
+  async function handleRequestOtp() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/proxy/network/agents/apply/request-otp", { method: "POST" });
+      if (!res.ok) throw new Error(await friendlyApiError(res, "Impossibile inviare il codice. Riprova più tardi."));
+      setOtpRequested(true);
+    } catch (err: any) {
+      setError(err.message || "Impossibile inviare il codice. Riprova più tardi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function handleApply() {
     setSubmitting(true);
@@ -39,7 +67,7 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
       const res = await fetch("/api/proxy/network/agents/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ accept_contract: acceptContract, otp_code: otpCode }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res, "Impossibile inviare la richiesta. Riprova più tardi."));
       await queryClient.invalidateQueries({ queryKey: ["customer", "promoter-application"] });
@@ -47,6 +75,7 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
       // next silent refresh -- nudge the area switcher (app-shell.tsx) to
       // re-check live roles right away instead of waiting for that.
       await queryClient.invalidateQueries({ queryKey: ["auth", "me", "roles"] });
+      setModalOpen(false);
     } catch (err: any) {
       setError(err.message || "Impossibile inviare la richiesta. Riprova più tardi.");
     } finally {
@@ -137,13 +166,79 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
         <p className="text-xs text-slate-500 mt-2">Nota dall&apos;ultima volta: {application.rejection_reason}</p>
       )}
       <button
-        onClick={handleApply}
-        disabled={submitting}
-        className="mt-4 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold cursor-pointer disabled:opacity-50"
+        onClick={openModal}
+        className="mt-4 px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold cursor-pointer"
       >
-        {submitting ? "Attivazione in corso..." : "Lavora con noi"}
+        Lavora con noi
       </button>
-      {error && <p className="text-xs text-rose-400 mt-2">{error}</p>}
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-8 overflow-y-auto">
+          <div className="w-full max-w-md glass-card rounded-2xl p-6 my-auto animate-scale-up">
+            <h3 className="text-base font-semibold text-white light:text-slate-900 mb-3">Diventa Promoter Lial Energy</h3>
+
+            <div className="max-h-40 overflow-y-auto rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 p-3 text-xs text-slate-400 light:text-slate-600 leading-relaxed mb-3">
+              {COLLABORATION_CONTRACT_TEXT}
+            </div>
+
+            <label className="flex items-start gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={acceptContract}
+                onChange={(e) => setAcceptContract(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
+              />
+              <span>Ho letto e accetto il contratto di collaborazione.</span>
+            </label>
+
+            {!otpRequested ? (
+              <button
+                onClick={handleRequestOtp}
+                disabled={!acceptContract || submitting}
+                className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-2.5 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? "Invio codice..." : "Invia codice di conferma via email"}
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-400 light:text-slate-500">
+                  Ti abbiamo inviato un codice via email. Inseriscilo qui sotto per confermare la tua richiesta.
+                </p>
+                <input
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="Codice a 6 cifre"
+                  inputMode="numeric"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm text-center tracking-[0.3em] font-mono focus:border-orange-500"
+                />
+                <button
+                  onClick={handleApply}
+                  disabled={otpCode.length !== 6 || submitting}
+                  className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-2.5 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer"
+                >
+                  {submitting ? "Conferma in corso..." : "Conferma e attiva"}
+                </button>
+                <button
+                  onClick={handleRequestOtp}
+                  disabled={submitting}
+                  className="w-full text-xs text-orange-400 hover:text-orange-300 transition cursor-pointer disabled:opacity-50"
+                >
+                  Non hai ricevuto il codice? Invia di nuovo
+                </button>
+              </div>
+            )}
+
+            {error && <p className="text-xs text-rose-400 mt-3">{error}</p>}
+
+            <button
+              onClick={() => setModalOpen(false)}
+              className="w-full mt-3 text-xs text-slate-500 hover:text-slate-300 transition cursor-pointer"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

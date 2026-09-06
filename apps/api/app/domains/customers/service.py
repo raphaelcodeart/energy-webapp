@@ -30,6 +30,8 @@ def display_name_for(kind: str, profile: CustomerProfile | None, company: Compan
 
 
 async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:
+    from app.domains.users.models import User
+
     stmt = select(Customer).where(Customer.organization_id == organization_id).order_by(Customer.created_at.desc())
     customers = (await db.execute(stmt)).scalars().all()
     if not customers:
@@ -44,6 +46,11 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
         c.customer_id: c
         for c in (await db.execute(select(Company).where(Company.customer_id.in_(ids)))).scalars()
     }
+    user_ids = [c.user_id for c in customers if c.user_id is not None]
+    users_by_id = {
+        u.id: u
+        for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()
+    } if user_ids else {}
 
     return [
         {
@@ -59,6 +66,12 @@ async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> lis
             "photo_url": c.photo_url,
             "display_name": display_name_for(c.kind, profiles.get(c.id), companies.get(c.id)),
             "created_at": c.created_at,
+            "email_verified": (
+                users_by_id[c.user_id].email_verified_at is not None if c.user_id in users_by_id else None
+            ),
+            "privacy_accepted": (
+                users_by_id[c.user_id].privacy_accepted_at is not None if c.user_id in users_by_id else None
+            ),
         }
         for c in customers
     ]

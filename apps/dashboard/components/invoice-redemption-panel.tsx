@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { friendlyApiError } from "@/lib/api-error";
 import type { InvoiceRedemptionRead, PartnerRead } from "@/lib/types";
@@ -55,6 +55,8 @@ export function InvoiceRedemptionPanel() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: partners } = useQuery({ queryKey: ["invoice-redemptions", "partners"], queryFn: fetchPartners });
   const { data: mine, error: loadError } = useQuery({ queryKey: ["invoice-redemptions", "mine"], queryFn: fetchMine });
@@ -150,16 +152,54 @@ export function InvoiceRedemptionPanel() {
                 />
               </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Foto o PDF della fattura</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Scatta foto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Carica file
+                </button>
+              </div>
               <input
-                required
+                ref={cameraInputRef}
                 type="file"
-                accept="image/jpeg,image/png,application/pdf"
+                accept="image/jpeg,image/png"
                 capture="environment"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="w-full text-xs text-slate-300 light:text-slate-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-white/10 file:text-slate-200 light:file:bg-slate-900/10 light:file:text-slate-700 file:text-xs file:font-semibold file:cursor-pointer cursor-pointer"
+                className="hidden"
               />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,application/pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="hidden"
+              />
+              {file && (
+                <p className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {file.name}
+                </p>
+              )}
             </div>
             <button
               type="submit"

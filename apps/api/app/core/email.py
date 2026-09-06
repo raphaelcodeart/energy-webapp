@@ -35,3 +35,26 @@ def send_email(*, to: str, subject: str, body: str) -> None:
         if settings.smtp_username:
             smtp.login(settings.smtp_username, settings.smtp_password)
         smtp.send_message(message)
+
+
+def send_html_email(*, to: str, subject: str, html_body: str, text_body: str) -> None:
+    """Same delivery mechanics as send_email(), but multipart/alternative: a
+    plain-text fallback (required -- some clients/spam filters penalize
+    HTML-only mail) alongside the real, branded HTML body built via
+    core/email_templates.py."""
+    if not settings.smtp_host:
+        raise EmailNotConfiguredError("SMTP is not configured (smtp_host is empty)")
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from_address
+    message["To"] = to
+    message.set_content(text_body)
+    message.add_alternative(html_body, subtype="html")
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+        if settings.smtp_use_tls:
+            smtp.starttls()
+        if settings.smtp_username:
+            smtp.login(settings.smtp_username, settings.smtp_password)
+        smtp.send_message(message)

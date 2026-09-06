@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AccountGate } from "@/components/account-gate";
 import { AreaSwitcher, useDualRoleAreas } from "@/components/area-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { NotificationRead } from "@/lib/types";
@@ -37,6 +38,11 @@ interface AppShellProps {
       title/subtitle-on-left, actions-on-right layout. */
   centerHeaderActions?: boolean;
 }
+
+// How many nav items fit comfortably in the mobile bottom tab bar before the
+// rest fold into the "Altro" drawer button -- matches the classic
+// native-app pattern (4-5 primary tabs max).
+const MOBILE_TAB_COUNT = 4;
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   CONTRACT_CREATED: "Nuovo contratto",
@@ -398,6 +404,45 @@ export function AppShell({
         </div>
       )}
 
+      {/* Mobile bottom tab bar -- app-style primary navigation for phones,
+          mirroring how a native app puts its main sections in a bottom bar
+          with icons. Desktop keeps its tools up top/side (the persistent
+          sidebar + header above already serve that role there). */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t border-white/5 light:border-slate-900/5 bg-slate-950/90 light:bg-white/90 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+        {navItems.slice(0, MOBILE_TAB_COUNT).map((item) => {
+          const active = item.key === activeKey;
+          const hasUnread = item.notificationTypes?.some((t) => unreadTypes.has(t)) ?? false;
+          return (
+            <button
+              key={item.key}
+              onClick={() => onNavigate(item.key)}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 cursor-pointer transition-colors ${
+                active ? "text-orange-400" : "text-slate-400 light:text-slate-500"
+              }`}
+            >
+              <span className="relative flex h-5 w-5 items-center justify-center">
+                {item.icon}
+                {hasUnread && (
+                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-500 border border-slate-950 light:border-white" />
+                )}
+              </span>
+              <span className="text-[9px] font-semibold truncate max-w-[64px]">{item.label}</span>
+            </button>
+          );
+        })}
+        {navItems.length > MOBILE_TAB_COUNT && (
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 cursor-pointer text-slate-400 light:text-slate-500"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            <span className="text-[9px] font-semibold">Altro</span>
+          </button>
+        )}
+      </nav>
+
       {/* Persistent top bar -- classic dashboard layout: page title left, icon
           cluster (theme toggle + avatar/logout menu) in the top-right corner. */}
       <header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-white/5 light:border-slate-900/5 bg-slate-950/80 light:bg-white/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 lg:ml-64 h-16">
@@ -431,7 +476,7 @@ export function AppShell({
 
       {/* Main content */}
       <div className="lg:pl-64">
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
+        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pb-24 lg:pb-8 animate-slide-up">
           {(headerTitle || headerSubtitle || headerActions) && (
             <div
               className={`mb-8 flex flex-col gap-4 ${
@@ -447,7 +492,7 @@ export function AppShell({
               {headerActions && <div className={centerHeaderActions ? "w-full" : "flex gap-3"}>{headerActions}</div>}
             </div>
           )}
-          {children}
+          <AccountGate>{children}</AccountGate>
         </main>
       </div>
     </div>

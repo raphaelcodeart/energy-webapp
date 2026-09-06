@@ -425,6 +425,30 @@ export function AdminCustomersPanel({ initialActiveOnly = false }: { initialActi
                       <p className="font-medium text-white light:text-slate-900">{c.display_name}</p>
                       <p className="text-[10px] text-slate-500">{c.email}</p>
                       <p className="text-[10px] text-slate-500">Iscritto: {new Date(c.created_at).toLocaleDateString("it-IT")}</p>
+                      {c.user_id && (
+                        <div className="flex items-center gap-1 mt-1.5">
+                          <span
+                            title={c.email_verified ? "Email verificata" : "Email non verificata"}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                              c.email_verified
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            Email {c.email_verified ? "✓" : "✗"}
+                          </span>
+                          <span
+                            title={c.privacy_accepted ? "Privacy accettata" : "Privacy non accettata"}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                              c.privacy_accepted
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            Privacy {c.privacy_accepted ? "✓" : "✗"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-6">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">

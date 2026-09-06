@@ -105,6 +105,7 @@ export type AgentProfileRead = {
   rank_code: string | null;
   rejection_reason: string | null;
   is_blacklisted: boolean;
+  collaboration_accepted_at: string | null;
 };
 
 export type SimulationStepRead = {
@@ -144,6 +145,8 @@ export type CustomerRead = {
   photo_url: string | null;
   display_name: string;
   created_at: string;
+  email_verified: boolean | null;
+  privacy_accepted: boolean | null;
 };
 
 export type AddressRead = {
@@ -189,6 +192,9 @@ export type AgentListItemRead = {
   email: string | null;
   is_blacklisted: boolean;
   user_id: string | null;
+  collaboration_accepted_at: string | null;
+  email_verified: boolean;
+  privacy_accepted: boolean;
 };
 
 export type RootPromoterCreateResponse = {

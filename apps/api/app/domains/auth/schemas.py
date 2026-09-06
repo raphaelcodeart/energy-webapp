@@ -27,6 +27,14 @@ class TokenResponse(BaseModel):
 
 class MeRead(BaseModel):
     roles: list[str]
+    # Live account-gate flags -- read by the dashboard shell to decide whether
+    # to show the blocking email-verification / profile-completion popups
+    # (see docs/business-rules.md#account-gates). Unlike `roles`, these were
+    # never baked into the access token at all, so there's no "stale until
+    # next refresh" concern to worry about.
+    email_verified: bool
+    profile_complete: bool
+    privacy_accepted: bool
 
 
 class RegisterRequest(BaseModel):
@@ -42,6 +50,10 @@ class RegisterRequest(BaseModel):
     last_name: str | None = None
     company_name: str | None = None
     phone: str | None = None
+    # Mandatory: the registration form has a single privacy-policy checkbox
+    # that must be ticked before the submit button is even enabled -- this is
+    # the server-side backstop, see auth/service.py::register_with_referral.
+    accept_privacy: bool = False
 
     @field_validator("email", "password", "referral_code", mode="before")
     @classmethod
@@ -54,6 +66,21 @@ class RegisterRequest(BaseModel):
         if len(v) < 8:
             raise ValueError("password must be at least 8 characters")
         return v
+
+    @field_validator("accept_privacy")
+    @classmethod
+    def validate_accept_privacy(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("privacy policy must be accepted to register")
+        return v
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    pass
 
 
 class ForgotPasswordRequest(BaseModel):

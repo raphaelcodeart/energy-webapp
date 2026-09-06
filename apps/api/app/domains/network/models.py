@@ -51,6 +51,14 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     # re-apply via "lavora con noi", apply_as_promoter() sends them through the
     # manual PENDING_APPROVAL/approve flow instead of auto-activating.
     is_blacklisted: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Collaboration-agreement acceptance, "signed" via an OTP code emailed at
+    # application time (see network/service.py::apply_as_promoter and
+    # auth/service.py::request_otp/verify_otp) -- proof that the account
+    # holder, not just whoever is logged in, agreed. Visible to admins so they
+    # can see who has/hasn't formally accepted (docs/business-rules.md).
+    collaboration_contract_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    collaboration_accepted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    collaboration_otp_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class NetworkNode(UUIDPKMixin, TimestampMixin, Base):

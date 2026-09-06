@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ztagYhvccX6Vijx3SgLf843zw1AEUemTUbDxynRT1Z1QWkI2qOCWlsJNefAVrpY
+\restrict KBMcM5jRl6hukww0uBt5VvWVZuZMnqNaQ7WfXqWIZVYqn3eueMUVBbu39iwiLJ6
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -59,7 +59,10 @@ CREATE TABLE public.agent_profiles (
     created_at timestamp with time zone NOT NULL,
     is_blacklisted boolean DEFAULT false NOT NULL,
     first_name character varying(120),
-    last_name character varying(120)
+    last_name character varying(120),
+    collaboration_contract_version character varying(32),
+    collaboration_accepted_at timestamp with time zone,
+    collaboration_otp_verified_at timestamp with time zone
 );
 
 
@@ -449,6 +452,20 @@ CREATE TABLE public.domain_outbox (
 
 
 --
+-- Name: email_verification_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.email_verification_tokens (
+    user_id uuid NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+--
 -- Name: invoice_redemptions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -618,6 +635,21 @@ CREATE TABLE public.organizations (
     vat_number character varying(32),
     status character varying(32) NOT NULL,
     settings jsonb NOT NULL,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: otp_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.otp_codes (
+    user_id uuid NOT NULL,
+    purpose character varying(32) NOT NULL,
+    code_hash character varying(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
 );
@@ -894,7 +926,14 @@ CREATE TABLE public.users (
     failed_login_attempts integer NOT NULL,
     locked_until timestamp with time zone,
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    privacy_accepted_at timestamp with time zone,
+    fiscal_code character varying(16),
+    residence_street character varying(255),
+    residence_city character varying(100),
+    residence_province character varying(2),
+    residence_postal_code character varying(10),
+    residence_country character varying(2) DEFAULT 'IT'::character varying NOT NULL
 );
 
 
@@ -1141,6 +1180,14 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
+-- Name: email_verification_tokens pk_email_verification_tokens; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verification_tokens
+    ADD CONSTRAINT pk_email_verification_tokens PRIMARY KEY (id);
+
+
+--
 -- Name: invoice_redemptions pk_invoice_redemptions; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1218,6 +1265,14 @@ ALTER TABLE ONLY public.orders
 
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT pk_organizations PRIMARY KEY (id);
+
+
+--
+-- Name: otp_codes pk_otp_codes; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.otp_codes
+    ADD CONSTRAINT pk_otp_codes PRIMARY KEY (id);
 
 
 --
@@ -1775,6 +1830,20 @@ CREATE INDEX ix_domain_outbox_processed_at ON public.domain_outbox USING btree (
 
 
 --
+-- Name: ix_email_verification_tokens_token_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_email_verification_tokens_token_hash ON public.email_verification_tokens USING btree (token_hash);
+
+
+--
+-- Name: ix_email_verification_tokens_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_email_verification_tokens_user_id ON public.email_verification_tokens USING btree (user_id);
+
+
+--
 -- Name: ix_invoice_redemptions_customer_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1919,6 +1988,27 @@ CREATE INDEX ix_orders_organization_id ON public.orders USING btree (organizatio
 --
 
 CREATE INDEX ix_orders_status ON public.orders USING btree (status);
+
+
+--
+-- Name: ix_otp_codes_code_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_otp_codes_code_hash ON public.otp_codes USING btree (code_hash);
+
+
+--
+-- Name: ix_otp_codes_purpose; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_otp_codes_purpose ON public.otp_codes USING btree (purpose);
+
+
+--
+-- Name: ix_otp_codes_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_otp_codes_user_id ON public.otp_codes USING btree (user_id);
 
 
 --
@@ -2735,6 +2825,14 @@ ALTER TABLE ONLY public.domain_outbox
 
 
 --
+-- Name: email_verification_tokens fk_email_verification_tokens_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verification_tokens
+    ADD CONSTRAINT fk_email_verification_tokens_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: invoice_redemptions fk_invoice_redemptions_credited_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2996,6 +3094,14 @@ ALTER TABLE ONLY public.orders
 
 ALTER TABLE ONLY public.orders
     ADD CONSTRAINT fk_orders_product_version_id_product_versions FOREIGN KEY (product_version_id) REFERENCES public.product_versions(id);
+
+
+--
+-- Name: otp_codes fk_otp_codes_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.otp_codes
+    ADD CONSTRAINT fk_otp_codes_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -3306,5 +3412,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ztagYhvccX6Vijx3SgLf843zw1AEUemTUbDxynRT1Z1QWkI2qOCWlsJNefAVrpY
+\unrestrict KBMcM5jRl6hukww0uBt5VvWVZuZMnqNaQ7WfXqWIZVYqn3eueMUVBbu39iwiLJ6
 

@@ -24,7 +24,13 @@ organizations
 
 users
   id, organization_id, email (unique per org), password_hash, status,
-  email_verified_at, created_at
+  email_verified_at, created_at,
+  -- account gates, added Session 27 (see business-rules.md#account-gates):
+  privacy_accepted_at nullable (set once at self-registration, NULL for
+    accounts that predate this field, never backfilled),
+  fiscal_code nullable, residence_street/city/province/postal_code nullable,
+  residence_country default 'IT' (mandatory profile-completion gate --
+    retroactive for every account, unlike email verification above)
 
 roles
   id, organization_id nullable (null = system role), code, name
@@ -48,6 +54,18 @@ password_reset_tokens (added Session 13 -- same shape/reasoning as sessions:
     time-limited (expires_at, 60 minutes). A successful reset revokes every
     active session for that user -- see auth/service.py::reset_password())
   id, user_id, token_hash, expires_at, used_at nullable, created_at
+
+email_verification_tokens (added Session 27 -- same opaque-token/hashed-at-rest
+    shape as password_reset_tokens, 24h expiry, single-use. Sent at
+    self-registration only; existing accounts are grandfathered as verified,
+    see users.email_verified_at and business-rules.md#account-gates)
+  id, user_id, token_hash, expires_at, used_at nullable, created_at
+
+otp_codes (added Session 27 -- short numeric code emailed for a
+    self-service action a plain link-click isn't enough proof for; today
+    only purpose=PROMOTER_APPLICATION_OTP_PURPOSE ("lavora con noi"),
+    10-minute expiry, single-use, `purpose` keeps the table reusable)
+  id, user_id, purpose, code_hash, expires_at, used_at nullable, created_at
 
 audit_log (append-only, no updates/deletes)
   id, organization_id, actor_user_id nullable, action, entity_type, entity_id,
@@ -86,6 +104,12 @@ agent_profiles
     admin "Blacklist" action; the ONLY case where self-service "lavora con
     noi" re-application falls back to the old manual PENDING_APPROVAL flow
     instead of auto-activating, see business-rules.md),
+  collaboration_contract_version, collaboration_accepted_at,
+    collaboration_otp_verified_at, all nullable (added Session 27 -- "lavora
+    con noi" now requires accepting a collaboration agreement + typing back
+    an emailed OTP before this row's status ever leaves PENDING_APPROVAL/
+    becomes ACTIVE, see business-rules.md#account-gates and
+    network/service.py::apply_as_promoter),
   joined_at
 
 network_nodes
@@ -635,14 +659,17 @@ accepts one that's actually configured for the organization (see §12) --
 doesn't even render if unconfigured" a real guarantee rather than just a
 frontend nicety.
 
-## 12. Organization settings (added Session 25; Stripe keys Session 26)
+## 12. Organization settings (added Session 25; Stripe keys Session 26; admin_notification_email Session 27)
 
 No new table -- `organizations.settings` (JSONB, existed since the original
 schema) is now actually read/written through two typed subsets:
 `GET`/`PATCH /organizations/me/settings` (`organization.manage` permission
 -- SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN, same tier as `wallet.manage`) holds
 `bank_iban`/`bank_account_holder`/`bank_transfer_instructions` (the account
-and free-text instructions customers wire bonifico payments to); `GET`/
+and free-text instructions customers wire bonifico payments to) and
+`admin_notification_email` (Session 27 -- where the "new ticket opened"
+alert email goes, `organizations/service.py::get_admin_notification_email`,
+defaults to `info@lialenergy.it` when unset); `GET`/
 `PATCH /organizations/me/payment-settings` (new, stricter
 `organization.manage_payments` permission -- **SUPER_ADMIN only**, per the
 user's explicit request that whoever configures card payments is a smaller

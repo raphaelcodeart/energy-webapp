@@ -571,6 +571,63 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   config, and is what keeps one endpoint correct for every tenant in
   principle, even though this deployment currently has one organization.
 
+## Account gates (Session 27)
+
+Three independent, self-service gates block dashboard use until satisfied,
+each with its own acceptance state persisted on `users`/`agent_profiles` and
+visible to admins (Anagrafiche Clienti/Promoter, small badges next to each
+account). None of these are enforced client-side only -- every corresponding
+backend action independently requires the same state.
+
+- **Privacy consent**: `users.privacy_accepted_at`, set once at
+  self-registration (`RegisterRequest.accept_privacy`, a required checkbox --
+  the request is rejected server-side if unticked). NULL for every account
+  that predates this field (admin-created accounts, or self-registered
+  before Session 27) -- there is no retroactive consent to backfill, so it
+  simply stays NULL for those.
+- **Email verification** (new registrations only): `users.email_verified_at`
+  (a column that already existed, previously unused). Registration sends a
+  branded confirmation email (`core/email_templates.py`) with a link to
+  `/verify-email?token=...`, backed by `email_verification_tokens` (opaque
+  token, hashed at rest, 24h expiry, single-use -- same pattern as
+  password-reset tokens). **Explicit product decision**: every account that
+  existed before this feature shipped is grandfathered as already-verified
+  (the 0026 migration backfills `email_verified_at = COALESCE(email_verified_at,
+  created_at)` for every NULL row) -- nobody who was already using the
+  product gets a surprise "confirm your email" wall. The rule applies only
+  going forward, to accounts created after Session 27.
+- **Profile completion** (fiscal code + residence address): `users.fiscal_code`
+  + `residence_street/city/province/postal_code/country`. Unlike email
+  verification, this one is deliberately retroactive -- **every** account,
+  existing or new, sees the blocking popup at next login until filled in
+  (`PATCH /auth/me/profile`, `users/service.py::is_profile_complete`).
+  Demo/seed accounts are pre-filled so they're never blocked.
+- **Promoter collaboration agreement + OTP** ("lavora con noi"):
+  `agent_profiles.collaboration_accepted_at` /
+  `collaboration_contract_version` / `collaboration_otp_verified_at`.
+  Becoming a promoter now requires ticking a collaboration-agreement
+  checkbox (`accept_contract`) AND typing back a 6-digit code emailed via
+  `POST /network/agents/apply/request-otp` (`otp_codes` table, purpose
+  `PROMOTER_APPLICATION_OTP_PURPOSE`, 10-minute expiry, single-use, verified
+  server-side in `apply_as_promoter()` before any of the existing
+  auto-activation/reapplication branching runs) -- proof the account holder,
+  not just whoever is logged in, actually agreed.
+- All four gates apply only to CUSTOMER/PROMOTER accounts, not admin-tier
+  roles (`account-gate.tsx` checks live roles from `GET /auth/me` before
+  rendering the blocking modal) -- there is no scenario where blocking a
+  SUPER_ADMIN's own dashboard behind a fiscal-code popup makes sense.
+
+**Notification emails** (also Session 27, same branded-HTML-shell mechanism):
+cashback credited (`invoice_redemptions/service.py::confirm_payment`, fires
+after the wallet credit) and a new support ticket opened
+(`support/service.py::create_ticket`, sent to
+`Organization.settings.admin_notification_email`, defaulting to
+`info@lialenergy.it` -- `organizations/service.py::DEFAULT_ADMIN_NOTIFICATION_EMAIL`,
+admin-editable via the existing company-settings PATCH). All best-effort:
+an SMTP hiccup is logged, never blocks the underlying action (ticket
+creation, cashback crediting, registration all already committed by the
+time the email send is attempted).
+
 ## GDPR notes
 
 Consent versions, retention periods, and the legal basis for each processing purpose

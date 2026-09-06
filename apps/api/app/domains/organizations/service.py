@@ -5,8 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.organizations.models import Organization
 from app.domains.organizations.schemas import OrganizationSettingsUpdate, PaymentSettingsUpdate
 
-SETTINGS_KEYS = ("bank_iban", "bank_account_holder", "bank_transfer_instructions")
+SETTINGS_KEYS = ("bank_iban", "bank_account_holder", "bank_transfer_instructions", "admin_notification_email")
 PAYMENT_SETTINGS_KEYS = ("stripe_publishable_key", "stripe_secret_key", "stripe_webhook_secret")
+
+DEFAULT_ADMIN_NOTIFICATION_EMAIL = "info@lialenergy.it"
 
 
 async def get_settings(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:
@@ -69,6 +71,15 @@ async def is_stripe_configured(db: AsyncSession, *, organization_id: uuid.UUID) 
     if org is None:
         return False
     return bool(org.settings.get("stripe_secret_key")) and bool(org.settings.get("stripe_publishable_key"))
+
+
+async def get_admin_notification_email(db: AsyncSession, *, organization_id: uuid.UUID) -> str:
+    """Where the "new ticket opened" alert (support/service.py::create_ticket)
+    goes -- an admin-editable override of DEFAULT_ADMIN_NOTIFICATION_EMAIL."""
+    org = await db.get(Organization, organization_id)
+    if org is None:
+        return DEFAULT_ADMIN_NOTIFICATION_EMAIL
+    return org.settings.get("admin_notification_email") or DEFAULT_ADMIN_NOTIFICATION_EMAIL
 
 
 async def get_stripe_webhook_secret(db: AsyncSession, *, organization_id: uuid.UUID) -> str | None:

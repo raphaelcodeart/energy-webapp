@@ -21,3 +21,21 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(default=0)
     locked_until: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Set once, at self-registration, when the (now-mandatory) privacy
+    # checkbox is accepted -- see auth/service.py::register_with_referral.
+    # NULL for every account that predates this field (accounts created by
+    # an admin directly, or self-registered before Session 27) -- there is
+    # no retroactive consent to backfill for those, so this column simply
+    # stays NULL for them rather than being defaulted to "accepted".
+    privacy_accepted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Profile-completion gate (added Session 27): every account, existing or
+    # new, must have all of these filled before using the dashboard -- see
+    # users/service.py::is_profile_complete(). Deliberately on User, not
+    # Customer/AgentProfile, since a promoter has no Customer row and this
+    # is inherently user-level identity data, independent of role.
+    fiscal_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    residence_street: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    residence_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    residence_province: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    residence_postal_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    residence_country: Mapped[str] = mapped_column(String(2), default="IT")

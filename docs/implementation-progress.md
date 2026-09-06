@@ -4,6 +4,92 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 27 — 2026-09-06 — Real Stripe test keys, account gates (email verification/profile completion/promoter OTP), branded emails, nav redesign
+
+A large, multi-part request in one message. Summary by area:
+
+- **Stripe live-tested**: the user's own real TEST-mode publishable/secret
+  keys were configured via the existing admin payment-settings endpoint (no
+  code changes needed -- the integration built in Session 26 was correct,
+  just never exercised with real keys). Verified end-to-end: a real
+  Checkout Session URL (`checkout.stripe.com/c/pay/cs_test_...`) was
+  generated for a test order, `get_available_payment_methods()` now
+  reports `card: True`, order cleanup verified.
+- **Invoice-redemption camera capture**: `invoice-redemption-panel.tsx`'s
+  single ambiguous `<input capture>` (which forced camera-only on many
+  mobile browsers) replaced with two explicit buttons -- "Scatta foto"
+  (camera) and "Carica file" (file picker) -- each its own hidden input.
+- **"Simula provvigione" removed** from the promoter dashboard's big
+  quick-link button grid (`QUICK_LINKS` in `promoter-client-page.tsx`) per
+  explicit request -- left untouched in the sidebar (`NAV_ITEMS`), where it
+  still works exactly as before.
+- **Account gates** (full detail in `business-rules.md#account-gates`):
+  mandatory email verification for new registrations (existing accounts
+  grandfathered), mandatory fiscal-code/residence profile completion
+  (retroactive for everyone), and a collaboration-agreement + emailed-OTP
+  gate on "lavora con noi". New tables `email_verification_tokens` and
+  `otp_codes` (migration `0026_account_gates_and_promoter_otp.py`, which
+  also backfills `email_verified_at` for every pre-existing user). New
+  columns on `users` (privacy/fiscal-code/residence) and `agent_profiles`
+  (collaboration acceptance). New endpoints: `POST /auth/verify-email`,
+  `POST /auth/resend-verification`, `GET/PATCH /auth/me/profile`,
+  `POST /network/agents/apply/request-otp`; `GET /auth/me` extended with
+  `email_verified`/`profile_complete`/`privacy_accepted`. Frontend:
+  `account-gate.tsx` blocks the whole dashboard behind a modal (admin-tier
+  roles exempt), `/verify-email` confirmation page, the registration form
+  gained a mandatory privacy checkbox, and the "Lavora con noi" card gained
+  a two-step modal (accept contract → request OTP → confirm).
+- **Admin visibility**: `CustomerRead`/`AgentListItemRead` now carry
+  `email_verified`/`privacy_accepted` (and, for agents,
+  `collaboration_accepted_at`) via a `users` join in `list_customers()`/
+  `list_agents()` -- small ✓/✗ badges added next to each row in
+  `admin-customers-panel.tsx`/`admin-promoters-panel.tsx`. No new admin
+  screen -- enriching the existing lists was the more contained way to show
+  "who accepted what" the user asked for.
+- **Branded HTML emails**: `core/email_templates.py` (new) -- one shared
+  table-based HTML shell with the logo (`https://lialenergy.it/img/logo.png`)
+  and brand color, used by every email below; `core/email.py` gained
+  `send_html_email()` (multipart/alternative, HTML + plain-text fallback).
+  New sends: registration confirmation link, promoter-application OTP,
+  cashback-credited (fires in `invoice_redemptions/service.py::confirm_payment`
+  right after the wallet credit), and a new-ticket admin alert (fires in
+  `support/service.py::create_ticket`, to
+  `Organization.settings.admin_notification_email`, defaulting to
+  `info@lialenergy.it` -- a new admin-editable settings field, same
+  merge-not-replace pattern as the existing bank/Stripe settings). All
+  best-effort: SMTP is already configured in production (Aruba), but every
+  send is wrapped in the same `EmailNotConfiguredError`-falls-through-to-log
+  pattern as the pre-existing password-reset email, and none of them can
+  block the action that triggered them.
+- **Navigation**: mobile gained an app-style bottom tab bar (`app-shell.tsx`,
+  `lg:hidden`, first 4 nav items + an "Altro" button opening the existing
+  drawer for the rest) -- desktop was left as its existing persistent
+  sidebar + top header, which already puts the primary tools "in alto" as
+  requested; the net-new piece was the mobile bottom bar.
+- **Not done / explicitly out of scope this session**: a full visual
+  redesign of the customer area ("più professionale, bella, moderna e
+  animata") -- the request was open-ended and the highest-leverage,
+  bounded changes (nav redesign, account-gate UX, camera capture) were
+  prioritized instead of a ground-up restyle; real OCR (unchanged, still
+  Session 23's decision).
+- Verified: `docker exec`-minted tokens against the **real production
+  database** (not demo seed data) confirm `GET /auth/me` correctly reports
+  `email_verified: true` / `profile_complete: false` for every real
+  pre-existing customer (the exact grandfather behavior asked for), and the
+  enriched customer/agent list endpoints return the new fields without
+  error against real rows. Full backend suite: 149/149 passing (140
+  pre-existing + 9 new, covering profile completion, email verification
+  round-trip/expiry, OTP consume-once/expiry, and the promoter
+  contract+OTP gate), ruff/mypy clean (same pre-existing rowcount/reports
+  false-positives as every prior session). `docker compose build` succeeded
+  for api/celery-worker/celery-beat/dashboard (TypeScript compiled clean),
+  containers recreated and confirmed healthy against the live stack.
+- **Stated limitation**: as in every prior session, no interactive browser
+  click-through was available in this headless environment -- the new
+  frontend flows (account-gate modal, verify-email page, Lavora-con-noi
+  OTP modal, bottom tab bar) were verified via server-render/HTTP checks
+  and code review, not a real browser session.
+
 ## Session 26 — 2026-09-05 (same day, continued) — Customer self-checkout, Stripe card payments, marketplace category tabs
 
 Closes the last gap in the cashback/orders project: a customer can now buy

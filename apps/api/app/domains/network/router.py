@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
+from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError, upload_media
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
@@ -114,6 +115,7 @@ async def get_my_agent_profile(
         rank_code=rank_code,
         rejection_reason=agent.rejection_reason,
         is_blacklisted=agent.is_blacklisted,
+        collaboration_accepted_at=agent.collaboration_accepted_at,
     )
 
 
@@ -134,6 +136,30 @@ async def get_my_promoter_application(
     return AgentProfileRead.model_validate(agent)
 
 
+@router.post(
+    "/agents/apply/request-otp",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit("promoter-apply-otp", max_requests=5, window_seconds=300))],
+)
+async def request_promoter_application_otp(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Emails the OTP code the 'lavora con noi' form's confirmation step asks
+    the user to type back in -- see auth/service.py::request_otp and
+    POST /agents/apply below, which verifies it."""
+    from app.domains.auth import service as auth_service
+    from app.domains.users.models import User
+
+    user = await db.get(User, current_user.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await auth_service.request_otp(
+        db, user=user, purpose=auth_service.PROMOTER_APPLICATION_OTP_PURPOSE,
+        context_line="Usa questo codice per confermare la tua richiesta 'Lavora con noi' e accettare il contratto di collaborazione.",
+    )
+    return {"ok": True}
+
+
 @router.post("/agents/apply", response_model=AgentProfileRead, status_code=status.HTTP_201_CREATED)
 async def apply_as_promoter(
     payload: PromoterApplicationRequest,
@@ -145,7 +171,9 @@ async def apply_as_promoter(
     (a plain CUSTOMER holds no network.* permission) -- this IS the
     self-service entry point. Created PENDING_APPROVAL, same
     suggest-then-approve workflow as POST /agents and /agents/recruit; only
-    approve_agent() actually grants the PROMOTER role."""
+    approve_agent() actually grants the PROMOTER role. Requires the
+    collaboration agreement to be accepted and a valid OTP (requested via
+    POST /agents/apply/request-otp just above)."""
     if "CUSTOMER" not in current_user.roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only customers can apply to become a promoter")
 
@@ -177,9 +205,14 @@ async def apply_as_promoter(
         agent = await network_service.apply_as_promoter(
             db, organization_id=current_user.organization_id,
             user_id=current_user.user_id, first_name=first_name, last_name=last_name,
+            accept_contract=payload.accept_contract, otp_code=payload.otp_code,
         )
     except network_service.DuplicateApplicationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except network_service.ContractNotAcceptedError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except network_service.InvalidOtpError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     await notifications_service.notify_roles(
         db, organization_id=current_user.organization_id, roles=notifications_service.APPROVAL_NOTIFY_ROLES,

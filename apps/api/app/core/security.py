@@ -57,3 +57,23 @@ def generate_password_reset_token() -> str:
 
 def hash_password_reset_token(token: str) -> str:
     return hash_refresh_token(token)
+
+
+def generate_email_verification_token() -> str:
+    """Same shape/hashed-at-rest pattern as a password-reset token."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_email_verification_token(token: str) -> str:
+    return hash_refresh_token(token)
+
+
+def generate_otp_code() -> str:
+    """A short, human-typeable code (unlike the opaque link-tokens above) --
+    the promoter-collaboration OTP is read off an email and typed into a
+    form, not clicked. Zero-padded so it's always exactly 6 digits."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp_code(code: str) -> str:
+    return hash_refresh_token(code)

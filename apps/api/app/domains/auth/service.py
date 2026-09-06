@@ -6,21 +6,27 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.email import EmailNotConfiguredError, send_email
+from app.core.email import EmailNotConfiguredError, send_email, send_html_email
+from app.core.email_templates import render_email
 from app.core.security import (
     create_access_token,
+    generate_email_verification_token,
+    generate_otp_code,
     generate_password_reset_token,
     generate_refresh_token,
+    hash_email_verification_token,
+    hash_otp_code,
     hash_password,
     hash_password_reset_token,
     hash_refresh_token,
     verify_password,
 )
 from app.domains.audit import service as audit_service
-from app.domains.auth.models import PasswordResetToken, Session
+from app.domains.auth.models import EmailVerificationToken, OtpCode, PasswordResetToken, Session
 from app.domains.auth.schemas import RegisterRequest
 from app.domains.organizations.models import Organization
 from app.domains.rbac.service import get_roles_for_user
+from app.domains.users import service as users_service
 from app.domains.users.models import User
 
 settings = get_settings()
@@ -231,6 +237,9 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
     )
     db.add(user)
     await db.flush()
+    # accept_privacy=True is enforced by RegisterRequest's own validator --
+    # this only ever runs once that's already guaranteed true.
+    await users_service.mark_privacy_accepted(db, user=user)
 
     db.add(UserRole(user_id=user.id, organization_id=organization_id, role_id=role.id))
 
@@ -266,7 +275,87 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
     )
     await db.commit()
     await db.refresh(user)
+    await send_verification_email(db, user=user)
     return user
+
+
+EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES = 60 * 24
+
+
+class EmailVerificationError(Exception):
+    pass
+
+
+async def send_verification_email(db: AsyncSession, *, user: User) -> None:
+    """Mandatory-verification gate applies to NEW registrations only (an
+    explicit product decision -- accounts that existed before this feature
+    shipped are grandfathered as already-verified, see the 0026 migration's
+    backfill and docs/business-rules.md#account-gates). Best-effort: an SMTP
+    hiccup here must not break registration itself, which has already
+    committed by the time this runs."""
+    token = generate_email_verification_token()
+    db.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            token_hash=hash_email_verification_token(token),
+            expires_at=datetime.now(UTC) + timedelta(minutes=EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+
+    verify_link = f"{settings.public_app_base_url}/verify-email?token={token}"
+    html = render_email(
+        preheader="Conferma il tuo indirizzo email per attivare il tuo account Lial Energy",
+        heading="Benvenuto in Lial Energy!",
+        body_html=(
+            "<p>Grazie per esserti registrato. Per attivare il tuo account e iniziare a usare la dashboard, "
+            "conferma il tuo indirizzo email cliccando il pulsante qui sotto.</p>"
+            f"<p>Il link è valido per {EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES // 60} ore.</p>"
+        ),
+        cta_label="Conferma la mia email",
+        cta_url=verify_link,
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject="Conferma la tua email - Lial Energy",
+            html_body=html,
+            text_body=f"Conferma il tuo indirizzo email entro {EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES // 60} ore: {verify_link}",
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Verification email for %s (SMTP not configured) -- link: %s", user.email, verify_link)
+
+
+async def verify_email(db: AsyncSession, *, token: str) -> User:
+    token_hash = hash_email_verification_token(token)
+    stmt = select(EmailVerificationToken).where(EmailVerificationToken.token_hash == token_hash)
+    row = (await db.execute(stmt)).scalar_one_or_none()
+
+    if row is None or row.used_at is not None:
+        raise EmailVerificationError("Invalid or already-used verification link")
+    if row.expires_at < datetime.now(UTC):
+        raise EmailVerificationError("This verification link has expired")
+
+    user = await db.get(User, row.user_id)
+    if user is None:
+        raise EmailVerificationError("Invalid or already-used verification link")
+
+    user.email_verified_at = datetime.now(UTC)
+    row.used_at = datetime.now(UTC)
+
+    await audit_service.record(
+        db, organization_id=user.organization_id, actor_user_id=user.id,
+        action="auth.email_verified", entity_type="user", entity_id=str(user.id),
+    )
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def resend_verification_email(db: AsyncSession, *, user: User) -> None:
+    if user.email_verified_at is not None:
+        return
+    await send_verification_email(db, user=user)
 
 
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
@@ -370,3 +459,65 @@ async def reset_password(db: AsyncSession, *, token: str, new_password: str) -> 
         action="password_reset.completed", entity_type="user", entity_id=str(user.id),
     )
     await db.commit()
+
+
+OTP_EXPIRE_MINUTES = 10
+
+# The one purpose this exists for today -- see network/service.py::apply_as_promoter.
+# A separate constant (not a free string at each call site) so a typo can't
+# silently create two disjoint "purposes" for what should be the same gate.
+PROMOTER_APPLICATION_OTP_PURPOSE = "PROMOTER_APPLICATION"
+
+
+async def request_otp(db: AsyncSession, *, user: User, purpose: str, context_line: str) -> None:
+    """Emails a short numeric code the user must type back in to confirm a
+    sensitive self-service action -- see core/security.py::generate_otp_code.
+    Best-effort delivery, same EmailNotConfiguredError fallback as every
+    other email in this module."""
+    code = generate_otp_code()
+    db.add(
+        OtpCode(
+            user_id=user.id,
+            purpose=purpose,
+            code_hash=hash_otp_code(code),
+            expires_at=datetime.now(UTC) + timedelta(minutes=OTP_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+
+    html = render_email(
+        preheader="Il tuo codice di conferma Lial Energy",
+        heading="Codice di conferma",
+        body_html=(
+            f"<p>{context_line}</p>"
+            f'<p style="font-size:28px; font-weight:700; letter-spacing:6px; color:#f97316; margin:20px 0;">{code}</p>'
+            f"<p>Il codice scade tra {OTP_EXPIRE_MINUTES} minuti. Se non hai richiesto tu questo codice, ignora questa email.</p>"
+        ),
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject="Il tuo codice di conferma - Lial Energy",
+            html_body=html,
+            text_body=f"Il tuo codice di conferma: {code} (valido {OTP_EXPIRE_MINUTES} minuti)",
+        )
+    except EmailNotConfiguredError:
+        logger.warning("OTP for %s purpose=%s not sent (SMTP not configured) -- code: %s", user.email, purpose, code)
+
+
+async def verify_otp(db: AsyncSession, *, user_id: uuid.UUID, purpose: str, code: str) -> bool:
+    """Consumes the most recent, still-unused code for this user/purpose --
+    commits the used_at marker immediately on success so the same code can
+    never be replayed, independent of whether the caller's own action
+    (e.g. the promoter application) goes on to succeed or fail."""
+    stmt = (
+        select(OtpCode)
+        .where(OtpCode.user_id == user_id, OtpCode.purpose == purpose, OtpCode.used_at.is_(None))
+        .order_by(OtpCode.created_at.desc())
+    )
+    row = (await db.execute(stmt)).scalars().first()
+    if row is None or row.expires_at < datetime.now(UTC) or row.code_hash != hash_otp_code(code):
+        return False
+    row.used_at = datetime.now(UTC)
+    await db.commit()
+    return True

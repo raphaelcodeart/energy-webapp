@@ -1,16 +1,23 @@
+import logging
 import uuid
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email_templates import render_email
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.network.models import AgentProfile
 from app.domains.notifications import service as notifications_service
+from app.domains.organizations import service as organizations_service
 from app.domains.support.models import Ticket, TicketMessage
 from app.domains.support.schemas import TicketCreate, TicketMessageCreate, TicketStatusUpdate
 from app.domains.users.models import User
+
+logger = logging.getLogger(__name__)
 
 ADMIN_REPLY_ROLE = "ADMIN"
 
@@ -163,7 +170,37 @@ async def create_ticket(
     )
     await db.commit()
     await db.refresh(ticket)
+    await _send_ticket_created_admin_email(db, organization_id=organization_id, ticket=ticket, message=payload.message)
     return ticket
+
+
+async def _send_ticket_created_admin_email(
+    db: AsyncSession, *, organization_id: uuid.UUID, ticket: Ticket, message: str
+) -> None:
+    """Best-effort admin alert -- fires after the ticket is already committed,
+    so an SMTP hiccup never blocks ticket creation itself (the in-app
+    notification above already covers that reliably)."""
+    admin_email = await organizations_service.get_admin_notification_email(db, organization_id=organization_id)
+    html = render_email(
+        preheader=f"Nuovo ticket: {ticket.subject}",
+        heading="Nuovo ticket di supporto",
+        body_html=(
+            f"<p><strong>Oggetto:</strong> {ticket.subject}</p>"
+            f"<p><strong>Categoria:</strong> {ticket.category}</p>"
+            f"<p style=\"white-space:pre-wrap;\">{message[:500]}</p>"
+        ),
+        cta_label="Apri il ticket",
+        cta_url=f"{get_settings().public_app_base_url}/admin/support/{ticket.id}",
+    )
+    try:
+        send_html_email(
+            to=admin_email,
+            subject=f"[Lial Energy] Nuovo ticket: {ticket.subject}",
+            html_body=html,
+            text_body=f"Nuovo ticket: {ticket.subject}\n\n{message[:500]}",
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Ticket-created admin email not sent (SMTP not configured), ticket=%s", ticket.id)
 
 
 async def list_tickets(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:

@@ -14,7 +14,11 @@ from app.domains.auth.schemas import (
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
+from app.domains.users import service as users_service
+from app.domains.users.models import User
+from app.domains.users.schemas import ProfileRead, ProfileUpdate
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -30,11 +34,86 @@ async def get_me(current_user: CurrentUser = Depends(get_current_user), db: Asyn
     PROMOTER immediately, and an admin deactivating a promoter revokes it --
     the customer/promoter area switcher (app-shell.tsx) reads this so it
     appears/disappears right away instead of waiting for the 15-minute access
-    token to naturally expire and refresh."""
+    token to naturally expire and refresh. Also carries the account-gate flags
+    (email_verified/profile_complete/privacy_accepted) the dashboard shell
+    uses to decide whether to show a blocking popup."""
     from app.domains.rbac.service import get_roles_for_user
 
     roles = await get_roles_for_user(db, user_id=current_user.user_id, organization_id=current_user.organization_id)
-    return MeRead(roles=roles)
+    user = await db.get(User, current_user.user_id)
+    return MeRead(
+        roles=roles,
+        email_verified=user is not None and user.email_verified_at is not None,
+        profile_complete=user is not None and users_service.is_profile_complete(user),
+        privacy_accepted=user is not None and user.privacy_accepted_at is not None,
+    )
+
+
+@router.get("/me/profile", response_model=ProfileRead)
+async def get_my_profile(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> ProfileRead:
+    user = await db.get(User, current_user.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return ProfileRead(
+        fiscal_code=user.fiscal_code,
+        residence_street=user.residence_street,
+        residence_city=user.residence_city,
+        residence_province=user.residence_province,
+        residence_postal_code=user.residence_postal_code,
+        residence_country=user.residence_country,
+        is_complete=users_service.is_profile_complete(user),
+    )
+
+
+@router.patch("/me/profile", response_model=ProfileRead)
+async def update_my_profile(
+    payload: ProfileUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProfileRead:
+    """Powers the mandatory profile-completion popup -- see
+    docs/business-rules.md#profile-completion."""
+    try:
+        user = await users_service.update_profile(db, user_id=current_user.user_id, payload=payload)
+    except users_service.ProfileUpdateError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return ProfileRead(
+        fiscal_code=user.fiscal_code,
+        residence_street=user.residence_street,
+        residence_city=user.residence_city,
+        residence_province=user.residence_province,
+        residence_postal_code=user.residence_postal_code,
+        residence_country=user.residence_country,
+        is_complete=users_service.is_profile_complete(user),
+    )
+
+
+@router.post(
+    "/verify-email",
+    dependencies=[Depends(rate_limit("verify-email", max_requests=10, window_seconds=300))],
+)
+async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    try:
+        await auth_service.verify_email(db, token=payload.token)
+    except auth_service.EmailVerificationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit("resend-verification", max_requests=3, window_seconds=300))],
+)
+async def resend_verification(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> dict:
+    user = await db.get(User, current_user.user_id)
+    if user is not None:
+        await auth_service.resend_verification_email(db, user=user)
+    return {"ok": True}
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:

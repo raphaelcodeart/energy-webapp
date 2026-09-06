@@ -527,6 +527,40 @@ export function AdminPromotersPanel({ initialStatusFilter }: { initialStatusFilt
                       </div>
                       <p className="text-[10px] text-slate-500">{a.email ?? "Nessun account collegato"}</p>
                       <p className="text-[10px] text-slate-500">Iscritto: {new Date(a.joined_at).toLocaleDateString("it-IT")}</p>
+                      {a.user_id && (
+                        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                          <span
+                            title={a.email_verified ? "Email verificata" : "Email non verificata"}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                              a.email_verified
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            Email {a.email_verified ? "✓" : "✗"}
+                          </span>
+                          <span
+                            title={a.privacy_accepted ? "Privacy accettata" : "Privacy non accettata"}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                              a.privacy_accepted
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            Privacy {a.privacy_accepted ? "✓" : "✗"}
+                          </span>
+                          <span
+                            title={a.collaboration_accepted_at ? `Contratto accettato il ${new Date(a.collaboration_accepted_at).toLocaleDateString("it-IT")}` : "Contratto di collaborazione non accettato"}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
+                              a.collaboration_accepted_at
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            }`}
+                          >
+                            Contratto {a.collaboration_accepted_at ? "✓" : "✗"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-6 font-mono text-xs">{a.promoter_code}</td>
                     <td className="py-4 px-6">

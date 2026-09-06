@@ -19,6 +19,10 @@ class CustomerRead(BaseModel):
     photo_url: str | None
     display_name: str
     created_at: datetime
+    # Account-gate visibility for the admin (docs/business-rules.md#account-gates)
+    # -- None (not False) when the customer has no login of its own.
+    email_verified: bool | None = None
+    privacy_accepted: bool | None = None
 
 
 class CustomerCreate(BaseModel):

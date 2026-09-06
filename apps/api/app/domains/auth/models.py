@@ -30,3 +30,32 @@ class PasswordResetToken(UUIDPKMixin, TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column()
     used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class EmailVerificationToken(UUIDPKMixin, TimestampMixin, Base):
+    """Same opaque-token/hashed-at-rest pattern as PasswordResetToken -- sent
+    once at self-registration (auth/service.py::register_with_referral), used
+    once by GET /auth/verify-email to set users.email_verified_at."""
+
+    __tablename__ = "email_verification_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column()
+    used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class OtpCode(UUIDPKMixin, TimestampMixin, Base):
+    """A short numeric code emailed to the user to confirm they, and only
+    they, took some sensitive self-service action -- today just the
+    'lavora con noi' collaboration-contract acceptance (see
+    network/service.py::apply_as_promoter). `purpose` keeps this reusable for
+    a future OTP-gated action without a new table."""
+
+    __tablename__ = "otp_codes"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    purpose: Mapped[str] = mapped_column(String(32), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), index=True)
+    expires_at: Mapped[datetime] = mapped_column()
+    used_at: Mapped[datetime | None] = mapped_column(nullable=True)

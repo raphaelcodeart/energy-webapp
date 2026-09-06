@@ -14,7 +14,12 @@ from app.domains.organizations.schemas import OrganizationSettingsUpdate, Paymen
 @pytest.mark.asyncio
 async def test_get_settings_defaults_to_none_when_nothing_set(db, organization_id):
     settings = await organizations_service.get_settings(db, organization_id=organization_id)
-    assert settings == {"bank_iban": None, "bank_account_holder": None, "bank_transfer_instructions": None}
+    assert settings == {
+        "bank_iban": None,
+        "bank_account_holder": None,
+        "bank_transfer_instructions": None,
+        "admin_notification_email": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -33,6 +38,7 @@ async def test_update_settings_merges_and_partial_update_preserves_the_rest(db, 
         "bank_iban": "IT60X0542811101000000123456",
         "bank_account_holder": "Lial Energy Srl",
         "bank_transfer_instructions": None,
+        "admin_notification_email": None,
     }
 
     # Omitting a field (exclude_unset) leaves it exactly as it was.
@@ -58,6 +64,19 @@ async def test_bank_transfer_instructions_field_merges_like_the_others(db, organ
     )
     assert updated["bank_iban"] == "IT66W0883330410000000015702"  # untouched, omitted from this PATCH
     assert updated["bank_transfer_instructions"] == "Includi il codice ordine nella causale."
+
+
+@pytest.mark.asyncio
+async def test_admin_notification_email_defaults_and_can_be_overridden(db, organization_id):
+    default = await organizations_service.get_admin_notification_email(db, organization_id=organization_id)
+    assert default == organizations_service.DEFAULT_ADMIN_NOTIFICATION_EMAIL
+
+    await organizations_service.update_settings(
+        db, organization_id=organization_id,
+        payload=OrganizationSettingsUpdate(admin_notification_email="ops@lialenergy.it"),
+    )
+    overridden = await organizations_service.get_admin_notification_email(db, organization_id=organization_id)
+    assert overridden == "ops@lialenergy.it"
 
 
 @pytest.mark.asyncio

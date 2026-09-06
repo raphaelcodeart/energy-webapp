@@ -29,12 +29,18 @@ class OrganizationSettingsRead(BaseModel):
     # separate from the IBAN itself so an admin can update the wording
     # without re-typing the account number.
     bank_transfer_instructions: str | None
+    # Where the "a new ticket was opened" admin alert email goes (see
+    # support/service.py::create_ticket). Defaults to info@lialenergy.it
+    # (docs/business-rules.md) when unset -- see
+    # organizations/service.py::get_admin_notification_email.
+    admin_notification_email: str | None
 
 
 class OrganizationSettingsUpdate(BaseModel):
     bank_iban: str | None = Field(default=None, max_length=42)
     bank_account_holder: str | None = Field(default=None, max_length=255)
     bank_transfer_instructions: str | None = Field(default=None, max_length=2000)
+    admin_notification_email: str | None = Field(default=None, max_length=255)
 
 
 class PaymentSettingsRead(BaseModel):

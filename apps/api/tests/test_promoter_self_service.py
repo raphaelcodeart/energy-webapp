@@ -9,13 +9,38 @@ docs/implementation-progress.md):
   PENDING_APPROVAL suggestion, bypassing the network.approve gate entirely."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.core.security import hash_password
+from app.core.security import hash_otp_code, hash_password
+from app.domains.auth import service as auth_service
+from app.domains.auth.models import OtpCode
 from app.domains.network import service as network_service
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users.models import User
+
+VALID_OTP_CODE = "123456"
+
+
+async def _apply_as_promoter(db, organization_id, user_id, *, first_name, last_name):
+    """apply_as_promoter() now also requires accept_contract=True and a valid
+    OTP (see network/service.py) -- seed one directly rather than going
+    through the email-sending request_otp() call, which every test here
+    doesn't otherwise care about."""
+    db.add(
+        OtpCode(
+            user_id=user_id,
+            purpose=auth_service.PROMOTER_APPLICATION_OTP_PURPOSE,
+            code_hash=hash_otp_code(VALID_OTP_CODE),
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    )
+    await db.commit()
+    return await network_service.apply_as_promoter(
+        db, organization_id=organization_id, user_id=user_id, first_name=first_name, last_name=last_name,
+        accept_contract=True, otp_code=VALID_OTP_CODE,
+    )
 
 
 async def _get_or_create_role(db, organization_id, *, role_code: str) -> Role:
@@ -60,8 +85,8 @@ async def test_apply_as_promoter_auto_activates_a_brand_new_applicant(db, organi
     await _ensure_promoter_role(db, organization_id)
     customer_user = await _make_user_with_role(db, organization_id, role_code="CUSTOMER")
 
-    agent = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Nuovo", last_name="Promoter",
+    agent = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Nuovo", last_name="Promoter",
     )
 
     assert agent.status == "ACTIVE"
@@ -74,16 +99,16 @@ async def test_reapplying_while_suspended_requires_manual_approval_not_auto_reac
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer_user = await _make_user_with_role(db, organization_id, role_code="CUSTOMER")
 
-    agent = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Sospeso", last_name="Promoter",
+    agent = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Sospeso", last_name="Promoter",
     )
     await network_service.update_agent(
         db, organization_id=organization_id, agent_id=agent.id, first_name=None, last_name=None,
         status_value="SUSPENDED", current_rank_id=None, actor_user_id=admin.id,
     )
 
-    reapplied = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Sospeso", last_name="Promoter",
+    reapplied = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Sospeso", last_name="Promoter",
     )
 
     assert reapplied.status == "PENDING_APPROVAL"
@@ -98,16 +123,16 @@ async def test_reapplying_while_terminated_and_not_blacklisted_still_auto_reacti
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer_user = await _make_user_with_role(db, organization_id, role_code="CUSTOMER")
 
-    agent = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Cessato", last_name="Promoter",
+    agent = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Cessato", last_name="Promoter",
     )
     await network_service.update_agent(
         db, organization_id=organization_id, agent_id=agent.id, first_name=None, last_name=None,
         status_value="TERMINATED", current_rank_id=None, actor_user_id=admin.id,
     )
 
-    reapplied = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Cessato", last_name="Promoter",
+    reapplied = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Cessato", last_name="Promoter",
     )
 
     assert reapplied.status == "ACTIVE"
@@ -119,16 +144,16 @@ async def test_reapplying_while_blacklisted_requires_manual_approval(db, organiz
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer_user = await _make_user_with_role(db, organization_id, role_code="CUSTOMER")
 
-    agent = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Blacklist", last_name="Promoter",
+    agent = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Blacklist", last_name="Promoter",
     )
     await network_service.update_agent(
         db, organization_id=organization_id, agent_id=agent.id, first_name=None, last_name=None,
         status_value="TERMINATED", current_rank_id=None, actor_user_id=admin.id, is_blacklisted=True,
     )
 
-    reapplied = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Blacklist", last_name="Promoter",
+    reapplied = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Blacklist", last_name="Promoter",
     )
 
     assert reapplied.status == "PENDING_APPROVAL"
@@ -162,8 +187,8 @@ async def test_update_agent_still_allows_reactivating_a_suspended_agent(db, orga
     await _ensure_promoter_role(db, organization_id)
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer_user = await _make_user_with_role(db, organization_id, role_code="CUSTOMER")
-    agent = await network_service.apply_as_promoter(
-        db, organization_id=organization_id, user_id=customer_user.id, first_name="Riattiva", last_name="Promoter",
+    agent = await _apply_as_promoter(
+        db, organization_id, customer_user.id, first_name="Riattiva", last_name="Promoter",
     )
     await network_service.update_agent(
         db, organization_id=organization_id, agent_id=agent.id, first_name=None, last_name=None,

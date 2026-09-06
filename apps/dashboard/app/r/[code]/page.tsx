@@ -48,6 +48,7 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [phone, setPhone] = useState("");
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -57,6 +58,10 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
     setSubmitError(null);
     if (password !== passwordConfirm) {
       setSubmitError("Le due password non coincidono.");
+      return;
+    }
+    if (!acceptPrivacy) {
+      setSubmitError("Devi accettare l'informativa sulla privacy per registrarti.");
       return;
     }
     setSubmitting(true);
@@ -74,6 +79,7 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
           last_name: PRIVATE_LIKE.has(kind) ? lastName : null,
           company_name: PRIVATE_LIKE.has(kind) ? null : companyName,
           phone: phone || null,
+          accept_privacy: acceptPrivacy,
         }),
       });
       if (!res.ok) {
@@ -201,11 +207,24 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
                 )}
               </div>
 
+              <label className="flex items-start gap-2.5 text-xs text-slate-400 light:text-slate-500 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={acceptPrivacy}
+                  onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
+                />
+                <span>
+                  Ho letto e accetto l&apos;informativa sulla privacy e il trattamento dei miei dati
+                  personali da parte di Lial Energy, in conformità al Regolamento (UE) 2016/679 (GDPR).
+                </span>
+              </label>
+
               {submitError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{submitError}</div>
               )}
 
-              <button type="submit" disabled={submitting}
+              <button type="submit" disabled={submitting || !acceptPrivacy}
                 className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer mt-2">
                 {submitting ? "Registrazione in corso..." : "Registrati"}
               </button>
@@ -219,6 +238,9 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
             <h2 className="text-lg font-semibold text-white light:text-slate-900 mb-2">Registrazione completata</h2>
+            <p className="text-sm text-slate-400 light:text-slate-500 mb-2">
+              Ti abbiamo inviato un&apos;email di conferma: clicca sul link per attivare il tuo account.
+            </p>
             <p className="text-sm text-slate-400 light:text-slate-500">Verrai reindirizzato al login...</p>
           </div>
         )}

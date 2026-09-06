@@ -41,6 +41,20 @@ class RootPromoterConflictError(NetworkError):
     pass
 
 
+class ContractNotAcceptedError(NetworkError):
+    pass
+
+
+class InvalidOtpError(NetworkError):
+    pass
+
+
+# Bump when the collaboration-agreement wording materially changes -- kept
+# here (not embedded in each acceptance record) so both the acceptance check
+# and the text the frontend shows the user read from one source of truth.
+COLLABORATION_CONTRACT_VERSION = "v1-2026"
+
+
 async def _get_active_ancestors(
     db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, int]]:
@@ -239,9 +253,22 @@ async def _resolve_referring_agent_id(db: AsyncSession, *, organization_id: uuid
 
 
 async def apply_as_promoter(
-    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID, first_name: str, last_name: str
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    first_name: str,
+    last_name: str,
+    accept_contract: bool,
+    otp_code: str,
 ) -> AgentProfile:
     """Self-service 'Lavora con noi': an existing CUSTOMER becomes a PROMOTER.
+
+    Requires accept_contract=True (the collaboration-agreement checkbox) AND
+    a valid otp_code (emailed via POST /network/agents/apply/request-otp,
+    see auth/service.py::request_otp/verify_otp) -- proof that the account
+    holder, not just whoever is logged in, agreed. Checked before any of the
+    branching below so every success path below is guaranteed to have both.
 
     Auto-activates immediately at rank S1, under whichever promoter originally
     referred them (see _resolve_referring_agent_id) -- no admin approval
@@ -261,7 +288,23 @@ async def apply_as_promoter(
     same row in place rather than calling create_agent() again -- a second row
     would make get_own_agent_profile()'s scalar_one_or_none() raise, and would
     orphan a second, disconnected network_nodes row for the same person."""
+    from app.domains.auth import service as auth_service
     from app.domains.rbac import service as rbac_service
+    from app.domains.users.models import User
+
+    if not accept_contract:
+        raise ContractNotAcceptedError("You must accept the collaboration agreement")
+
+    user = await db.get(User, user_id)
+    if user is None:
+        raise NetworkError("User not found")
+    otp_ok = await auth_service.verify_otp(
+        db, user_id=user_id, purpose=auth_service.PROMOTER_APPLICATION_OTP_PURPOSE, code=otp_code
+    )
+    if not otp_ok:
+        raise InvalidOtpError("Invalid or expired confirmation code")
+
+    collaboration_accepted_at = utcnow()
 
     existing = await get_own_agent_profile(db, organization_id=organization_id, user_id=user_id)
     referring_agent_id = await _resolve_referring_agent_id(db, organization_id=organization_id, user_id=user_id)
@@ -288,6 +331,9 @@ async def apply_as_promoter(
             existing.approved_by_user_id = None
             existing.approved_at = None
             existing.rejection_reason = None
+            existing.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
+            existing.collaboration_accepted_at = collaboration_accepted_at
+            existing.collaboration_otp_verified_at = collaboration_accepted_at
             await audit_service.record(
                 db, organization_id=organization_id, actor_user_id=user_id,
                 action="network.agent_reapplied", entity_type="agent_profile", entity_id=str(existing.id),
@@ -305,6 +351,9 @@ async def apply_as_promoter(
         existing.approved_by_user_id = None
         existing.approved_at = utcnow()
         existing.rejection_reason = None
+        existing.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
+        existing.collaboration_accepted_at = collaboration_accepted_at
+        existing.collaboration_otp_verified_at = collaboration_accepted_at
 
         current_parent_id = (
             await db.execute(
@@ -344,6 +393,9 @@ async def apply_as_promoter(
         current_rank_id=rank_id,
         status="ACTIVE",
     )
+    agent.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
+    agent.collaboration_accepted_at = collaboration_accepted_at
+    agent.collaboration_otp_verified_at = collaboration_accepted_at
     await rbac_service.assign_role(db, user_id=user_id, organization_id=organization_id, role_code="PROMOTER")
     await db.commit()
     await db.refresh(agent)
@@ -630,6 +682,9 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             AgentProfile.first_name,
             AgentProfile.last_name,
             AgentProfile.user_id,
+            AgentProfile.collaboration_accepted_at,
+            User.email_verified_at,
+            User.privacy_accepted_at,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -661,6 +716,9 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "first_name": r[12],
             "last_name": r[13],
             "user_id": r[14],
+            "collaboration_accepted_at": r[15],
+            "email_verified": r[16] is not None,
+            "privacy_accepted": r[17] is not None,
         }
         for r in rows
     ]

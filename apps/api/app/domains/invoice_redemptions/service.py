@@ -1,10 +1,14 @@
+import logging
 import secrets
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import utcnow
+from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email_templates import render_email
 from app.core.storage import UploadValidationError
 from app.core.storage import generate_presigned_document_url as storage_presign_document
 from app.core.storage import upload_document as storage_upload_document
@@ -21,6 +25,8 @@ from app.domains.notifications import service as notifications_service
 from app.domains.partners.models import Partner
 from app.domains.users.models import User
 from app.domains.wallets import service as wallets_service
+
+logger = logging.getLogger(__name__)
 
 PRESIGNED_URL_TTL_SECONDS = 300
 
@@ -312,4 +318,30 @@ async def confirm_payment(
     redemption.credited_at = utcnow()
     await db.commit()
     await db.refresh(redemption)
+
+    total_credited_cents = redemption.confirmed_amount_cents + bonus_cents
+    customer_user = await db.get(User, redemption.customer_user_id)
+    if customer_user is not None:
+        html = render_email(
+            preheader="Hai ricevuto un accredito cashback",
+            heading="Cashback accreditato sul tuo wallet",
+            body_html=(
+                f"<p>Il riscatto della fattura {partner_name} è stato confermato.</p>"
+                f"<p style=\"font-size:22px; font-weight:700; color:#f97316; margin:20px 0;\">"
+                f"+{total_credited_cents / 100:.2f} &euro;</p>"
+                "<p>L'importo è già disponibile sul tuo wallet Lial Energy.</p>"
+            ),
+            cta_label="Vai al wallet",
+            cta_url=f"{get_settings().public_app_base_url}/dashboard/wallet",
+        )
+        try:
+            send_html_email(
+                to=customer_user.email,
+                subject="Cashback accreditato - Lial Energy",
+                html_body=html,
+                text_body=f"Cashback accreditato: +{total_credited_cents / 100:.2f} EUR sul tuo wallet Lial Energy.",
+            )
+        except EmailNotConfiguredError:
+            logger.warning("Cashback-credited email not sent (SMTP not configured), redemption=%s", redemption.id)
+
     return redemption

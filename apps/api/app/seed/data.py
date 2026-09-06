@@ -107,12 +107,23 @@ async def run() -> None:
         await db.flush()
 
         def make_user(email: str, password: str, role_codes: list[str]) -> User:
+            # Demo accounts must never trip the account-gate popups (mandatory
+            # email verification / profile completion, see
+            # app/domains/users/service.py::is_profile_complete) -- they're
+            # meant to be usable immediately for demos/docs/screenshots.
             user = User(
                 organization_id=org_id,
                 email=email,
                 password_hash=hash_password(password),
                 status="ACTIVE",
                 email_verified_at=FIXED_NOW,
+                privacy_accepted_at=FIXED_NOW,
+                fiscal_code="RSSMRA80A01H501U",
+                residence_street="Via Roma 1",
+                residence_city="Roma",
+                residence_province="RM",
+                residence_postal_code="00100",
+                residence_country="IT",
             )
             db.add(user)
             return user
