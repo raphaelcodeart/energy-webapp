@@ -604,6 +604,19 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   verifies against the uploaded document before anything is unlocked. This
   is a deliberate simplification, not a stub -- the flow is fully functional
   without automated reading, just slower per-request for the admin.
+- **Real partners configured (Session 31)**: the org previously had zero
+  `Partner` rows -- the redemption dropdown was empty and the "Nuova
+  richiesta" button correctly disabled itself (see the empty-state fix
+  earlier in this same file's history). Three real partners were added via
+  the existing `POST /partners` admin endpoint: **Lial Energy** itself
+  (deliberately included first -- lets a customer redeem cashback on their
+  own Lial Energy bill too, not only on an external supplier's), **Eviso**,
+  and **Aenergy**. Logos: Lial Energy's own (`lialenergy.it/img/logo.png`)
+  and a verified real Eviso logo (hotlinked from `eviso.it`, visually
+  confirmed before use) are set; Aenergy's `logo_url` was deliberately left
+  `null` rather than guessing at an unverified company/logo for a
+  real third-party trademark shown to customers -- set it via the admin
+  Partner panel once the correct one is confirmed.
 - **Where the document lives**: NOT the `documents` table (that one's
   `contract_id` is NOT NULL by design, for contract KYC documents) --
   `invoice_redemptions` carries its own `storage_key` in the same private

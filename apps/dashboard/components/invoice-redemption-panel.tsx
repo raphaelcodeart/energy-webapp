@@ -123,7 +123,7 @@ export function InvoiceRedemptionPanel() {
           </button>
         </div>
         <p className="text-xs text-slate-500">
-          Hai già pagato una bolletta a uno dei nostri fornitori partner? Carica la foto e riscatta il suo valore in
+          Hai già pagato una bolletta/fattura a uno dei nostri fornitori partner? Carica la foto e riscatta il suo valore in
           crediti, pagando solo il 3% del totale — riceverai il 100% + un ulteriore 3% di bonus.
         </p>
 

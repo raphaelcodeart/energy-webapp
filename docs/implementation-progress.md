@@ -4,6 +4,26 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 31 — 2026-09-07 — Cashback copy fix, real Partner data seeded
+
+Small, quick follow-up:
+
+- `invoice-redemption-panel.tsx`: "Hai già pagato una bolletta..." →
+  "...bolletta/fattura..." per explicit wording request.
+- Seeded the org's first three real `Partner` rows via the existing
+  `POST /partners` admin endpoint (no code change needed -- the CRUD and
+  the customer-facing dropdown/empty-state already existed, just unused
+  until now): **Lial Energy** (so a customer can redeem cashback on their
+  own Lial Energy bill, not only an external supplier's), **Eviso** (real
+  logo verified and hotlinked from `eviso.it`), **Aenergy** (name only --
+  deliberately no logo, see business-rules.md#partner-invoice-cashback for
+  why). This also un-disables the "Nuova richiesta" button, which Session
+  30's parallel-agent fix had correctly disabled while the partner list
+  was empty.
+- Verified: dashboard rebuilt/redeployed, live `GET /api/partners` confirms
+  all three rows with `is_active: true`. No backend code changed this
+  session, so no new tests/migration/schema-dump needed.
+
 ## Session 30 — 2026-09-06 (same day, continued) — Self-service Lial Energy contract activation ("Attiva Contratto")
 
 The user's follow-up after Session 29 confirmed contracts were staff-only:
