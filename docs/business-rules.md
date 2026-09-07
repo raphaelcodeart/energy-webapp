@@ -560,7 +560,16 @@ money, by design.
   accepted, documented outcome, not a bug. A `REVERSAL` row can never itself
   be reversed.
 - **Notifications**: the recipient of a credit or transfer gets an in-app
-  notification (`CASHBACK_RECEIVED` / `WALLET_TRANSFER_RECEIVED`).
+  notification (`CASHBACK_RECEIVED` / `WALLET_TRANSFER_RECEIVED`). An
+  `ADMIN_CREDIT` (the "Ricarica" top-up above) also gets a branded email
+  (`wallets/service.py::credit_wallet` → `_send_wallet_credited_email`,
+  added Session 32) -- best-effort, fires after the credit is already
+  committed. The one exception: a partner-invoice cashback credit
+  (`reference_invoice_redemption_id` set) is skipped here on purpose, since
+  `invoice_redemptions/service.py::confirm_payment` already sends its own
+  richer email (partner name, base+bonus split) right after calling
+  `credit_wallet()` -- this flag is exactly how the two are told apart, so
+  a redemption credit never doubles up on emails.
 - **Admin visibility**: `GET /wallets/admin` lists every wallet's balance
   org-wide; `GET /wallets/admin/{user_id}` and
   `GET /wallets/admin/{user_id}/transactions` show one user's wallet and

@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 
@@ -5,6 +6,8 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email_templates import render_email
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
@@ -13,6 +16,8 @@ from app.domains.notifications import service as notifications_service
 from app.domains.rbac import service as rbac_service
 from app.domains.users.models import User
 from app.domains.wallets.models import Wallet, WalletTransaction
+
+logger = logging.getLogger(__name__)
 
 
 class WalletError(Exception):
@@ -166,7 +171,57 @@ async def credit_wallet(
             return existing
         raise
     await db.refresh(txn)
+
+    # A partner-invoice cashback credit already gets its own, richer email
+    # (with the partner name and the base/bonus split) from
+    # invoice_redemptions/service.py::confirm_payment, right after it calls
+    # this function twice -- reference_invoice_redemption_id being set is
+    # exactly how this function tells the two cases apart, so that flow
+    # never ends up sending the customer two emails for one credit.
+    if reference_invoice_redemption_id is None:
+        await _send_wallet_credited_email(db, user_id=wallet.user_id, amount_cents=amount_cents, note=note)
     return txn
+
+
+async def _send_wallet_credited_email(
+    db: AsyncSession, *, user_id: uuid.UUID, amount_cents: int, note: str | None
+) -> None:
+    """Best-effort, fires after the credit is already committed -- an SMTP
+    hiccup here must never undo money that has already landed in the
+    wallet. Covers every credit_wallet() caller except the invoice-
+    redemption cashback flow (see the caller above, which already sends its
+    own): today that's the admin "Ricarica" top-up (POST /wallets/admin/topup)."""
+    from app.core.config import get_settings
+
+    user = await db.get(User, user_id)
+    if user is None:
+        return
+
+    body_html = (
+        "<p>Il tuo wallet Lial Energy è stato ricaricato.</p>"
+        f'<p style="font-size:22px; font-weight:700; color:#f97316; margin:20px 0;">'
+        f"+{amount_cents / 100:.2f} &euro;</p>"
+    )
+    if note:
+        body_html += f"<p>{note}</p>"
+    body_html += "<p>L'importo è già disponibile per i tuoi acquisti sul tuo wallet Lial Energy.</p>"
+
+    html = render_email(
+        preheader="Hai ricevuto un accredito sul tuo wallet",
+        heading="Wallet ricaricato",
+        body_html=body_html,
+        cta_label="Vai al wallet",
+        cta_url=f"{get_settings().public_app_base_url}/dashboard/wallet",
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject="Ricarica wallet - Lial Energy",
+            html_body=html,
+            text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} EUR.",
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Wallet-credited email not sent for user %s (SMTP not configured)", user_id)
 
 
 async def debit_and_transfer(

@@ -4,6 +4,32 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
+
+The Session 27 cashback email only covered the partner-invoice redemption
+flow (`invoice_redemptions/service.py::confirm_payment`) -- a plain admin
+"Ricarica" top-up (`POST /wallets/admin/topup`) had no email at all, only
+the existing in-app notification. Both routes actually converge on the same
+`wallets/service.py::credit_wallet()`, so the email was added there instead
+of per-caller:
+
+- New `_send_wallet_credited_email()` (same branded-template mechanism as
+  every other email in this project), called from `credit_wallet()` after
+  the credit already committed -- best-effort, an SMTP hiccup can't undo
+  money that's already landed.
+- Guarded by `reference_invoice_redemption_id is None` so the two email
+  sources never double up for the same credit: a redemption's own two
+  `credit_wallet()` calls (base + bonus) both set that reference, and its
+  caller already sends a richer, redemption-specific email right after --
+  see business-rules.md#internal-wallet.
+- Two new tests (`test_credit_wallet_sends_email_for_a_plain_top_up`,
+  `test_credit_wallet_skips_email_when_already_sent_by_invoice_redemptions`)
+  assert the routing itself via `unittest.mock.patch` on
+  `_send_wallet_credited_email`, since SMTP isn't configured in the test
+  environment (both paths would otherwise just log a warning and look
+  identical). Full suite 164/164 passing, ruff/mypy clean. Rebuilt/
+  redeployed api+celery images, confirmed healthy.
+
 ## Session 31 — 2026-09-07 — Cashback copy fix, real Partner data seeded
 
 Small, quick follow-up:
