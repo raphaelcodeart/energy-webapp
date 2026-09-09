@@ -692,6 +692,28 @@ probabilmente il problema è un altro. Documentati per intero in
     `POST` esistente (branch multipart-vs-JSON identico). Se un pulsante di
     salvataggio sembra non fare nulla, verifica prima con `curl -X PATCH
     https://tuodominio/api/proxy/<risorsa>` che il proxy risponda 200, non 405.
+15. **(Session 33) Il webhook Stripe risponde SEMPRE 404, un pagamento con
+    carta va a buon fine su Stripe ma l'ordine resta bloccato su "in attesa
+    di pagamento" per sempre**: l'endpoint webhook registrato su Stripe è
+    `/api/payments/stripe/webhook/{organization_id}` -- ma `/api/*` in
+    questo file è di competenza esclusiva del BFF del dashboard (vedi bug
+    #7), non del backend FastAPI, che infatti espone quella stessa rotta
+    (montata con `prefix="/api"` in `main.py`) senza che nginx la inoltri
+    mai lì. Confermato nel log di accesso di nginx: ogni consegna webhook
+    arriva con user agent `Stripe/1.0` e riceve 404, e Stripe segna
+    l'evento come `pending_webhooks: 1` (mai consegnato con successo).
+    **Nessun ordine pagato con carta è mai stato confermato automaticamente
+    prima di questo fix** -- solo riconciliati a mano chiamando
+    `mark_paid_via_stripe()` direttamente. Fix: aggiunto un blocco
+    `location /api/payments/stripe/webhook/` DEDICATO in `nginx.conf`, più
+    specifico (nginx sceglie il prefisso più lungo tra location semplici,
+    quindi vince su `location /` indipendentemente dall'ordine di
+    dichiarazione) che inoltra dritto ad `api:8000` con variabile +
+    resolver (non target statico come `/backend/`, perché un webhook deve
+    restare funzionante anche dopo che il container `api` viene ricreato
+    con un IP diverso, non solo per un uso da sviluppatore). Dopo il fix,
+    verifica con `curl -X POST https://tuodominio/api/payments/stripe/webhook/<org-id>`
+    che risponda 400 (firma mancante attesa), mai 404.
 
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
 risolto, per lo stesso motivo per cui questi lo sono.

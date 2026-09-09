@@ -679,6 +679,12 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   is what a SUPER_ADMIN pastes into their own Stripe Dashboard's webhook
   config, and is what keeps one endpoint correct for every tenant in
   principle, even though this deployment currently has one organization.
+  **Needs a dedicated nginx location to actually be reachable (bug found and
+  fixed Session 33)**: this route lives under `/api/`, which nginx normally
+  routes entirely to the dashboard's BFF, not FastAPI -- see
+  `infrastructure/nginx/nginx.conf`'s `location /api/payments/stripe/webhook/`
+  and `server-migration-guide.md §8` bug #15. Without it every webhook
+  delivery 404s and no card order/redemption is ever auto-confirmed.
 - **Redemption fee now also payable by card, with a proof-upload option for
   bank transfer (Session 33)**: originally the 3% redemption fee could only
   be paid by bank transfer with a reference code, manually reconciled by an

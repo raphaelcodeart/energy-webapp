@@ -143,6 +143,42 @@ found two real gaps, both fixed:
   frontend build clean. Test data cleaned up. Rebuilt/redeployed
   api+celery-worker images (no schema change, no new migration needed).
 
+### Session 33 (same day, continued) — Two real production incidents, both found and fixed live
+
+**Incident 1 (self-inflicted)**: a live-verification script for the invoice-
+redemption Stripe flow set placeholder Stripe keys (`sk_test_verify`/
+`pk_test_verify`) on the real organization to test the checkout-session code
+path without hitting the real Stripe API, then the cleanup afterward only
+deleted the synthetic test rows it had inserted -- it never restored the org's
+real Stripe keys, since that mutation was to a pre-existing shared row, not
+something the usual "delete what I created" cleanup pattern covers. This
+silently broke real "Paga con carta" until the user reported the failure in a
+later turn. Fixed by clearing the broken keys (hiding the card option rather
+than showing an error) until the user supplied their real keys, which were
+then set and verified against the live Stripe API
+(`stripe.Account.retrieve()`). Saved as a standing memory
+(`lialenergy-live-verification-safety`) so future live-DB verification never
+mutates a shared settings row without capturing and restoring its prior value.
+
+**Incident 2 (pre-existing, unrelated to this session's own changes)**: while
+confirming the Stripe-key fix actually worked, the user asked whether a real
+test order had actually been marked paid -- it hadn't. Investigation (`nginx`
+access log, Stripe's own Event/WebhookEndpoint API) found the Stripe webhook
+endpoint had been registered pointing at `/api/payments/stripe/webhook/{id}`,
+a path nginx routes entirely to the dashboard's BFF, not FastAPI -- **every
+webhook delivery had been 404ing since the endpoint was first registered**,
+meaning no card payment (order or invoice-redemption fee) had ever been
+auto-confirmed by the real webhook; every prior "PAID via Stripe" order had
+actually been reconciled by a human/script calling `mark_paid_via_stripe()`
+directly. Fixed with a dedicated, more-specific `location
+/api/payments/stripe/webhook/` block in `infrastructure/nginx/nginx.conf`
+(variable + resolver, not a static target, so it survives the api container
+being recreated) -- verified live (`curl -X POST .../payments/stripe/webhook/<id>`
+now returns 400 "missing signature" instead of 404). The one real, currently-
+pending stuck order (confirmed genuinely paid via a direct Stripe API check)
+was reconciled the same way. See `server-migration-guide.md §8` bug #15 and
+`business-rules.md §Partner-invoice-cashback`.
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption
