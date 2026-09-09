@@ -495,7 +495,7 @@ async def _send_order_paid_email(
         heading="Pagamento completato con successo",
         body_html=body_html,
         cta_label="Vai ai miei ordini",
-        cta_url=f"{get_settings().public_app_base_url}/customer",
+        cta_url=f"{get_settings().public_app_base_url}/customer?tab=orders",
     )
     try:
         send_html_email(

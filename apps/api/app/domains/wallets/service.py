@@ -202,12 +202,12 @@ async def _send_wallet_credited_email(
         return
 
     body_html = (
-        "<p>Il tuo wallet Lial Energy è stato ricaricato.</p>"
+        "<p>Un amministratore ha accreditato manualmente il tuo wallet Lial Energy.</p>"
         f'<p style="font-size:22px; font-weight:700; color:#f97316; margin:20px 0;">'
-        f"+{amount_cents / 100:.2f} &euro;</p>"
+        f"+{amount_cents / 100:.2f} LialCash</p>"
     )
     if note:
-        body_html += f"<p>{note}</p>"
+        body_html += f"<p><strong>Nota:</strong> {note}</p>"
     body_html += "<p>L'importo è già disponibile per i tuoi acquisti sul tuo wallet Lial Energy.</p>"
 
     html = render_email(
@@ -215,14 +215,14 @@ async def _send_wallet_credited_email(
         heading="Wallet ricaricato",
         body_html=body_html,
         cta_label="Vai al wallet",
-        cta_url=f"{get_settings().public_app_base_url}/dashboard/wallet",
+        cta_url=f"{get_settings().public_app_base_url}/customer?tab=wallet",
     )
     try:
         send_html_email(
             to=user.email,
             subject="Ricarica wallet - Lial Energy",
             html_body=html,
-            text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} EUR.",
+            text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} LialCash.",
         )
     except EmailNotConfiguredError:
         logger.warning("Wallet-credited email not sent for user %s (SMTP not configured)", user_id)

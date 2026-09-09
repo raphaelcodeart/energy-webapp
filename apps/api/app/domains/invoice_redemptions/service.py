@@ -303,7 +303,7 @@ async def verify(
                 "sul tuo wallet Lial Energy.</p>"
             ),
             cta_label="Vai al riscatto cashback",
-            cta_url=f"{get_settings().public_app_base_url}/customer",
+            cta_url=f"{get_settings().public_app_base_url}/customer?tab=cashback",
         )
         try:
             send_html_email(
@@ -358,7 +358,7 @@ async def reject(
                 "contatta l'assistenza.</p>"
             ),
             cta_label="Vai al riscatto cashback",
-            cta_url=f"{get_settings().public_app_base_url}/customer",
+            cta_url=f"{get_settings().public_app_base_url}/customer?tab=cashback",
         )
         try:
             send_html_email(
@@ -504,7 +504,7 @@ async def _credit_redemption(
                 "<p>L'importo è già disponibile sul tuo wallet Lial Energy.</p>"
             ),
             cta_label="Vai al wallet",
-            cta_url=f"{get_settings().public_app_base_url}/customer",
+            cta_url=f"{get_settings().public_app_base_url}/customer?tab=wallet",
         )
         try:
             send_html_email(

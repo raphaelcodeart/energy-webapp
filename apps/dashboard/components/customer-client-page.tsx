@@ -288,12 +288,22 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
   // usually within a couple of seconds) updates without a manual reload. The
   // query params are stripped right after reading them so a page refresh
   // doesn't re-trigger the banner.
+  const VALID_TABS = [
+    "lial-contracts", "contracts", "products", "orders", "support",
+    "promoter-application", "documentation", "wallet", "cashback", "accounting",
+  ] as const;
+
   useEffect(() => {
     const payment = searchParams.get("payment");
     const tab = searchParams.get("tab");
-    if (!payment && tab !== "orders" && tab !== "cashback") return;
+    const isValidTab = (VALID_TABS as readonly string[]).includes(tab ?? "");
+    if (!payment && !isValidTab) return;
 
-    if (tab === "orders" || tab === "cashback") setActiveTab(tab);
+    // A plain deep-link from an email ("Vai al wallet" etc, ?tab=wallet, no
+    // ?payment=) just switches tab -- only a Stripe Checkout return
+    // (?payment=success|cancelled, always paired with tab=orders|cashback)
+    // also shows the payment banner and refetches.
+    if (isValidTab) setActiveTab(tab as typeof activeTab);
     const queryKey = tab === "cashback" ? ["invoice-redemptions", "mine"] : ["customer", "orders"];
     if (payment === "success" || payment === "cancelled") {
       setPaymentBanner(payment);

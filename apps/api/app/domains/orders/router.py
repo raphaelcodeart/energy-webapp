@@ -11,6 +11,7 @@ from app.domains.orders.schemas import (
     CheckoutSessionRead,
     OrderCancelRequest,
     OrderCreateRequest,
+    OrderCreditOtpRequest,
     OrderPaymentMethodUpdate,
     OrderQuoteRead,
     OrderRead,
@@ -108,6 +109,7 @@ async def create_order(
     dependencies=[Depends(rate_limit("order-credit-otp", max_requests=5, window_seconds=300))],
 )
 async def request_my_order_credit_otp(
+    payload: OrderCreditOtpRequest,
     current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Emails the OTP code POST /orders/mine must be given (via otp_code)
@@ -115,16 +117,34 @@ async def request_my_order_credit_otp(
     -- see auth/service.py::request_otp and
     orders/service.py::create_order. Same "prove you still control the
     inbox before this sensitive self-service action goes through" pattern
-    as POST /agents/apply/request-otp."""
+    as POST /agents/apply/request-otp.
+
+    product_version_id/credit_applied_cents are used only to look up the
+    product's real name and price server-side (never a client-supplied
+    display string) so the emailed code clearly states what it's
+    confirming -- product, order value, LialCash amount -- per the user's
+    explicit request that this email never be generic."""
     from app.domains.auth import service as auth_service
     from app.domains.users.models import User
 
     user = await db.get(User, current_user.user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    try:
+        quote = await orders_service.get_quote(
+            db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id,
+            product_version_id=payload.product_version_id,
+        )
+    except orders_service.OrderError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    context_line = (
+        f"Stai per acquistare <strong>{quote['product_name']}</strong> "
+        f"(ordine da {quote['amount_cents'] / 100:.2f} &euro;) e utilizzare "
+        f"<strong>{payload.credit_applied_cents / 100:.2f} LialCash</strong> dal tuo wallet "
+        "per pagarne una parte. Usa questo codice per confermare l'operazione."
+    )
     await auth_service.request_otp(
-        db, user=user, purpose=auth_service.WALLET_CREDIT_SPEND_OTP_PURPOSE,
-        context_line="Usa questo codice per confermare l'utilizzo dei tuoi LialCash su questo ordine.",
+        db, user=user, purpose=auth_service.WALLET_CREDIT_SPEND_OTP_PURPOSE, context_line=context_line,
     )
     return {"ok": True}
 

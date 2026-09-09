@@ -89,6 +89,17 @@ class OrderSelfCreateRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+class OrderCreditOtpRequest(BaseModel):
+    """POST /orders/mine/request-credit-otp -- product_version_id and
+    credit_applied_cents are used ONLY to look up the product name/price
+    server-side (never trusted client display strings) so the emailed OTP
+    can say exactly what it's confirming: which product, the order's value,
+    and how much LialCash is about to be spent."""
+
+    product_version_id: uuid.UUID
+    credit_applied_cents: int = Field(gt=0)
+
+
 class OrderCancelRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 

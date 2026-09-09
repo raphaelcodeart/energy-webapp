@@ -1,4 +1,7 @@
-"""Minimal SMTP email sending, used only for password-reset links today.
+"""Minimal SMTP email sending -- the one primitive every branded email in
+this project (password reset, OTP codes, cashback credited, order/redemption
+notifications, ...) is built on top of, via core/email_templates.py::
+render_email() for the HTML body.
 
 No email infrastructure existed anywhere in this project before this. Rather
 than fake it or block the whole password-reset feature on procuring an SMTP
@@ -17,24 +20,6 @@ settings = get_settings()
 
 class EmailNotConfiguredError(Exception):
     pass
-
-
-def send_email(*, to: str, subject: str, body: str) -> None:
-    if not settings.smtp_host:
-        raise EmailNotConfiguredError("SMTP is not configured (smtp_host is empty)")
-
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings.smtp_from_address
-    message["To"] = to
-    message.set_content(body)
-
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
-        if settings.smtp_username:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
 
 
 def send_html_email(*, to: str, subject: str, html_body: str, text_body: str) -> None:

@@ -96,7 +96,11 @@ export function ProductCheckoutModal({
     setOtpRequesting(true);
     setOtpError(null);
     try {
-      const res = await fetch("/api/proxy/orders/mine/request-credit-otp", { method: "POST" });
+      const res = await fetch("/api/proxy/orders/mine/request-credit-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_version_id: productVersionId, credit_applied_cents: creditCents }),
+      });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       setOtpRequested(true);
     } catch (err: any) {

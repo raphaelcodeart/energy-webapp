@@ -101,6 +101,48 @@ includes every column above). Rebuilt/redeployed api+celery-worker+dashboard
 images, migrations `0031_order_cashback`/`0032_invoice_redemption_payment`
 applied to the live dev database.
 
+### Session 33 (same day, continued) — Email consistency audit
+
+The user asked for a full recap of every situation LialCash lands on a
+wallet (product order cashback, invoice-redemption cashback, manual admin
+top-up) and confirmation each one sends a well-detailed branded email --
+including password reset "like every other email". Auditing that claim
+found two real gaps, both fixed:
+
+- **Password reset was still plain text** (`core/email.py::send_email()`,
+  a separate, older primitive predating the branded-template system) --
+  the one email in the platform that never got migrated to
+  `render_email()`/`send_html_email()`. Now uses the exact same path as
+  every other email (logo, CTA button, consistent styling). The now-fully-
+  unused `send_email()` plain-text helper was removed rather than left as
+  dead code.
+- **The wallet-top-up email still said "&euro;" and linked to a
+  non-existent `/dashboard/wallet` route** (leftover from before the
+  LialCash rebrand and from before this app's actual route structure --
+  wallet is a tab inside `/customer`, not its own page). Fixed to LialCash
+  wording, a working deep link, and an explicit "un amministratore ha
+  accreditato manualmente" line so it's clearly distinguishable from an
+  order/redemption cashback email.
+- **The OTP email for spending wallet credit at checkout was generic**
+  ("Usa questo codice per confermare l'utilizzo dei tuoi LialCash su questo
+  ordine", no product/amount) -- the user specifically asked for it to name
+  the product, the order's value, and the LialCash amount involved. `POST
+  /orders/mine/request-credit-otp` now takes `product_version_id`/
+  `credit_applied_cents` in its body, looks the product up server-side
+  (never trusting a client-supplied display string), and builds a fully
+  detailed confirmation message.
+- Generalized the "deep-link back into a specific dashboard tab from an
+  email" mechanism in `customer-client-page.tsx` (previously handled only
+  `tab=orders`/`tab=cashback` for the Stripe-return flow) so every email's
+  CTA button (`?tab=wallet`, `?tab=orders`, `?tab=cashback`) now actually
+  lands on the right tab instead of just the dashboard home.
+- Verified live: `request_password_reset` runs the new HTML path without
+  error, the OTP context line correctly includes a real product name/order
+  value/credit amount pulled from `get_quote()`, `render_email()` output
+  always contains the logo. 198/198 tests still passing, ruff/mypy clean,
+  frontend build clean. Test data cleaned up. Rebuilt/redeployed
+  api+celery-worker images (no schema change, no new migration needed).
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption

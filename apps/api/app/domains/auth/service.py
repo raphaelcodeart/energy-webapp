@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.email import EmailNotConfiguredError, send_email, send_html_email
+from app.core.email import EmailNotConfiguredError, send_html_email
 from app.core.email_templates import render_email
 from app.core.security import (
     create_access_token,
@@ -416,14 +416,29 @@ async def request_password_reset(
     )
 
     reset_link = f"{settings.public_app_base_url}/reset-password?token={token}"
-    body = (
-        "Hai richiesto di reimpostare la password del tuo account Lial Energy.\n\n"
-        f"Apri questo link entro {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti per scegliere una nuova password:\n"
-        f"{reset_link}\n\n"
-        "Se non hai richiesto tu questa operazione, ignora questa email."
+    html = render_email(
+        preheader="Reimposta la tua password Lial Energy",
+        heading="Reimposta la tua password",
+        body_html=(
+            "<p>Hai richiesto di reimpostare la password del tuo account Lial Energy.</p>"
+            f"<p>Il link scade tra {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti. Se non hai richiesto tu "
+            "questa operazione, ignora questa email: la tua password resterà invariata.</p>"
+        ),
+        cta_label="Scegli una nuova password",
+        cta_url=reset_link,
     )
     try:
-        send_email(to=email, subject="Reimposta la tua password - Lial Energy", body=body)
+        send_html_email(
+            to=email,
+            subject="Reimposta la tua password - Lial Energy",
+            html_body=html,
+            text_body=(
+                "Hai richiesto di reimpostare la password del tuo account Lial Energy.\n\n"
+                f"Apri questo link entro {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti per scegliere una nuova password:\n"
+                f"{reset_link}\n\n"
+                "Se non hai richiesto tu questa operazione, ignora questa email."
+            ),
+        )
         delivery = "sent"
     except EmailNotConfiguredError:
         # No SMTP configured yet. The token/link is deliberately NOT written

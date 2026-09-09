@@ -131,7 +131,13 @@
     wallet at checkout. The staff endpoint (`POST /orders`, `wallet.manage`-
     gated) is exempt by design: an admin applying a customer's credit on
     their behalf is already an audited, permissioned action, and the OTP
-    would land in the customer's inbox, not the admin's.
+    would land in the customer's inbox, not the admin's. The OTP request
+    endpoint takes `product_version_id`/`credit_applied_cents` in its body
+    purely to look up the real product name and price **server-side** (never
+    a client-supplied display string) and include them in the emailed code's
+    message, so the customer sees exactly what they're confirming -- which
+    product, the order's value, how much LialCash is about to be spent --
+    never a generic "confirm this action" line.
   - **Cashback can only ever be minted against a real, confirmed charge
     (Session 33)**: both the per-product "riscuoti subito cashback"
     (`orders`) and the partner-invoice redemption bonus

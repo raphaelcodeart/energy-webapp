@@ -512,6 +512,14 @@ See `database-model.md §7` for the table shape. Behavior:
   reading its reset link. This is a genuine, working fallback, not a stub: the
   link is real and valid the moment it's generated, only its delivery channel
   differs.
+- **Branded HTML email (fixed Session 33)**: this was the one email in the
+  whole platform still sent as plain text via a separate, since-removed
+  `core/email.py::send_email()` helper -- every other email (OTP codes,
+  cashback credited, order/redemption notifications, ...) already used the
+  shared branded template (`core/email_templates.py::render_email`, logo +
+  consistent styling + a CTA button). Password reset now uses the exact
+  same `send_html_email`/`render_email` path as everything else, so it is
+  never the odd one out.
 - `POST /auth/reset-password` (token + new password) revokes every active session
   for that user on success -- a password reset is exactly the moment to assume the
   old password may have leaked, so anyone still logged in with it is logged out.
