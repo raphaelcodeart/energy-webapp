@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
@@ -216,6 +217,41 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const [paymentBanner, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
+
+  // Landing back here from Stripe Checkout (success_url/cancel_url set by
+  // customer-orders-panel.tsx's "Paga con carta") -- switch to "I miei
+  // Ordini", show a banner, and refetch so the order's status (still
+  // AWAITING_PAYMENT until the webhook lands, usually within a couple of
+  // seconds) updates without a manual reload. The query params are stripped
+  // right after reading them so a page refresh doesn't re-trigger the banner.
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    const tab = searchParams.get("tab");
+    if (!payment && tab !== "orders") return;
+
+    if (tab === "orders") setActiveTab("orders");
+    if (payment === "success" || payment === "cancelled") {
+      setPaymentBanner(payment);
+      queryClient.invalidateQueries({ queryKey: ["customer", "orders"] });
+    }
+    router.replace("/customer", { scroll: false });
+
+    if (payment === "success") {
+      // The webhook is usually near-instant but not guaranteed to have
+      // landed by the time Stripe redirects back -- one extra refetch a
+      // couple seconds later catches the order flipping to PAID without
+      // requiring the customer to refresh manually.
+      const timer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["customer", "orders"] });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { data: contracts = initialContracts } = useQuery({
     queryKey: ["customer", "contracts", "mine"],
     queryFn: fetchMyContracts,
@@ -459,6 +495,40 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
       {activeTab === "orders" && (
         <div className="space-y-6">
           <SectionBanner image="products" alt="I miei Ordini" />
+          {paymentBanner === "success" && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm animate-fade-in">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-semibold">Pagamento completato con successo!</p>
+                <p className="text-emerald-400/80 text-xs mt-0.5">
+                  L&apos;ordine si aggiorna automaticamente a &ldquo;Pagato&rdquo; non appena Stripe conferma -- di solito pochi secondi.
+                </p>
+              </div>
+              <button onClick={() => setPaymentBanner(null)} className="p-1 hover:bg-emerald-500/10 rounded-lg cursor-pointer shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+          {paymentBanner === "cancelled" && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm animate-fade-in">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-semibold">Pagamento non completato</p>
+                <p className="text-amber-400/80 text-xs mt-0.5">Puoi riprovare quando vuoi dal tuo ordine qui sotto.</p>
+              </div>
+              <button onClick={() => setPaymentBanner(null)} className="p-1 hover:bg-amber-500/10 rounded-lg cursor-pointer shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
           <CustomerOrdersPanel />
         </div>
       )}

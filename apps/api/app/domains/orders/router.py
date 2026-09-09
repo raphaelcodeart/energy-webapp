@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -10,9 +10,11 @@ from app.domains.orders.schemas import (
     CheckoutSessionRead,
     OrderCancelRequest,
     OrderCreateRequest,
+    OrderPaymentMethodUpdate,
     OrderQuoteRead,
     OrderRead,
     OrderSelfCreateRequest,
+    PaymentProofUrlRead,
 )
 from app.domains.payments import service as payments_service
 from app.domains.wallets import service as wallets_service
@@ -152,6 +154,73 @@ async def create_my_order_checkout_session(
     return CheckoutSessionRead(checkout_url=checkout_url)
 
 
+@router.patch("/mine/{order_id}/payment-method", response_model=OrderRead)
+async def change_my_order_payment_method(
+    order_id: uuid.UUID,
+    payload: OrderPaymentMethodUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrderRead:
+    """"Paga con carta invece" / "Paga con bonifico invece" on an order the
+    customer already placed -- only their own, only while still
+    AWAITING_PAYMENT (see orders/service.py::change_payment_method)."""
+    order = await orders_service.get_owned(
+        db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id, order_id=order_id
+    )
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    try:
+        order = await orders_service.change_payment_method(
+            db, organization_id=current_user.organization_id, order=order,
+            new_payment_method=payload.payment_method,
+        )
+    except (orders_service.InvalidOrderStateError, orders_service.InvalidPaymentMethodError,
+            orders_service.PaymentMethodNotAvailableError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.post("/mine/{order_id}/payment-proof", response_model=OrderRead)
+async def upload_my_order_payment_proof(
+    order_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrderRead:
+    """Customer attaches a photo/PDF of the bank transfer receipt -- extra
+    evidence for the admin, never a payment confirmation by itself (see
+    orders/service.py::upload_payment_proof's docstring)."""
+    order = await orders_service.get_owned(
+        db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id, order_id=order_id
+    )
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    file_bytes = await file.read()
+    try:
+        order = await orders_service.upload_payment_proof(
+            db, organization_id=current_user.organization_id, order=order,
+            file_bytes=file_bytes, content_type=file.content_type or "",
+            original_filename=file.filename or "prova-pagamento", actor_user_id=current_user.user_id,
+        )
+    except orders_service.PaymentProofError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.get("/mine/{order_id}/payment-proof-url", response_model=PaymentProofUrlRead)
+async def get_my_order_payment_proof_url(
+    order_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PaymentProofUrlRead:
+    order = await orders_service.get_owned(
+        db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id, order_id=order_id
+    )
+    if order is None or order.payment_proof_storage_key is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment proof not found")
+    return PaymentProofUrlRead(url=orders_service.presigned_payment_proof_url(order))
+
+
 @router.get("", response_model=list[OrderRead])
 async def list_orders(
     status_filter: str | None = None,
@@ -198,3 +267,15 @@ async def cancel_order(
     except orders_service.OrderError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.get("/{order_id}/payment-proof-url", response_model=PaymentProofUrlRead)
+async def get_order_payment_proof_url(
+    order_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("wallet.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> PaymentProofUrlRead:
+    order = await orders_service.get_org_scoped(db, organization_id=current_user.organization_id, order_id=order_id)
+    if order is None or order.payment_proof_storage_key is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment proof not found")
+    return PaymentProofUrlRead(url=orders_service.presigned_payment_proof_url(order))

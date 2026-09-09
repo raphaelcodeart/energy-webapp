@@ -20,6 +20,8 @@ class OrderRead(BaseModel):
     residual_amount_cents: int
     status: str
     payment_method: str
+    stripe_checkout_session_id: str | None = None
+    payment_proof_uploaded_at: datetime | None = None
     note: str | None
     paid_at: datetime | None
     cancelled_at: datetime | None
@@ -74,6 +76,19 @@ class OrderSelfCreateRequest(BaseModel):
 
 class OrderCancelRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class OrderPaymentMethodUpdate(BaseModel):
+    """Lets a customer switch an existing AWAITING_PAYMENT order between
+    BANK_TRANSFER and CARD -- e.g. "actually, let me just pay by card now
+    instead of waiting on a bank transfer" -- see
+    orders/service.py::change_payment_method."""
+
+    payment_method: str
+
+
+class PaymentProofUrlRead(BaseModel):
+    url: str
 
 
 class CheckoutSessionRead(BaseModel):

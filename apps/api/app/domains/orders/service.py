@@ -46,6 +46,12 @@ class PaymentMethodNotAvailableError(OrderError):
     pass
 
 
+class PaymentProofError(OrderError):
+    """Covers both a bad file (unsupported type / too large) and uploading a
+    proof to an order it doesn't apply to (not BANK_TRANSFER, or no longer
+    AWAITING_PAYMENT)."""
+
+
 async def _get_sellable_product_version(
     db: AsyncSession, *, organization_id: uuid.UUID, product_version_id: uuid.UUID
 ) -> tuple[ProductVersion, Product]:
@@ -148,6 +154,8 @@ async def to_read_dict(db: AsyncSession, order: Order) -> dict:
         "residual_amount_cents": order.amount_cents - order.credit_applied_cents,
         "status": order.status,
         "payment_method": order.payment_method,
+        "stripe_checkout_session_id": order.stripe_checkout_session_id,
+        "payment_proof_uploaded_at": order.payment_proof_uploaded_at,
         "note": order.note,
         "paid_at": order.paid_at,
         "cancelled_at": order.cancelled_at,
@@ -228,6 +236,17 @@ async def create_order(
     db.add(order)
     await db.flush()  # assigns order.id, no commit yet
 
+    # Same "staff sees every new operational event" convention as
+    # contracts/service.py::create_contract's CONTRACT_CREATED notification --
+    # added before whichever commit below actually happens, so it lands in
+    # the same transaction as the order row itself.
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="ORDER_CREATED", entity_type="order", entity_id=order.id,
+        title=f"Nuovo ordine: {version.name}", body=f"{amount_cents / 100:.2f} EUR -- {payment_method}",
+        exclude_user_id=actor_user_id,
+    )
+
     if credit_applied_cents > 0:
         assert wallet is not None
         if residual == 0:
@@ -271,13 +290,16 @@ async def _send_order_confirmation_email(
 
     settings = get_settings()
     residual_cents = order.amount_cents - order.credit_applied_cents
+    order_code = str(order.id)[:8].upper()
+    order_code_line = f"<p>Numero ordine: <strong>#{order_code}</strong></p>"
     cta_label: str | None = None
     cta_url: str | None = None
 
     if order.status == "PAID":
         heading = "Ordine confermato"
         body_html = (
-            f"<p>Il tuo ordine per <strong>{version.name}</strong> è confermato.</p>"
+            order_code_line
+            + f"<p>Il tuo ordine per <strong>{version.name}</strong> è confermato.</p>"
             f"<p>Totale: {order.amount_cents / 100:.2f} &euro;"
             + (f" (di cui {order.credit_applied_cents / 100:.2f} &euro; da crediti wallet)" if order.credit_applied_cents else "")
             + "</p><p>Non è richiesto alcun pagamento aggiuntivo.</p>"
@@ -287,7 +309,8 @@ async def _send_order_confirmation_email(
 
         heading = "Completa il pagamento del tuo ordine"
         body_html = (
-            f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
+            order_code_line
+            + f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
             f"<p>Da pagare: <strong>{residual_cents / 100:.2f} &euro;</strong>"
             + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
             + "</p><p>Completa il pagamento con carta cliccando il pulsante qui sotto.</p>"
@@ -312,7 +335,8 @@ async def _send_order_confirmation_email(
         iban = bank_settings.get("bank_iban")
         heading = "Completa il pagamento del tuo ordine"
         body_html = (
-            f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
+            order_code_line
+            + f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
             f"<p>Da pagare tramite bonifico: <strong>{residual_cents / 100:.2f} &euro;</strong>"
             + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
             + "</p>"
@@ -321,7 +345,7 @@ async def _send_order_confirmation_email(
             body_html += (
                 f"<p><strong>IBAN:</strong> {iban}<br>"
                 f"<strong>Intestatario:</strong> {bank_settings.get('bank_account_holder') or 'Lial Energy'}<br>"
-                f"<strong>Causale:</strong> Ordine {str(order.id)[:8]}</p>"
+                f"<strong>Causale:</strong> Ordine {order_code}</p>"
             )
             if bank_settings.get("bank_transfer_instructions"):
                 body_html += f"<p>{bank_settings['bank_transfer_instructions']}</p>"
@@ -346,9 +370,70 @@ async def _send_order_confirmation_email(
         logger.warning("Order confirmation email for %s not sent (SMTP not configured), order=%s", user.email, order.id)
 
 
+async def _send_order_paid_email(
+    db: AsyncSession, *, order: Order, version: ProductVersion | None
+) -> None:
+    """Best-effort, fires after the order is already committed PAID -- the
+    second of the two customer emails a product order gets (the first is
+    _send_order_confirmation_email's "ordine ricevuto" at creation, which
+    deliberately never claims the payment itself is done). Same email
+    regardless of which of the two ways an order reaches PAID: an admin
+    confirming a bank transfer (confirm_payment) or Stripe's webhook
+    confirming a card payment (mark_paid_via_stripe) -- only the method
+    label in the body differs, both call this exact function."""
+    user = await db.get(User, order.customer_user_id)
+    if user is None:
+        return
+
+    method_label = "Carta (Stripe)" if order.payment_method == "CARD" else "Bonifico bancario"
+    product_name = version.name if version else "un prodotto"
+    paid_at_label = order.paid_at.strftime("%d/%m/%Y %H:%M") if order.paid_at else "-"
+    body_html = (
+        "<p>Il pagamento del tuo ordine &egrave; stato confermato.</p>"
+        f"<p><strong>Numero ordine:</strong> #{str(order.id)[:8].upper()}<br>"
+        f"<strong>Prodotto:</strong> {product_name}<br>"
+        f"<strong>Importo:</strong> {order.amount_cents / 100:.2f} &euro;<br>"
+        f"<strong>Metodo di pagamento:</strong> {method_label}<br>"
+        "<strong>Stato:</strong> Pagato<br>"
+        f"<strong>Data:</strong> {paid_at_label}</p>"
+    )
+    html = render_email(
+        preheader="Pagamento completato con successo",
+        heading="Pagamento completato con successo",
+        body_html=body_html,
+        cta_label="Vai ai miei ordini",
+        cta_url=f"{get_settings().public_app_base_url}/customer",
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject=f"Pagamento confermato - Ordine {str(order.id)[:8]} - Lial Energy",
+            html_body=html,
+            text_body=(
+                f"Pagamento completato con successo. Ordine {order.id}, {product_name}, "
+                f"{order.amount_cents / 100:.2f} EUR, {method_label}."
+            ),
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Order-paid email for %s not sent (SMTP not configured), order=%s", user.email, order.id)
+
+
 async def get_org_scoped(db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID) -> Order | None:
     order = await db.get(Order, order_id)
     if order is None or order.organization_id != organization_id:
+        return None
+    return order
+
+
+async def get_owned(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_user_id: uuid.UUID, order_id: uuid.UUID
+) -> Order | None:
+    """Same ownership-scoped lookup pattern as
+    invoice_redemptions/service.py::get_owned -- backs every customer-facing
+    "my order" mutation (payment-proof upload, payment-method change) so a
+    customer can never touch someone else's order by guessing its id."""
+    order = await get_org_scoped(db, organization_id=organization_id, order_id=order_id)
+    if order is None or order.customer_user_id != customer_user_id:
         return None
     return order
 
@@ -382,6 +467,20 @@ async def confirm_payment(
         raise OrderError("Order not found")
     if order.status != "AWAITING_PAYMENT":
         raise InvalidOrderStateError(f"Cannot confirm payment for an order in status {order.status}")
+    if order.payment_method == "CARD":
+        # This is the manual bank-transfer confirmation action ("Conferma
+        # bonifico ricevuto") -- a CARD order can only ever reach PAID via
+        # mark_paid_via_stripe(), called from the Stripe webhook once
+        # Stripe itself confirms the charge. Refusing it here (not just
+        # hiding the button in admin-orders-panel.tsx) is the actual
+        # enforcement: an admin must never be able to mark a Stripe order
+        # paid without Stripe's own confirmation, matching the same
+        # "browser back on the success page proves nothing" principle for
+        # the admin side too.
+        raise InvalidOrderStateError(
+            "Questo ordine si paga con carta: la conferma arriva automaticamente da Stripe, "
+            "non è richiesta (né consentita) un'azione manuale."
+        )
 
     order.status = "PAID"
     order.paid_by_user_id = actor_user_id
@@ -394,8 +493,15 @@ async def confirm_payment(
         title=f"Il tuo ordine per {version.name if version else 'un prodotto'} è confermato",
         body=None,
     )
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="ORDER_PAID", entity_type="order", entity_id=order.id,
+        title=f"Bonifico confermato: {version.name if version else 'ordine'}",
+        body=f"{order.amount_cents / 100:.2f} EUR", exclude_user_id=actor_user_id,
+    )
     await db.commit()
     await db.refresh(order)
+    await _send_order_paid_email(db, order=order, version=version)
     return order
 
 
@@ -424,6 +530,92 @@ async def cancel_order(
     await db.commit()
     await db.refresh(order)
     return order
+
+
+async def change_payment_method(
+    db: AsyncSession, *, organization_id: uuid.UUID, order: Order, new_payment_method: str
+) -> Order:
+    """Lets a customer switch an AWAITING_PAYMENT order between BANK_TRANSFER
+    and CARD -- e.g. tired of waiting on a bank transfer, wants to pay by
+    card right now instead. The caller (router) has already resolved and
+    ownership-checked `order`. Clearing stripe_checkout_session_id when
+    moving AWAY from CARD is not cosmetic: mark_paid_via_stripe() looks an
+    order up BY that session id, so a stale/abandoned Stripe session left
+    attached could otherwise mark this order paid off a card payment that
+    has nothing to do with the bank transfer the customer switched to."""
+    if order.status != "AWAITING_PAYMENT":
+        raise InvalidOrderStateError(f"Cannot change payment method for an order in status {order.status}")
+    if new_payment_method not in ORDER_PAYMENT_METHODS:
+        raise InvalidPaymentMethodError(f"payment_method must be one of {ORDER_PAYMENT_METHODS}")
+
+    if new_payment_method != order.payment_method:
+        available = await get_available_payment_methods(db, organization_id=organization_id)
+        if new_payment_method == "BANK_TRANSFER" and not available["bank_transfer"]:
+            raise PaymentMethodNotAvailableError("Il pagamento con bonifico non è configurato.")
+        if new_payment_method == "CARD" and not available["card"]:
+            raise PaymentMethodNotAvailableError("Il pagamento con carta non è configurato.")
+        if order.payment_method == "CARD":
+            order.stripe_checkout_session_id = None
+        order.payment_method = new_payment_method
+        await db.commit()
+        await db.refresh(order)
+    return order
+
+
+async def upload_payment_proof(
+    db: AsyncSession, *, organization_id: uuid.UUID, order: Order,
+    file_bytes: bytes, content_type: str, original_filename: str, actor_user_id: uuid.UUID,
+) -> Order:
+    """Attaches a customer-uploaded photo/PDF of a bank transfer receipt to
+    an AWAITING_PAYMENT/BANK_TRANSFER order -- purely advisory extra
+    evidence for whoever clicks "Conferma bonifico ricevuto" in
+    admin-orders-panel.tsx; never changes order.status by itself. Reuses
+    core/storage.py's private documents bucket directly, same as
+    invoice_redemptions/service.py::submit_redemption -- no reason to route
+    this through the `documents` domain, whose contract_id is NOT NULL by
+    design."""
+    from app.core.storage import UploadValidationError
+    from app.core.storage import upload_document as storage_upload_document
+
+    if order.status != "AWAITING_PAYMENT":
+        raise PaymentProofError(f"Cannot attach a payment proof to an order in status {order.status}")
+    if order.payment_method != "BANK_TRANSFER":
+        raise PaymentProofError("La prova di pagamento è prevista solo per gli ordini pagati con bonifico.")
+
+    try:
+        storage_key = storage_upload_document(
+            file_bytes=file_bytes, content_type=content_type,
+            key_prefix=f"order-payment-proofs/{order.customer_user_id}",
+        )
+    except UploadValidationError as exc:
+        raise PaymentProofError(str(exc)) from exc
+
+    order.payment_proof_storage_key = storage_key
+    order.payment_proof_original_filename = original_filename
+    order.payment_proof_uploaded_at = utcnow()
+
+    version = await db.get(ProductVersion, order.product_version_id)
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="ORDER_PAYMENT_PROOF_UPLOADED", entity_type="order", entity_id=order.id,
+        title=f"Prova di pagamento caricata: {version.name if version else 'ordine'}",
+        body=None, exclude_user_id=actor_user_id,
+    )
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+PAYMENT_PROOF_PRESIGNED_URL_TTL_SECONDS = 300
+
+
+def presigned_payment_proof_url(order: Order) -> str:
+    from app.core.storage import generate_presigned_document_url as storage_presign_document
+
+    assert order.payment_proof_storage_key is not None  # guaranteed by the router's own check
+    return storage_presign_document(
+        storage_key=order.payment_proof_storage_key, expires_in_seconds=PAYMENT_PROOF_PRESIGNED_URL_TTL_SECONDS
+    )
 
 
 async def attach_stripe_checkout_session(db: AsyncSession, *, order: Order, session_id: str) -> Order:
@@ -472,6 +664,15 @@ async def mark_paid_via_stripe(
         title=f"Il tuo ordine per {version.name if version else 'un prodotto'} è confermato",
         body="Pagamento con carta ricevuto.",
     )
+    # No actor to exclude here (see docstring above -- Stripe confirmed this,
+    # not a human), unlike confirm_payment's staff notification.
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="ORDER_PAID", entity_type="order", entity_id=order.id,
+        title=f"Pagamento Stripe confermato: {version.name if version else 'ordine'}",
+        body=f"{order.amount_cents / 100:.2f} EUR",
+    )
     await db.commit()
     await db.refresh(order)
+    await _send_order_paid_email(db, order=order, version=version)
     return order

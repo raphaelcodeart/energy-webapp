@@ -74,6 +74,18 @@ class Order(UUIDPKMixin, TimestampMixin, Base):
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
+    # Customer-uploaded evidence of a bank transfer already sent (a photo or
+    # PDF of the receipt) -- purely advisory extra evidence for the admin
+    # deciding whether to confirm payment via POST /orders/{id}/confirm-
+    # payment; uploading one never changes order.status by itself. Reuses
+    # core/storage.py's private documents bucket directly (never the
+    # `documents` domain, whose contract_id is NOT NULL by design), same
+    # "own storage_key column on the row" pattern as
+    # invoice_redemptions/models.py::InvoiceRedemption.storage_key.
+    payment_proof_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    payment_proof_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_proof_uploaded_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
     paid_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )

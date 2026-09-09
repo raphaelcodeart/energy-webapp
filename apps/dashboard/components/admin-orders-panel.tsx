@@ -7,7 +7,7 @@ import { friendlyApiError } from "@/lib/api-error";
 import type { CustomerRead, OrderQuoteRead, OrderRead, ProductCatalogRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
-  AWAITING_PAYMENT: "Attesa bonifico residuo",
+  AWAITING_PAYMENT: "Attesa pagamento residuo",
   PAID: "Pagato",
   CANCELLED: "Annullato",
 };
@@ -16,9 +16,24 @@ const STATUS_COLORS: Record<string, string> = {
   PAID: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   CANCELLED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  BANK_TRANSFER: "Bonifico",
+  CARD: "Carta (Stripe)",
+};
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** Same derivation as customer-orders-panel.tsx::orderCode -- must stay
+    identical so a customer reading their own "Ordine #XXXXXXXX" and an
+    admin looking it up here see the same code. */
+function orderCode(id: string): string {
+  return id.slice(0, 8).toUpperCase();
 }
 
 async function fetchCustomers(): Promise<CustomerRead[]> {
@@ -157,6 +172,18 @@ export function AdminOrdersPanel() {
     }
   }
 
+  async function handleViewPaymentProof(id: string) {
+    setActionLoadingId(id);
+    try {
+      const res = await fetch(`/api/proxy/orders/${id}/payment-proof-url`);
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   const residualPreview = quote
     ? quote.amount_cents - Math.min(
         Math.round((parseFloat(creditAmount.replace(",", ".")) || 0) * 100),
@@ -286,7 +313,7 @@ export function AdminOrdersPanel() {
         ) : (
           orders.map((o) => (
             <div key={o.id} className="p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-white/10 light:border-slate-200">
                     <ProductThumbnail imageUrl={o.product_image_url} alt={o.product_name} iconClassName="w-5 h-5 text-orange-400/40" />
@@ -297,8 +324,14 @@ export function AdminOrdersPanel() {
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[o.status]}`}>
                         {STATUS_LABELS[o.status]}
                       </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600">
+                        {PAYMENT_METHOD_LABELS[o.payment_method] ?? o.payment_method}
+                      </span>
                     </div>
                     <p className="text-xs text-slate-500">
+                      Ordine <span className="font-mono text-slate-400 light:text-slate-600">#{orderCode(o.id)}</span> · {formatDate(o.created_at)}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {o.product_name} · Totale {euro(o.amount_cents)}
                       {o.credit_applied_cents > 0 && <> · Crediti {euro(o.credit_applied_cents)}</>}
                       {" "}· Residuo {euro(o.residual_amount_cents)}
@@ -308,25 +341,38 @@ export function AdminOrdersPanel() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {o.status === "AWAITING_PAYMENT" && (
-                    <>
+                {o.status === "AWAITING_PAYMENT" && (
+                  <div className="flex flex-col gap-2 w-full sm:w-56 shrink-0">
+                    {o.payment_method === "CARD" ? (
+                      <span className="w-full px-4 py-2 rounded-xl text-center bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 text-slate-400 light:text-slate-500 text-xs font-medium">
+                        In attesa di conferma Stripe
+                      </span>
+                    ) : (
                       <button
                         onClick={() => handleConfirmPayment(o.id)}
                         disabled={actionLoadingId === o.id}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                        className="w-full px-4 py-2 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                       >
                         {actionLoadingId === o.id ? "..." : "Conferma bonifico ricevuto"}
                       </button>
+                    )}
+                    {o.payment_proof_uploaded_at && (
                       <button
-                        onClick={() => setCancellingId(cancellingId === o.id ? null : o.id)}
-                        className="px-2.5 py-1.5 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 text-xs font-semibold transition cursor-pointer"
+                        onClick={() => handleViewPaymentProof(o.id)}
+                        disabled={actionLoadingId === o.id}
+                        className="w-full px-4 py-2 rounded-xl bg-sky-600/10 hover:bg-sky-600/20 border border-sky-500/20 text-sky-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                       >
-                        Annulla
+                        Vedi prova di pagamento
                       </button>
-                    </>
-                  )}
-                </div>
+                    )}
+                    <button
+                      onClick={() => setCancellingId(cancellingId === o.id ? null : o.id)}
+                      className="w-full px-4 py-2 rounded-xl bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Annulla
+                    </button>
+                  </div>
+                )}
               </div>
               {cancellingId === o.id && (
                 <div className="mt-3 pt-3 border-t border-white/5 light:border-slate-200 flex items-end gap-2">

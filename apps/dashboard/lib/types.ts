@@ -484,6 +484,8 @@ export type OrderRead = {
   residual_amount_cents: number;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
   payment_method: "BANK_TRANSFER" | "CARD";
+  stripe_checkout_session_id: string | null;
+  payment_proof_uploaded_at: string | null;
   note: string | null;
   paid_at: string | null;
   cancelled_at: string | null;
