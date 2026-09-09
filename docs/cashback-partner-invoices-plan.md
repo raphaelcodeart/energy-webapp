@@ -366,6 +366,22 @@ accredita → retry del webhook non duplica l'accredito. Suite completa:
 **198/198 test passati**, ruff/mypy puliti (stessi 4 falsi positivi
 preesistenti su `Result.rowcount`). Dati di test rimossi al termine.
 
+**Redesign UX di `product-checkout-modal.tsx` (Session 33, stesso giorno,
+richiesta esplicita dell'utente)**: la schermata "Acquista" era un unico
+blocco piatto di controlli (input crediti, checkbox cashback minuscola,
+bottoni metodo di pagamento), poco chiara per un utente non tecnico. Ora
+ogni decisione opzionale è una sezione numerata distinta (badge cerchio "1",
+"2", ...) con un interruttore vero (non una checkbox) per "usa i tuoi
+LialCash"/"riscuoti subito cashback", chip rapidi 25/50/75/Massimo per
+scegliere quanti LialCash spendere senza dover digitare un importo, una
+riga sempre visibile "Stai usando X LialCash = Y% di sconto", il prezzo
+pieno barrato accanto al prezzo scontato quando è attivo un credito, e un
+riepilogo prezzo sempre visibile in fondo (prezzo prodotto, LialCash usati,
+eventuale cashback, totale da pagare ora) che si aggiorna dal vivo ad ogni
+scelta. Nessuna modifica alla logica di business (stessa validazione,
+stessi endpoint, stesso flusso OTP) -- solo presentazione. Verificato con
+build frontend pulita.
+
 ## Cosa NON è stato costruito
 
 - [ ] **OCR reale**: il wizard chiede l'importo a mano al cliente; non c'è

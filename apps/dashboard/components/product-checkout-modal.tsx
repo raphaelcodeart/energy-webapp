@@ -9,6 +9,10 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 async function fetchQuote(productVersionId: string): Promise<OrderQuoteRead> {
   const res = await fetch(`/api/proxy/orders/quote/mine?product_version_id=${productVersionId}`);
   if (!res.ok) throw new Error("Impossibile calcolare il preventivo.");
@@ -21,14 +25,67 @@ async function fetchPaymentInfo(): Promise<{ iban: string | null; holder: string
   return res.json();
 }
 
+/** A small numbered-circle badge used to mark each step of the checkout as
+    a distinct, ordered decision -- "usa i crediti?", "conferma OTP",
+    "cashback?", "come paghi?" -- instead of one flat, undifferentiated
+    block of controls. Purely visual, no navigation between steps: every
+    section that applies is shown at once (a short, optional-heavy form),
+    just clearly delineated. */
+function StepBadge({ n, done }: { n: number; done?: boolean }) {
+  return (
+    <span
+      className={`flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold shrink-0 ${
+        done ? "bg-emerald-500 text-white" : "bg-orange-600 text-white"
+      }`}
+    >
+      {done ? (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        n
+      )}
+    </span>
+  );
+}
+
+/** A big, obvious on/off switch -- used for "usa i LialCash" and "riscuoti
+    subito cashback", both previously a small checkbox easy to miss. */
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-2.5 cursor-pointer group"
+    >
+      <span
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          checked ? "bg-orange-600" : "bg-white/15 light:bg-slate-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-6" : "translate-x-1"
+          }`}
+          style={{ height: "18px", width: "18px" }}
+        />
+      </span>
+      <span className="text-sm font-semibold text-white light:text-slate-900">{label}</span>
+    </button>
+  );
+}
+
 /** Self-checkout for a DROPSHIPPING/PARTNER product (never INTERNAL, which
     has no "Acquista" button at all -- see customer-products-panel.tsx).
-    Three steps: pick how much wallet credit to apply (capped by the
-    product's own percentage and the customer's balance), pick how to pay
-    the residual (bonifico/carta -- each hidden entirely when not
-    configured, never just disabled-but-visible), then either see bank
-    transfer instructions or get redirected to Stripe Checkout. See
-    docs/cashback-partner-invoices-plan.md. */
+    Every optional decision (spend LialCash, confirm via OTP, request
+    return cashback, pick a payment method) is laid out as its own clearly
+    numbered section with a live-updating price summary, rather than one
+    flat block of controls -- so a first-time buyer can see, at a glance,
+    what each choice actually costs/saves before confirming. See
+    docs/cashback-partner-invoices-plan.md for the business logic (unchanged
+    here, only the presentation). */
 export function ProductCheckoutModal({
   productVersionId,
   productName,
@@ -45,6 +102,7 @@ export function ProductCheckoutModal({
   });
 
   const [creditAmount, setCreditAmount] = useState("0.00");
+  const [useCredit, setUseCredit] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"BANK_TRANSFER" | "CARD" | null>(null);
   const [cashbackRequested, setCashbackRequested] = useState(false);
   const [step, setStep] = useState<"choose" | "bank_instructions" | "card_redirect" | "success">("choose");
@@ -66,23 +124,32 @@ export function ProductCheckoutModal({
     enabled: step === "bank_instructions",
   });
 
+  const maxUsableCents = quote ? Math.min(quote.max_creditable_cents, quote.customer_wallet_balance_cents) : 0;
+
   useEffect(() => {
     if (!quote) return;
-    const maxUsable = Math.min(quote.max_creditable_cents, quote.customer_wallet_balance_cents);
-    setCreditAmount((maxUsable / 100).toFixed(2));
+    // Credit starts OFF -- the buyer makes a conscious choice to spend
+    // LialCash rather than having it silently pre-applied to the maximum.
+    setUseCredit(false);
+    setCreditAmount("0.00");
     // Default to whichever residual payment method is actually available.
     if (quote.bank_transfer_available) setPaymentMethod("BANK_TRANSFER");
     else if (quote.card_available) setPaymentMethod("CARD");
     else setPaymentMethod(null);
-  }, [quote]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.product_version_id]);
 
-  const creditCents = quote
+  const creditCents = quote && useCredit
     ? Math.min(
         Math.round((parseFloat(creditAmount.replace(",", ".")) || 0) * 100),
         quote.max_creditable_cents,
         quote.customer_wallet_balance_cents
       )
     : 0;
+  // The discount % this specific LialCash amount is worth on THIS product --
+  // distinct from quote.credit_discount_percentage, which is the product's
+  // configured CAP, not what the buyer is actually about to spend.
+  const effectiveDiscountPct = quote && quote.amount_cents > 0 ? Math.round((creditCents / quote.amount_cents) * 100) : 0;
   const residualCents = quote ? quote.amount_cents - creditCents : 0;
   const canRequestCashback = !!quote?.cashback_available && residualCents > 0;
   const cashbackSurchargeCents = canRequestCashback && cashbackRequested
@@ -91,6 +158,28 @@ export function ProductCheckoutModal({
   const totalToPayCents = residualCents + cashbackSurchargeCents;
   const needsPaymentMethod = totalToPayCents > 0;
   const noMethodAvailable = quote ? !quote.bank_transfer_available && !quote.card_available : false;
+  const otpConfirmed = creditCents === 0 || !!otpCode.trim();
+
+  function setCreditFraction(fraction: number) {
+    const cents = Math.round(maxUsableCents * fraction);
+    setCreditAmount((cents / 100).toFixed(2));
+    setOtpRequested(false);
+    setOtpCode("");
+  }
+
+  function handleToggleCredit(next: boolean) {
+    setUseCredit(next);
+    setOtpRequested(false);
+    setOtpCode("");
+    if (next) {
+      // Turning it on defaults to the maximum usable -- one click ("100%"
+      // is already selected) covers the common "use as much as I can" case,
+      // still freely adjustable via the other preset chips or the field.
+      setCreditAmount((maxUsableCents / 100).toFixed(2));
+    } else {
+      setCreditAmount("0.00");
+    }
+  }
 
   async function handleRequestOtp() {
     setOtpRequesting(true);
@@ -169,7 +258,7 @@ export function ProductCheckoutModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-xl glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white light:text-slate-900">Acquista {quote ? "" : productName}</h3>
           <button
@@ -183,6 +272,9 @@ export function ProductCheckoutModal({
         </div>
 
         {quoteError && <p className="text-sm text-rose-400">Impossibile caricare il preventivo.</p>}
+        {step === "choose" && !quote && !quoteError && (
+          <div className="py-10 text-center text-sm text-slate-500">Caricamento preventivo...</div>
+        )}
 
         {step === "success" && placedOrder && (
           <div className="text-center py-6 space-y-3">
@@ -236,7 +328,7 @@ export function ProductCheckoutModal({
                   {paymentInfo.instructions && <p className="text-slate-400 light:text-slate-500 pt-1">{paymentInfo.instructions}</p>}
                 </>
               ) : (
-                <p className="text-slate-500">Contatta l'amministrazione per le coordinate bancarie.</p>
+                <p className="text-slate-500">Contatta l&apos;amministrazione per le coordinate bancarie.</p>
               )}
               <p className="pt-1"><span className="text-slate-500">Causale consigliata:</span> <span className="font-mono text-orange-400">Ordine {placedOrder.id.slice(0, 8).toUpperCase()}</span></p>
             </div>
@@ -250,139 +342,238 @@ export function ProductCheckoutModal({
         )}
 
         {step === "choose" && quote && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-300 light:text-slate-600">{quote.product_name}</p>
-            <div className="grid grid-cols-3 gap-3 text-xs p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase">Prezzo</p>
-                <p className="font-semibold text-white light:text-slate-900">{euro(quote.amount_cents)}</p>
+          <div className="space-y-5">
+            {/* Product + headline price, with a live "prezzo scontato" once LialCash is applied */}
+            <div className="p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
+              <p className="text-sm font-semibold text-white light:text-slate-900 mb-2">{quote.product_name}</p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                    {creditCents > 0 ? "Prezzo scontato" : "Prezzo"}
+                  </p>
+                  <p className={`text-2xl font-extrabold ${creditCents > 0 ? "text-emerald-400" : "text-white light:text-slate-900"}`}>
+                    {euro(Math.max(residualCents, 0))}
+                  </p>
+                </div>
+                {creditCents > 0 && (
+                  <div className="pb-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Prezzo pieno</p>
+                    <p className="text-sm text-slate-500 line-through">{euro(quote.amount_cents)}</p>
+                  </div>
+                )}
+                {creditCents > 0 && (
+                  <span className="mb-1 px-2 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    -{effectiveDiscountPct}%
+                  </span>
+                )}
               </div>
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase">Sconto max LialCash</p>
-                <p className="font-semibold text-orange-400">{quote.credit_discount_percentage}%</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase">Il tuo saldo</p>
-                <p className="font-semibold text-white light:text-slate-900">{euro(quote.customer_wallet_balance_cents)} LialCash</p>
-              </div>
+              {quote.max_creditable_cents > 0 && (
+                <p className="text-[11px] text-slate-500 mt-2">
+                  Il tuo saldo: <strong className="text-white light:text-slate-900">{lialCash(quote.customer_wallet_balance_cents)}</strong>
+                  {" "}· su questo prodotto puoi usarne fino a {lialCash(maxUsableCents)} (max {quote.credit_discount_percentage}% di sconto)
+                </p>
+              )}
             </div>
 
+            {/* Step 1 -- spend LialCash */}
             {quote.max_creditable_cents > 0 && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
-                  LialCash da usare (max {euro(Math.min(quote.max_creditable_cents, quote.customer_wallet_balance_cents))})
-                </label>
-                <input
-                  inputMode="decimal"
-                  value={creditAmount}
-                  onChange={(e) => { setCreditAmount(e.target.value); setOtpRequested(false); setOtpCode(""); }}
-                  className="w-full max-w-[160px] rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
-                />
+              <div className="p-4 rounded-xl border border-white/10 light:border-slate-200 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <StepBadge n={1} />
+                    <Toggle checked={useCredit} onChange={handleToggleCredit} label="Usa i tuoi LialCash per abbassare il prezzo" />
+                  </div>
+                </div>
+
+                {useCredit && (
+                  <div className="pl-8 space-y-3">
+                    <p className="text-[11px] text-slate-500">
+                      I tuoi LialCash valgono 1:1 come sconto: ogni LialCash speso abbassa il prezzo di 1&euro;.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {[0.25, 0.5, 0.75, 1].map((fraction) => {
+                        const presetCents = Math.round(maxUsableCents * fraction);
+                        const isActive = Math.round((parseFloat(creditAmount.replace(",", ".")) || 0) * 100) === presetCents;
+                        return (
+                          <button
+                            key={fraction}
+                            type="button"
+                            onClick={() => setCreditFraction(fraction)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                              isActive
+                                ? "bg-orange-600 border-orange-600 text-white"
+                                : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+                            }`}
+                          >
+                            {fraction === 1 ? "Massimo" : `${Math.round(fraction * 100)}%`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase shrink-0">
+                        Importo personalizzato
+                      </label>
+                      <input
+                        inputMode="decimal"
+                        value={creditAmount}
+                        onChange={(e) => { setCreditAmount(e.target.value); setOtpRequested(false); setOtpCode(""); }}
+                        className="w-full max-w-[140px] rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                      />
+                      <span className="text-xs text-slate-500 shrink-0">LialCash</span>
+                    </div>
+                    <p className="text-xs px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-300">
+                      Stai usando <strong>{lialCash(creditCents)}</strong> = <strong>{effectiveDiscountPct}% di sconto</strong> su questo ordine.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
+            {/* Step 2 -- OTP confirmation, only when spending credit */}
             {creditCents > 0 && (
-              <div className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 space-y-2">
-                <p className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase">
-                  Conferma utilizzo LialCash
-                </p>
-                <p className="text-[11px] text-slate-500">
+              <div className="p-4 rounded-xl border border-white/10 light:border-slate-200 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <StepBadge n={2} done={!!otpCode.trim()} />
+                  <p className="text-sm font-semibold text-white light:text-slate-900">Conferma via email</p>
+                </div>
+                <p className="text-[11px] text-slate-500 pl-8">
                   Per sicurezza, ti mandiamo un codice via email per confermare l&apos;uso dei tuoi LialCash su questo ordine.
                 </p>
-                {!otpRequested ? (
-                  <button
-                    type="button"
-                    onClick={handleRequestOtp}
-                    disabled={otpRequesting}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
-                  >
-                    {otpRequesting ? "Invio in corso..." : "Invia codice via email"}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      inputMode="numeric"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      placeholder="Codice ricevuto via email"
-                      className="w-full max-w-[180px] rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
-                    />
+                <div className="pl-8">
+                  {!otpRequested ? (
                     <button
                       type="button"
                       onClick={handleRequestOtp}
                       disabled={otpRequesting}
-                      className="text-[11px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2 rounded-lg bg-orange-600/15 hover:bg-orange-600/25 border border-orange-500/30 text-xs font-semibold text-orange-400 transition cursor-pointer disabled:opacity-50"
                     >
-                      Rinvia
+                      {otpRequesting ? "Invio in corso..." : "Invia codice via email"}
                     </button>
-                  </div>
-                )}
-                {otpError && <p className="text-[11px] text-rose-400">{otpError}</p>}
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Codice inviato -- controlla la tua email
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          inputMode="numeric"
+                          autoFocus
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value)}
+                          placeholder="Codice ricevuto via email"
+                          className="w-full max-w-[200px] rounded-lg glass-input px-3 py-2 text-sm font-mono tracking-wider focus:border-orange-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRequestOtp}
+                          disabled={otpRequesting}
+                          className="text-[11px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer disabled:opacity-50"
+                        >
+                          Rinvia
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {otpError && <p className="text-[11px] text-rose-400 mt-1.5">{otpError}</p>}
+                </div>
               </div>
             )}
 
+            {/* Step 3 -- optional return cashback */}
             {canRequestCashback && (
-              <label className="flex items-start gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer p-3 rounded-xl bg-orange-500/5 border border-orange-500/20">
-                <input
-                  type="checkbox"
-                  checked={cashbackRequested}
-                  onChange={(e) => setCashbackRequested(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
-                />
-                <span>
-                  <strong className="text-orange-400">Riscuoti subito cashback:</strong> paga il {quote.cashback_percentage}% in
-                  più ({euro(Math.round((residualCents * quote.cashback_percentage) / 100))}) e ricevi l&apos;intero importo
-                  pagato accreditato come LialCash sul tuo wallet non appena il pagamento è confermato.
-                </span>
-              </label>
+              <div className="p-4 rounded-xl border border-white/10 light:border-slate-200 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <StepBadge n={creditCents > 0 ? 3 : 2} />
+                  <Toggle checked={cashbackRequested} onChange={setCashbackRequested} label="Riscuoti subito cashback" />
+                </div>
+                <p className="text-[11px] text-slate-500 pl-8">
+                  Paga il <strong className="text-orange-400">{quote.cashback_percentage}%</strong> in più ora
+                  ({euro(Math.round((residualCents * quote.cashback_percentage) / 100))}) e ricevi l&apos;intero importo
+                  pagato oggi accreditato come LialCash sul tuo wallet, non appena il pagamento è confermato.
+                </p>
+              </div>
             )}
 
-            <div className="pt-3 border-t border-white/5 light:border-slate-200">
-              <p className="text-sm text-slate-300 light:text-slate-600 mb-2">
-                Residuo da pagare: <strong className={totalToPayCents > 0 ? "text-orange-400" : "text-emerald-400"}>{euro(Math.max(totalToPayCents, 0))}</strong>
-                {totalToPayCents <= 0 && " -- coperto interamente dai LialCash"}
-                {cashbackSurchargeCents > 0 && (
-                  <span className="text-[11px] text-slate-500"> (include {euro(cashbackSurchargeCents)} di cashback)</span>
+            {/* Step 4 -- payment method for whatever is still owed in real money */}
+            {needsPaymentMethod && (
+              <div className="p-4 rounded-xl border border-white/10 light:border-slate-200 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <StepBadge n={[creditCents > 0, canRequestCashback].filter(Boolean).length + 2} done={!!paymentMethod} />
+                  <p className="text-sm font-semibold text-white light:text-slate-900">Come vuoi pagare il resto?</p>
+                </div>
+                {noMethodAvailable ? (
+                  <p className="text-xs text-rose-400 pl-8">
+                    Nessun metodo di pagamento è al momento disponibile per completare questo ordine. Contatta l&apos;amministrazione.
+                  </p>
+                ) : (
+                  <div className="pl-8 flex gap-2.5">
+                    {quote.bank_transfer_available && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("BANK_TRANSFER")}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold border-2 transition cursor-pointer ${
+                          paymentMethod === "BANK_TRANSFER"
+                            ? "bg-orange-600 border-orange-600 text-white shadow-lg shadow-orange-500/20"
+                            : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 21h18M4 10h16M4 10l8-6 8 6M6 10v9m4-9v9m4-9v9m4-9v9" />
+                        </svg>
+                        Bonifico
+                      </button>
+                    )}
+                    {quote.card_available && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("CARD")}
+                        className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold border-2 transition cursor-pointer ${
+                          paymentMethod === "CARD"
+                            ? "bg-orange-600 border-orange-600 text-white shadow-lg shadow-orange-500/20"
+                            : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M2 10h20M6 15h4M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z" />
+                        </svg>
+                        Carta
+                      </button>
+                    )}
+                  </div>
                 )}
-              </p>
+              </div>
+            )}
 
-              {needsPaymentMethod && (
-                <>
-                  {noMethodAvailable ? (
-                    <p className="text-xs text-rose-400">
-                      Nessun metodo di pagamento è al momento disponibile per completare questo ordine. Contatta l'amministrazione.
-                    </p>
-                  ) : (
-                    <div className="flex gap-2">
-                      {quote.bank_transfer_available && (
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("BANK_TRANSFER")}
-                          className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                            paymentMethod === "BANK_TRANSFER"
-                              ? "bg-orange-600 border-orange-600 text-white"
-                              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
-                          }`}
-                        >
-                          Bonifico
-                        </button>
-                      )}
-                      {quote.card_available && (
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMethod("CARD")}
-                          className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                            paymentMethod === "CARD"
-                              ? "bg-orange-600 border-orange-600 text-white"
-                              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
-                          }`}
-                        >
-                          Carta
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </>
+            {/* Always-visible running total */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-orange-600/10 to-amber-500/5 border border-orange-500/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400 light:text-slate-500">Prezzo prodotto</p>
+                <p className="text-xs text-slate-400 light:text-slate-500">{euro(quote.amount_cents)}</p>
+              </div>
+              {creditCents > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-400 light:text-slate-500">LialCash usati</p>
+                  <p className="text-xs text-emerald-400">-{lialCash(creditCents)}</p>
+                </div>
+              )}
+              {cashbackSurchargeCents > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-400 light:text-slate-500">Cashback ({quote.cashback_percentage}%)</p>
+                  <p className="text-xs text-orange-400">+{euro(cashbackSurchargeCents)}</p>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1.5 border-t border-white/10 light:border-slate-300">
+                <p className="text-sm font-bold text-white light:text-slate-900">Totale da pagare ora</p>
+                <p className={`text-xl font-extrabold ${totalToPayCents > 0 ? "text-orange-400" : "text-emerald-400"}`}>
+                  {euro(Math.max(totalToPayCents, 0))}
+                </p>
+              </div>
+              {totalToPayCents <= 0 && (
+                <p className="text-[11px] text-emerald-400 text-right">Coperto interamente dai tuoi LialCash</p>
               )}
             </div>
 
@@ -395,9 +586,9 @@ export function ProductCheckoutModal({
               disabled={
                 submitLoading
                 || (needsPaymentMethod && (noMethodAvailable || !paymentMethod))
-                || (creditCents > 0 && !otpCode.trim())
+                || !otpConfirmed
               }
-              className="w-full px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-sm font-semibold text-white transition cursor-pointer disabled:opacity-50"
+              className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
             >
               {submitLoading ? "Elaborazione..." : totalToPayCents > 0 ? "Conferma e procedi al pagamento" : "Conferma ordine"}
             </button>
