@@ -102,8 +102,15 @@ pnpm build
 
 ## What's implemented vs. planned
 
-This is a vertical slice through Phases A–E of the implementation plan (analysis,
-foundations, commercial network, commercial domain, commissions), not the full
-36-section specification. See `docs/implementation-progress.md` for the exact,
-continuously-updated checklist and `docs/open-questions.md` for every business-rule
+Far beyond the original Phases A–E vertical slice by now: commercial network,
+contracts, commissions, support tickets, an internal wallet ("LialCash") with
+per-product and partner-invoice-redemption cashback, a Shop with self-checkout
+orders (card via Stripe or bank transfer), notifications (in-app + branded
+email), and a customer accounting view are all real and live, not stubs — see
+`docs/implementation-progress.md` for the exact, continuously-updated,
+session-by-session checklist of what's actually built. Still not built: CI/CD,
+MFA enforcement, antivirus scanning of uploads, OCR, and the AI/pgvector layer
+(`docs/ai-architecture.md` is a design doc only) — see
+`docs/server-migration-guide.md §9` for the current, accurate list. See
+`docs/open-questions.md` for every business-rule
 placeholder awaiting the real Lial Energy commission/career-plan document.

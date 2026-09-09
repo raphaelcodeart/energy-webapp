@@ -4,7 +4,11 @@ Questo documento serve a un solo scopo: permettere a chiunque (umano o AI) di
 ricreare **esattamente** questa piattaforma su un nuovo server, partendo da zero,
 senza dover indovinare nulla. Se stai leggendo questo perché il server attuale è
 stato perso, compromesso, o semplicemente vuoi migrare altrove — segui questa
-guida nell'ordine in cui è scritta.
+guida nell'ordine in cui è scritta. Se invece l'obiettivo è usare questo stesso
+codice per far partire **un'altra rete/azienda** (non un doppione di Lial
+Energy) su un server nuovo, la procedura di installazione è la stessa (sezioni
+1-8), più la §11 alla fine che elenca cosa è specifico del brand Lial Energy e
+va cambiato prima di andare in produzione con un cliente diverso.
 
 Non duplica `README.md` o `docs/architecture.md` — li presuppone. Qui ci sono solo
 le informazioni operative specifiche per un trasloco/ricostruzione: cosa
@@ -694,17 +698,54 @@ risolto, per lo stesso motivo per cui questi lo sono.
 
 ## 9. Cosa NON aspettarsi che funzioni già
 
-Vedi `docs/implementation-progress.md`, sezione "Explicitly NOT in this session's
-scope" per l'elenco completo. In breve: pagamenti reali, notifiche, motore
-AI/pgvector, CI/CD, MFA. Non sono bug —
-sono semplicemente fasi successive non ancora costruite. (L'upload dei
-documenti sensibili di contratto -- carta d'identità, codice fiscale,
-bolletta, visura camerale -- ESISTE dalla Session 14, vedi
-`docs/security-model.md §Documents`; HTTPS è attivo dalla Session 3, vedi §4.6
-sopra. **Backup giornaliero automatico ESISTE dalla Session 25**: cron alle
-04:00 esegue `scripts/backup.sh dev` con retention 14 giorni, vedi §4.8
-sotto — resta comunque solo un backup locale sullo stesso disco, non ancora
-una copia off-server.)
+Aggiornato Session 33 -- la versione precedente di questa sezione elencava
+"pagamenti reali" e "notifiche" come non ancora costruiti: era vero quando
+fu scritta, non lo è più da diverse sessioni. Elenco corretto di cosa
+manca davvero oggi (vedi `docs/implementation-progress.md` per il dettaglio
+sessione per sessione):
+
+- **Motore AI/pgvector** (ricerca semantica, assistente interno) --
+  esiste solo come documento di design, `docs/ai-architecture.md`, nessun
+  codice.
+- **CI/CD** -- nessuna pipeline automatica (lint/test/build su push);
+  test/ruff/mypy vanno lanciati a mano (vedi comandi in questo file e in
+  `README.md`).
+- **MFA** -- schema presente (`sessions`, pensato per un futuro
+  `user_mfa_methods`), non applicato in v1.
+- **Scansione antivirus sugli upload** -- interfaccia pluggable presente
+  (`document_scan_results`), nessuno scanner reale collegato; i download
+  restano comunque gated da permessi indipendentemente dallo stato di
+  scansione (vedi `security-model.md §Documents`).
+- **OCR sulle fatture di riscatto cashback** -- il cliente digita
+  l'importo a mano, un admin verifica sempre contro il documento caricato
+  prima di sbloccare qualunque pagamento; deliberatamente rimandato, non
+  uno stub rotto (vedi `cashback-partner-invoices-plan.md`).
+- **Backup off-server** -- `scripts/backup.sh` gira già in cron (vedi §4.8),
+  ma resta solo sullo stesso disco del database; nessuna copia automatica
+  su un host/object-storage separato.
+
+**Cosa invece ESISTE ed è realmente in produzione, per evitare di
+ricostruirlo per errore credendolo mancante**:
+- **Pagamenti reali con carta (Stripe) e bonifico** -- sia per gli ordini
+  Shop sia per il canone di riscatto cashback fattura, self-checkout
+  cliente incluso, webhook Stripe verificato per organizzazione (vedi
+  `cashback-partner-invoices-plan.md`, `business-rules.md
+  §Partner-invoice-cashback`). Serve solo che un SUPER_ADMIN inserisca le
+  chiavi Stripe reali dal pannello (`Impostazioni Azienda -> Pagamenti`) --
+  il codice è già lì, verificato con chiavi di test.
+- **Notifiche**, sia in-app (campanella nell'header, ogni dashboard) sia
+  email brandizzate con logo (`core/email_templates.py::render_email`) per
+  OTP, cashback accreditato, ordini, riscatti, reset password, ticket --
+  vedi `business-rules.md` e `security-model.md`.
+- **Wallet interno "LialCash"**, cashback su prodotto e su riscatto
+  fattura partner, sezione "Contabilità" cliente.
+- **Upload documenti sensibili di contratto** (carta d'identità, codice
+  fiscale, bolletta, visura camerale) -- ESISTE dalla Session 14, vedi
+  `security-model.md §Documents`.
+- **HTTPS** -- attivo dalla Session 3, vedi §4.6 sopra.
+- **Backup giornaliero automatico** -- ESISTE dalla Session 25: cron alle
+  04:00 esegue `scripts/backup.sh dev` con retention 14 giorni, vedi §4.8
+  sotto.
 
 ## 10. Assunzioni di business ancora provvisorie
 
@@ -714,3 +755,76 @@ documento `Allegato_A_Piano_Carriera_Regolamento_Provvigionale.pdf` non era
 presente nel repository quando questo sistema è stato costruito. Vedi
 `docs/open-questions.md` per l'elenco esatto e dove intervenire quando il
 documento reale sarà disponibile.
+
+## 11. Riusare questo stesso codice per un business diverso (Session 33)
+
+Se lo scopo di installare su un nuovo server non è ripristinare/duplicare
+**questa stessa** rete Lial Energy ma far girare **un'altra azienda** (altro
+nome, altro logo, altra rete commerciale) sullo stesso codice, la procedura
+di installazione (sezioni 1-8 sopra) resta identica -- la differenza sono i
+punti dove il nome "Lial Energy" e il suo brand sono scritti nel codice
+sorgente invece che in una riga di database. Il modello `Organization` ha già
+`name`/`legal_name`/`settings` per-tenant (multi-org è supportato a livello
+di schema), ma oggi **nessuna email, titolo di pagina o logo legge
+effettivamente da quella riga** -- ogni stringa "Lial Energy" è nel codice.
+Prima di mettere in produzione per un cliente diverso, cambia:
+
+**Email (branding condiviso da ogni email del sistema)**:
+- `apps/api/app/core/email_templates.py`: `LOGO_URL` (oggi hotlinkato a
+  `lialenergy.it/img/logo.png`), `BRAND_COLOR` (`#f97316`), il testo
+  `alt="Lial Energy"` e la riga di footer "Lial Energy S.r.l. · ...".
+  Un'unica modifica qui cambia il logo/colore su OGNI email (OTP, cashback,
+  ordini, reset password, ticket, ...).
+- Oggetti/corpi email con "Lial Energy" scritto a mano, uno per dominio:
+  `auth/service.py` (verifica email, reset password, OTP),
+  `invoice_redemptions/service.py`, `wallets/service.py`, `orders/service.py`
+  (anche `company_bank_holder: str = "Lial Energy"` in `core/config.py`,
+  quello è già sovrascrivibile da `.env`/`COMPANY_BANK_HOLDER`),
+  `contracts/service.py`, `support/service.py` (prefisso oggetto
+  `[Lial Energy]`). Tutte modifiche di stringa, nessuna logica da toccare.
+
+**Frontend**:
+- Logo: `apps/dashboard/public/logo.png` (file statico, va sostituito) più
+  ogni `alt="Lial Energy"` in `login/page.tsx`, `r/[code]/page.tsx`,
+  `verify-email/page.tsx`, `reset-password/page.tsx`,
+  `forgot-password/page.tsx`, `app-shell.tsx`.
+- `apps/dashboard/app/layout.tsx` (titolo/description pagina),
+  `apps/dashboard/app/manifest.ts` (nome PWA), `icon.png`/`apple-icon.png`
+  (favicon/icona app) -- tutti file/stringhe specifiche Lial Energy.
+- Testo "Lial Energy" sparso in decine di componenti (label, placeholder tipo
+  `nome@lialenergy.demo` in `login/page.tsx`, copy varie) -- ricerca
+  case-insensitive "Lial Energy" nell'intero `apps/dashboard/` per trovarle
+  tutte.
+- **Colore del brand NON è centralizzato**: non esiste un file tema/config
+  Tailwind con un colore "primary" -- le classi `orange-500`/`orange-600`/
+  `amber-*` sono usate direttamente in quasi ogni componente
+  (`apps/dashboard/components/**`). Cambiare il colore del brand richiede
+  una sostituzione a livello di intero albero componenti, non una singola
+  modifica di config.
+
+**Dominio/infrastruttura**:
+- `infrastructure/nginx/nginx.conf`: i due blocchi `server_name`
+  (`lialenergy.it`/`www.lialenergy.it` e `app.lialenergy.it`) e i relativi
+  path `ssl_certificate` vanno rifatti per il nuovo dominio -- stessa
+  procedura di §4.6, con un `-d` diverso.
+- `infrastructure/marketing-site/` è un sito statico interamente
+  specifico Lial Energy (copy, immagini, favicon) -- per un business
+  diverso serve un sito nuovo, o va tolto il blocco `server` dedicato in
+  `nginx.conf` che lo serve.
+
+**Dati demo**: `apps/api/app/seed/data.py`/`expand_demo.py` creano
+un'organizzazione "Lial Energy Demo" con email `@lialenergy.demo` -- utile
+solo per verifica dello stack, non eseguirlo per un cliente reale diverso
+(vedi anche §4.7 per come rimuoverlo se già eseguito per errore). I nomi
+generici in `.env.example` (`POSTGRES_USER=lial`, `POSTGRES_DB=lial_energy`,
+`S3_BUCKET_DOCUMENTS=lial-documents`, ecc.) sono solo identificatori interni
+cosmetici, sicuri da lasciare invariati o rinominare liberamente -- non
+compaiono mai a un utente finale.
+
+**Non ancora fatto, da considerare se questo diventa un prodotto
+multi-cliente reale**: rendere `LOGO_URL`/`BRAND_COLOR`/nome azienda
+letti da `Organization.settings` invece che costanti nel codice, così un
+singolo deployment potrebbe servire brand diversi per organizzazione senza
+toccare il codice sorgente ad ogni nuovo cliente -- oggi il sistema supporta
+più `organizations` nello schema (multi-tenant a livello dati), ma il
+branding è comunque unico per deployment, non per organizzazione.
