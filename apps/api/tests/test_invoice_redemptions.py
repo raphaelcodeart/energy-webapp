@@ -89,7 +89,7 @@ async def test_full_redemption_lifecycle_credits_wallet_in_two_rows(db, organiza
     )
     assert verified.status == "PAYMENT_PENDING"
     assert verified.payment_reference_code is not None
-    assert redemptions_service.payment_due_cents(verified.confirmed_amount_cents) == 300  # 3% of 10000
+    assert redemptions_service.payment_due_cents(verified.confirmed_amount_cents) == 500  # 5% of 10000
 
     wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
     assert wallet.balance_cents == 0
@@ -100,13 +100,13 @@ async def test_full_redemption_lifecycle_credits_wallet_in_two_rows(db, organiza
     assert credited.status == "CREDITED"
 
     wallet_after = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
-    assert wallet_after.balance_cents == 10300  # 100% base + 3% bonus
+    assert wallet_after.balance_cents == 10500  # 100% base + 5% bonus
 
     rows = await wallet_service.list_transactions_for_wallet(
         db, organization_id=organization_id, wallet_id=wallet_after.id
     )
     by_source = {r["source"]: r["amount_cents"] for r in rows}
-    assert by_source == {"INVOICE_REDEMPTION_BASE": 10000, "INVOICE_REDEMPTION_BONUS": 300}
+    assert by_source == {"INVOICE_REDEMPTION_BASE": 10000, "INVOICE_REDEMPTION_BONUS": 500}
     assert all(r["reference_invoice_redemption_id"] == redemption.id for r in rows)
 
 
@@ -134,7 +134,7 @@ async def test_confirm_payment_twice_does_not_double_credit(db, organization_id)
         )
 
     wallet = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
-    assert wallet.balance_cents == 5150  # unchanged by the rejected second call
+    assert wallet.balance_cents == 5250  # unchanged by the rejected second call
 
 
 @pytest.mark.asyncio
@@ -356,7 +356,7 @@ async def test_mark_paid_via_stripe_credits_wallet_and_is_idempotent_on_retry(db
     assert paid.credited_by_user_id is None  # no human actor -- Stripe confirmed this
 
     wallet = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
-    assert wallet.balance_cents == 6180  # 6000 base + 3% (180) bonus
+    assert wallet.balance_cents == 6300  # 6000 base + 5% (300) bonus
 
     # Stripe retries webhook delivery -- a second call for the same session
     # must be a no-op, never a double credit.
@@ -365,7 +365,7 @@ async def test_mark_paid_via_stripe_credits_wallet_and_is_idempotent_on_retry(db
     )
     assert retried.status == "CREDITED"
     wallet_after_retry = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
-    assert wallet_after_retry.balance_cents == 6180
+    assert wallet_after_retry.balance_cents == 6300
 
 
 @pytest.mark.asyncio

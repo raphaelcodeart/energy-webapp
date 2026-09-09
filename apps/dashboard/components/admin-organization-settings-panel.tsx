@@ -19,7 +19,7 @@ async function fetchPaymentSettings(): Promise<PaymentSettingsRead> {
 }
 
 /** Company-wide configuration: the bank account customers wire bonifico
-    payments to (invoice-redemption 3% payments, order residuals), plus --
+    payments to (invoice-redemption 5% payments, order residuals), plus --
     SUPER_ADMIN only -- Stripe card-payment keys. Was previously only
     settable by editing .env on the server; this is the dashboard-editable
     version. `isSuperAdmin` is a UX nicety only (hides a section this user's

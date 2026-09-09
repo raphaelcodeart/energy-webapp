@@ -6,28 +6,40 @@ in una sessione successiva lo stesso giorno (Session 26), PIÙ cashback
 per-prodotto ("riscuoti subito"), rebrand "LialCash", sezione Contabilità,
 e canale di pagamento reale (carta + prova bonifico) anche per il riscatto
 fattura, aggiunti Session 33 (2026-09-09).** Il progetto è ora completo dal
-riscatto alla spesa E dal lato admin che dal lato cliente, con DUE fonti di
-cashback distinte (vedi §Due percentuali sotto) entrambe pagabili con carta
-o bonifico. Resta solo l'OCR vero (deliberatamente rimandato -- vedi sotto).
+riscatto alla spesa E dal lato admin che dal lato cliente, con due fonti di
+cashback -- riscatto fattura partner e cashback su ordine prodotto -- ora
+**unificate sulla stessa percentuale, 5%** (vedi sotto), entrambe pagabili
+con carta o bonifico. Resta solo l'OCR vero (deliberatamente rimandato --
+vedi sotto).
 
-## Due percentuali di cashback -- da non confondere (Session 33)
+## Percentuale di cashback: unificata al 5% (Session 33, stesso giorno)
 
-Il progetto ha ora due meccanismi di cashback separati, ciascuno con la
-propria percentuale fissa, definiti in punti diversi del codice:
+Il progetto ha due meccanismi di cashback separati, definiti in punti
+diversi del codice ma che condividono ora la stessa percentuale, per
+richiesta esplicita dell'utente ("attenzione che sia riscatta cashback che
+acquisto prodotti il cashback è al 5% non al 3% ...unifica tutto al 5%"):
 
 - **Riscatto fattura partner** (questo documento, Fasi 0-2):
-  `invoice_redemptions/models.py::CASHBACK_PERCENTAGE = 3` -- il cliente
-  paga il 3% di una fattura già pagata a un fornitore esterno per riscattarne
-  il 100%+3% in LialCash.
+  `invoice_redemptions/models.py::CASHBACK_PERCENTAGE = 5` (era 3% fino a
+  Session 33) -- il cliente paga il 5% di una fattura già pagata a un
+  fornitore esterno per riscattarne il 100%+5% in LialCash.
 - **Cashback su ordine prodotto** ("riscuoti subito cashback", Session 33,
   vedi `business-rules.md#product-cashback----riscuoti-subito-cashback-added-session-33`):
   `orders/service.py::ORDER_CASHBACK_PERCENTAGE = 5` -- il cliente paga il
   5% in più sul residuo di un ordine Shop per farselo riaccreditare
   (100%+5%) in LialCash.
 
-Stessa logica (paga X%, ricevi 100%+X% in LialCash, mai contro lo spendere
-credito esistente), percentuali diverse, due costanti separate -- se un
-domani vanno allineate, sono due punti distinti da modificare, non uno.
+Stessa logica (paga 5%, ricevi 100%+5% in LialCash, mai contro lo spendere
+credito esistente), stesso numero, ma restano due costanti separate in due
+file diversi -- se un domani devono tornare a divergere, sono due punti
+distinti da modificare, non uno solo.
+
+**Prodotto dimostrativo creato Session 33**: `CASHBACK-TOTALE-01` ("Power
+Bank 20000mAh - Cashback Totale", categoria DROPSHIPPING, 50,00€,
+`credit_discount_percentage=20`, `cashback_enabled=true`) -- pensato per
+mostrare entrambe le meccaniche insieme su un unico prodotto reale nello
+Shop: fino al 20% pagabile in LialCash, e "riscuoti subito cashback"
+disponibile in fase di checkout.
 
 Se stai riprendendo questo lavoro dopo un crash/reset di sessione, questo file
 ti dice esattamente a che punto siamo — leggilo prima di chiedere di nuovo

@@ -604,19 +604,27 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   (`partners`, e.g. Eviso). A customer or promoter who already pays one of
   these directly can redeem part of that spend as internal wallet credit,
   by uploading proof of payment (`invoice_redemptions`) and then paying Lial
-  3% of the confirmed amount by bank transfer. Once that 3% is confirmed
-  received, the wallet is credited 100% + a further 3% bonus.
-- **Cardinal rule**: credit is minted **only** against a real, admin-confirmed
-  external bank transfer (the 3%) -- never against spending existing credit.
+  5% of the confirmed amount by bank transfer (or card -- see Session 33 below). Once that 5% is confirmed
+  received, the wallet is credited 100% + a further 5% bonus.
+- **Cardinal rule**: credit is minted **only** against a real, confirmed
+  external payment (the 5%, bank transfer or card) -- never against spending existing credit.
   Paying a Lial product with wallet credit (once Phase 4/checkout exists)
   must never itself generate more credit, or the system would create value
   from nothing.
 - **Lifecycle**: `SUBMITTED` (uploaded) → `PAYMENT_PENDING` (an admin
   confirmed the real amount and a payment reference code was generated) →
-  `CREDITED` (an admin confirmed the 3% arrived; two `wallet_transactions`
+  `CREDITED` (the 5% payment arrived, confirmed by an admin or automatically by the Stripe webhook; two `wallet_transactions`
   rows are written -- `INVOICE_REDEMPTION_BASE` and `INVOICE_REDEMPTION_BONUS`,
   never one combined row, both carrying `reference_invoice_redemption_id`).
   `REJECTED` is reachable from `SUBMITTED` or `PAYMENT_PENDING`.
+- **Percentage unified to 5% (Session 33)**: was 3% until Session 33, changed
+  to match `orders/service.py::ORDER_CASHBACK_PERCENTAGE` (the per-product
+  "riscuoti subito cashback" figure, see below) at explicit user request --
+  one consistent number wherever "cashback" appears in the product, not two
+  different ones depending on which flow. Still two separate constants in
+  two files (`invoice_redemptions/models.py::CASHBACK_PERCENTAGE` and
+  `orders/service.py::ORDER_CASHBACK_PERCENTAGE`), just kept in sync by
+  convention, not by sharing an import.
 - **No OCR today**: the customer types the amount they read; an admin always
   verifies against the uploaded document before anything is unlocked. This
   is a deliberate simplification, not a stub -- the flow is fully functional
@@ -686,7 +694,7 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   and `server-migration-guide.md §8` bug #15. Without it every webhook
   delivery 404s and no card order/redemption is ever auto-confirmed.
 - **Redemption fee now also payable by card, with a proof-upload option for
-  bank transfer (Session 33)**: originally the 3% redemption fee could only
+  bank transfer (Session 33)**: originally the redemption fee could only
   be paid by bank transfer with a reference code, manually reconciled by an
   admin with no self-service card option and no proof upload. It now works
   exactly like an order's residual: `invoice_redemptions.payment_method`

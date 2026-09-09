@@ -33,12 +33,16 @@ INVOICE_REDEMPTION_STATUSES = ["SUBMITTED", "PAYMENT_PENDING", "CREDITED", "REJE
 INVOICE_REDEMPTION_PAYMENT_METHODS = ["BANK_TRANSFER", "CARD"]
 
 # Both the redemption's base credit and its bonus, as a percentage of the
-# confirmed invoice amount -- e.g. a 100,00E invoice yields a 3,00E payment
-# request and, once confirmed, a 103,00E credit (100 base + 3 bonus). A
-# single constant because today the "pay X% to redeem, get 100%+X% back"
+# confirmed invoice amount -- e.g. a 100,00E invoice yields a 5,00E payment
+# request and, once confirmed, a 105,00E credit (100 base + 5 bonus).
+# Unified with orders/service.py::ORDER_CASHBACK_PERCENTAGE at 5% (Session
+# 33 -- both cashback sources used to sit at different figures, 3% here vs
+# 5% there, purely because they were built in separate sessions; the user
+# asked for one consistent number everywhere "riscuoti cashback" appears).
+# A single constant because today the "pay X% to redeem, get 100%+X% back"
 # structure uses the same figure for both halves; if that's ever decoupled,
 # split into REDEMPTION_PAYMENT_PERCENTAGE and REDEMPTION_BONUS_PERCENTAGE.
-CASHBACK_PERCENTAGE = 3
+CASHBACK_PERCENTAGE = 5
 
 ALLOWED_INVOICE_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 MAX_INVOICE_BYTES = 15 * 1024 * 1024  # a phone photo of a bill, not a video

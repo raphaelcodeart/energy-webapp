@@ -525,7 +525,7 @@ Wallet ("LialCash"): wallets (saldo interno per utente, indirizzo stile
                     trasferimenti P2P, storni, debiti d'acquisto)
 Partner/cashback:  partners (anagrafica fornitori esterni), invoice_redemptions
                     (riscatto fattura partner in LialCash: upload, verifica
-                    admin, pagamento del 3% con bonifico O carta, accredito)
+                    admin, pagamento del 5% con bonifico O carta, accredito)
 Ordini Shop:       orders (acquisto prodotti DROPSHIPPING/PARTNER: sconto
                     crediti opzionale, "riscuoti subito cashback" 5%
                     opzionale, pagamento con bonifico O carta -- vedi

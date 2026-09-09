@@ -7,7 +7,7 @@ import type { InvoiceRedemptionRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   SUBMITTED: "Da verificare",
-  PAYMENT_PENDING: "Attesa pagamento 3%",
+  PAYMENT_PENDING: "Attesa pagamento 5%",
   CREDITED: "Accreditata",
   REJECTED: "Rifiutata",
 };
@@ -26,6 +26,10 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 async function fetchQueue(statusFilter: string): Promise<InvoiceRedemptionRead[]> {
   const qs = statusFilter !== "ALL" ? `?status_filter=${statusFilter}` : "";
   const res = await fetch(`/api/proxy/invoice-redemptions/admin${qs}`);
@@ -35,7 +39,7 @@ async function fetchQueue(statusFilter: string): Promise<InvoiceRedemptionRead[]
 
 /** Admin queue for the partner-invoice cashback flow -- see
     docs/cashback-partner-invoices-plan.md. Two real admin actions per
-    redemption: "verify" (confirms the real amount, opens the 3% payment
+    redemption: "verify" (confirms the real amount, opens the 5% payment
     window) and "confirm-payment" (mints the wallet credit) -- both are
     money-adjacent so this whole panel is wallet.manage-gated server-side. */
 export function AdminInvoiceRedemptionsPanel() {
@@ -175,6 +179,10 @@ export function AdminInvoiceRedemptionsPanel() {
                     Partner: {r.partner_name} · Dichiarato: {euro(r.declared_amount_cents)}
                     {r.confirmed_amount_cents != null && <> · Confermato: {euro(r.confirmed_amount_cents)}</>}
                   </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Richiesta il {formatDate(r.created_at)}
+                    {r.status === "CREDITED" && r.credited_at && <> · Accreditata il {formatDate(r.credited_at)}</>}
+                  </p>
                   {r.status === "PAYMENT_PENDING" && (
                     <p className="text-[11px] font-mono text-slate-500 mt-1">
                       Metodo: {r.payment_method ? PAYMENT_METHOD_LABELS[r.payment_method] ?? r.payment_method : "—"}
@@ -255,9 +263,9 @@ export function AdminInvoiceRedemptionsPanel() {
                     {actionLoadingId === r.id ? "..." : "Conferma importo"}
                   </button>
                   <p className="text-[11px] text-slate-500 pb-2">
-                    Il cliente verrà avvisato di pagare il 3% ({(() => {
+                    Il cliente verrà avvisato di pagare il 5% ({(() => {
                       const v = Math.round(parseFloat(verifyAmount.replace(",", ".")) * 100);
-                      return Number.isFinite(v) ? euro(Math.round(v * 0.03)) : "—";
+                      return Number.isFinite(v) ? euro(Math.round(v * 0.05)) : "—";
                     })()})
                   </p>
                 </div>

@@ -21,7 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   MANUAL_ADMIN: "Ricarica manuale",
   INVOICE_REDEMPTION_BASE: "Riscatto fattura",
-  INVOICE_REDEMPTION_BONUS: "Bonus 3% riscatto fattura",
+  INVOICE_REDEMPTION_BONUS: "Bonus 5% riscatto fattura",
   ORDER_CASHBACK_BASE: "Cashback ordine",
   ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
 };

@@ -67,11 +67,13 @@ class InvalidOtpError(OrderError):
 
 
 # Fixed, same "flat, admin can't override it per product" design as
-# invoice_redemptions/models.py::CASHBACK_PERCENTAGE (3% there, 5% here --
-# two different flows, deliberately not sharing a constant). What the
-# customer pays extra, on top of whatever they actually owe in new money, to
-# opt into "riscuoti subito cashback" on an eligible order -- see
-# _credit_order_cashback() below for where it's paid back.
+# invoice_redemptions/models.py::CASHBACK_PERCENTAGE -- both unified at 5%
+# (Session 33, explicit user request), but kept as two separate constants in
+# two different flows rather than one shared import, since they're free to
+# diverge again later. What the customer pays extra, on top of whatever they
+# actually owe in new money, to opt into "riscuoti subito cashback" on an
+# eligible order -- see _credit_order_cashback() below for where it's paid
+# back.
 ORDER_CASHBACK_PERCENTAGE = 5
 
 

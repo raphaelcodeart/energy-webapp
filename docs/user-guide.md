@@ -133,9 +133,9 @@ reali e non si può prelevare.
 **Riscatta Cashback** — hai già pagato una bolletta/fattura a uno dei
 fornitori partner di Lial Energy (o a Lial Energy stessa)? Carica la foto o
 il PDF e l'importo dichiarato: appena un amministratore verifica il
-documento e conferma l'importo reale, ti viene chiesto di pagare solo il 3%
+documento e conferma l'importo reale, ti viene chiesto di pagare solo il 5%
 di quell'importo (con carta, subito, o con bonifico indicando il codice
-causale mostrato) per riscattare il 100% + un ulteriore 3% di bonus in
+causale mostrato) per riscattare il 100% + un ulteriore 5% di bonus in
 LialCash sul tuo wallet.
 
 **Contabilità** — la tua rendicontazione personale: un unico elenco che

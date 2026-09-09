@@ -23,11 +23,15 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
-// The invoice itself and the 3% bank transfer are real EUR -- only what
+// The invoice itself and the 5% bank transfer are real EUR -- only what
 // actually lands as wallet credit afterward is LialCash. See
 // wallet-panel.tsx's identical helper.
 function lialCash(cents: number): string {
   return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 async function fetchPartners(): Promise<PartnerRead[]> {
@@ -52,7 +56,7 @@ async function fetchPaymentInfo(): Promise<{ iban: string | null; holder: string
     they already paid an external energy partner (e.g. Eviso) into internal
     wallet credit. See docs/cashback-partner-invoices-plan.md for the full
     design: an admin verifies the document and the real amount, THEN the
-    customer pays 3% by bank transfer, THEN an admin confirms that arrived
+    customer pays 5% by bank transfer, THEN an admin confirms that arrived
     -- only at that last step does any wallet credit get minted. */
 export function InvoiceRedemptionPanel() {
   const queryClient = useQueryClient();
@@ -234,7 +238,7 @@ export function InvoiceRedemptionPanel() {
         </div>
         <p className="text-xs text-slate-500">
           Hai già pagato una bolletta/fattura a uno dei nostri fornitori partner? Carica la foto e riscatta il suo valore in
-          LialCash, pagando solo il 3% del totale (con carta, subito, o con bonifico) — riceverai il 100% + un ulteriore 3% di bonus.
+          LialCash, pagando solo il 5% del totale (con carta, subito, o con bonifico) — riceverai il 100% + un ulteriore 5% di bonus.
         </p>
 
         {noPartnersConfigured && (
@@ -368,6 +372,10 @@ export function InvoiceRedemptionPanel() {
                   <p className="text-xs text-slate-500">
                     Dichiarato: {euro(r.declared_amount_cents)}
                     {r.confirmed_amount_cents != null && <> · Confermato: {euro(r.confirmed_amount_cents)}</>}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Richiesta il {formatDate(r.created_at)}
+                    {r.status === "CREDITED" && r.credited_at && <> · Accreditata il {formatDate(r.credited_at)}</>}
                   </p>
                   {r.rejection_reason && <p className="text-[11px] text-rose-400 mt-1">{r.rejection_reason}</p>}
                 </div>
