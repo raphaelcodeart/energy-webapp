@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,3 +79,12 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     # (catalog/service.py) to stay 0 whenever the parent Product.category is
     # INTERNAL -- see docs/cashback-partner-invoices-plan.md.
     credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=0)
+    # Whether an order for THIS version may opt into "riscuoti subito
+    # cashback" (orders/service.py::ORDER_CASHBACK_PERCENTAGE, currently a
+    # fixed 5%): the customer pays that much extra on top of whatever they
+    # actually owe in new money, and gets the whole amount paid (100% + 5%)
+    # credited back as wallet LialCash once the order is confirmed paid --
+    # never before. Same INTERNAL-always-False enforcement as
+    # credit_discount_percentage above, same reason: an Interno Lial Energy
+    # product is a Contract, not an Order, and never generates cashback.
+    cashback_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

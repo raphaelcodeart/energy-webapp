@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,6 +61,21 @@ class Order(UUIDPKMixin, TimestampMixin, Base):
     credit_debit_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("wallet_transactions.id"), nullable=True
     )
+
+    # "Riscuoti subito cashback" (only offerable when ProductVersion.
+    # cashback_enabled is true): the customer opts to pay
+    # ORDER_CASHBACK_PERCENTAGE (5%) more, on top of whatever they actually
+    # owe in new money (amount_cents - credit_applied_cents), in exchange for
+    # that whole extra payment being credited straight back as wallet
+    # LialCash once the order is confirmed PAID -- see orders/service.py's
+    # _credit_order_cashback(). cashback_surcharge_cents is frozen at
+    # creation (same "frozen at the moment it happens" rule as amount_cents)
+    # so a later change to ORDER_CASHBACK_PERCENTAGE never rewrites what a
+    # past order actually promised. Both stay at their defaults (False / 0)
+    # for every order created before this feature existed.
+    cashback_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    cashback_surcharge_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    cashback_credited_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     status: Mapped[str] = mapped_column(String(16), default="AWAITING_PAYMENT", index=True)
     payment_method: Mapped[str] = mapped_column(String(16), default="BANK_TRANSFER")

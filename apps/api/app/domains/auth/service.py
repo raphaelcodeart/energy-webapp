@@ -481,10 +481,17 @@ async def reset_password(db: AsyncSession, *, token: str, new_password: str) -> 
 
 OTP_EXPIRE_MINUTES = 10
 
-# The one purpose this exists for today -- see network/service.py::apply_as_promoter.
-# A separate constant (not a free string at each call site) so a typo can't
-# silently create two disjoint "purposes" for what should be the same gate.
+# See network/service.py::apply_as_promoter. A separate constant (not a free
+# string at each call site) so a typo can't silently create two disjoint
+# "purposes" for what should be the same gate.
 PROMOTER_APPLICATION_OTP_PURPOSE = "PROMOTER_APPLICATION"
+# Gates self-checkout spending existing wallet LialCash on an order (any
+# credit_applied_cents > 0 on POST /orders/mine) -- see
+# orders/service.py::create_order. A stolen session token alone must not be
+# enough to drain a wallet at self-checkout; this is the same "prove you
+# still control the inbox" backstop PROMOTER_APPLICATION_OTP_PURPOSE already
+# uses for a different sensitive self-service action.
+WALLET_CREDIT_SPEND_OTP_PURPOSE = "WALLET_CREDIT_SPEND"
 
 
 async def request_otp(db: AsyncSession, *, user: User, purpose: str, context_line: str) -> None:

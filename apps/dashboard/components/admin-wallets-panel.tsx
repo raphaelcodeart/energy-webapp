@@ -28,6 +28,8 @@ const SOURCE_LABELS: Record<string, string> = {
   MANUAL_ADMIN: "Ricarica manuale",
   INVOICE_REDEMPTION_BASE: "Riscatto fattura",
   INVOICE_REDEMPTION_BONUS: "Bonus 3% riscatto fattura",
+  ORDER_CASHBACK_BASE: "Cashback ordine",
+  ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
 };
 
 function transactionLabel(t: { type: string; source: string | null }): string {
@@ -35,8 +37,10 @@ function transactionLabel(t: { type: string; source: string | null }): string {
   return sourceLabel ?? TYPE_LABELS[t.type] ?? t.type;
 }
 
-function euro(cents: number): string {
-  return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+// The wallet only ever holds LialCash, never real EUR -- see
+// wallet-panel.tsx's identical helper.
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
 }
 
 async function fetchWallets(): Promise<WalletAdminListItemRead[]> {
@@ -157,7 +161,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
   function handleExportCsv() {
     downloadCsv(
       `wallet_transazioni_${new Date().toISOString().slice(0, 10)}`,
-      ["ID", "Tipo", "Da", "A", "Importo (EUR)", "Nota", "Data"],
+      ["ID", "Tipo", "Da", "A", "Importo (LialCash)", "Nota", "Data"],
       (transactions ?? []).map((t) => [
         t.id, transactionLabel(t), t.from_display_name ?? "Sistema", t.to_display_name ?? "Sistema",
         (t.amount_cents / 100).toFixed(2), t.note ?? "", t.created_at,
@@ -171,11 +175,11 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
       <div className="grid grid-cols-2 gap-4">
         <div className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Saldo totale wallet</p>
-          <p className="text-xl font-bold text-white light:text-slate-900">{euro(totalBalance)}</p>
+          <p className="text-xl font-bold text-white light:text-slate-900">{lialCash(totalBalance)}</p>
         </div>
         <div className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
           <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Totale ricaricato (nel filtro)</p>
-          <p className="text-xl font-bold text-emerald-400">{euro(totalCredited)}</p>
+          <p className="text-xl font-bold text-emerald-400">{lialCash(totalCredited)}</p>
         </div>
       </div>
 
@@ -218,7 +222,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                       </td>
                       <td className="py-2 px-5">{w.owner_roles.join(", ") || "—"}</td>
                       <td className="py-2 px-5 font-mono text-[10px]">{w.address}</td>
-                      <td className="py-2 px-5 text-right font-semibold text-orange-400">{euro(w.balance_cents)}</td>
+                      <td className="py-2 px-5 text-right font-semibold text-orange-400">{lialCash(w.balance_cents)}</td>
                       <td className="py-2 px-5 text-right">
                         {isSuperAdmin ? (
                           <button
@@ -237,7 +241,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                         <td colSpan={5} className="px-5 py-3">
                           <form onSubmit={(e) => handleTopUp(e, w.user_id)} className="flex items-end gap-2">
                             <div className="space-y-1 flex-1 max-w-[160px]">
-                              <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (EUR)</label>
+                              <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (LialCash)</label>
                               <input
                                 required
                                 autoFocus
@@ -338,7 +342,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                         {transactionLabel(t)}
                       </span>
                     </td>
-                    <td className="py-3 px-5 text-right font-semibold text-orange-400">{euro(t.amount_cents)}</td>
+                    <td className="py-3 px-5 text-right font-semibold text-orange-400">{lialCash(t.amount_cents)}</td>
                     <td className="py-3 px-5">{new Date(t.created_at).toLocaleString("it-IT")}</td>
                     <td className="py-3 px-5 text-right">
                       {t.type !== "REVERSAL" && (

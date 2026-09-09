@@ -43,6 +43,12 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+// Wallet credit is LialCash, never plain EUR -- see wallet-panel.tsx's
+// identical helper.
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 async function fetchProducts(): Promise<ProductCatalogRead[]> {
   const res = await fetch("/api/proxy/products");
   if (!res.ok) throw new Error("Impossibile caricare il catalogo prodotti.");
@@ -196,7 +202,7 @@ export function CustomerProductsPanel({
                   {p.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
                     <div className="absolute top-3 right-3">
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-emerald-500 to-emerald-400 text-white shadow-lg shadow-emerald-500/30">
-                        -{v.credit_discount_percentage}% in crediti
+                        -{v.credit_discount_percentage}% in LialCash
                       </span>
                     </div>
                   )}
@@ -234,8 +240,8 @@ export function CustomerProductsPanel({
                     </div>
                     {p.category !== "INTERNAL" && maxCreditCents > 0 && (
                       <div className="text-right">
-                        <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Crediti usabili</p>
-                        <p className="text-lg font-extrabold text-emerald-400 tabular-nums">{euro(maxCreditCents)}</p>
+                        <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">LialCash usabili</p>
+                        <p className="text-lg font-extrabold text-emerald-400 tabular-nums">{lialCash(maxCreditCents)}</p>
                       </div>
                     )}
                   </div>

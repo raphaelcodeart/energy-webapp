@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AccountingPanel } from "@/components/accounting-panel";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
@@ -207,13 +208,22 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    key: "accounting",
+    label: "Contabilità",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
 ];
 
 export function CustomerClientPage({ contracts: initialContracts, email }: CustomerClientPageProps) {
   // "lial-contracts" is the customer's home -- matches the Shop's old default
   // landing tab, back when Lial Energy contracts were its first category
   // (see NAV_ITEMS ordering below).
-  const [activeTab, setActiveTab] = useState<"lial-contracts" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("lial-contracts");
+  const [activeTab, setActiveTab] = useState<"lial-contracts" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -567,6 +577,13 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
         <div className="space-y-6">
           <SectionBanner image="wallets" alt="Riscatta Cashback" />
           <InvoiceRedemptionPanel />
+        </div>
+      )}
+
+      {activeTab === "accounting" && (
+        <div className="space-y-6">
+          <SectionBanner image="wallets" alt="Contabilità" />
+          <AccountingPanel />
         </div>
       )}
     </AppShell>

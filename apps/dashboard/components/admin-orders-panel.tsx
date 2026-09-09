@@ -25,6 +25,12 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+// Wallet credit is LialCash, never plain EUR -- see wallet-panel.tsx's
+// identical helper. Bonifico/Carta amounts always stay euro().
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
 }
@@ -113,7 +119,7 @@ export function AdminOrdersPanel() {
     e.preventDefault();
     const creditCents = Math.round(parseFloat(creditAmount.replace(",", ".")) * 100);
     if (!Number.isFinite(creditCents) || creditCents < 0) {
-      setCreateError("Importo in crediti non valido.");
+      setCreateError("Importo in LialCash non valido.");
       return;
     }
     setCreateLoading(true);
@@ -196,7 +202,7 @@ export function AdminOrdersPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-slate-400 light:text-slate-500">
-          Acquisti di prodotti dropshipping/partner, con sconto in crediti opzionale.
+          Acquisti di prodotti dropshipping/partner, con sconto in LialCash opzionale.
         </p>
         <button
           onClick={() => { setShowCreate(!showCreate); setCreateError(null); }}
@@ -244,7 +250,7 @@ export function AdminOrdersPanel() {
                     <p className="font-semibold text-white light:text-slate-900">{euro(quote.amount_cents)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-500 uppercase">Sconto max in crediti</p>
+                    <p className="text-[10px] text-slate-500 uppercase">Sconto max in LialCash</p>
                     <p className="font-semibold text-orange-400">{quote.credit_discount_percentage}% ({euro(quote.max_creditable_cents)})</p>
                   </div>
                   <div>
@@ -253,7 +259,7 @@ export function AdminOrdersPanel() {
                   </div>
                 </div>
                 <div className="space-y-1 pt-2 border-t border-white/5 light:border-slate-200">
-                  <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Crediti da applicare (EUR)</label>
+                  <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">LialCash da applicare</label>
                   <input
                     inputMode="decimal"
                     value={creditAmount}
@@ -333,7 +339,7 @@ export function AdminOrdersPanel() {
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {o.product_name} · Totale {euro(o.amount_cents)}
-                      {o.credit_applied_cents > 0 && <> · Crediti {euro(o.credit_applied_cents)}</>}
+                      {o.credit_applied_cents > 0 && <> · {lialCash(o.credit_applied_cents)}</>}
                       {" "}· Residuo {euro(o.residual_amount_cents)}
                     </p>
                     {o.cancellation_reason && (

@@ -18,6 +18,9 @@ class OrderRead(BaseModel):
     amount_cents: int
     credit_applied_cents: int
     residual_amount_cents: int
+    cashback_requested: bool = False
+    cashback_surcharge_cents: int = 0
+    cashback_credited_at: datetime | None = None
     status: str
     payment_method: str
     stripe_checkout_session_id: str | None = None
@@ -47,6 +50,8 @@ class OrderQuoteRead(BaseModel):
     customer_wallet_balance_cents: int
     bank_transfer_available: bool
     card_available: bool
+    cashback_available: bool
+    cashback_percentage: int
 
 
 class OrderCreateRequest(BaseModel):
@@ -59,6 +64,10 @@ class OrderCreateRequest(BaseModel):
     # ORDER_PAYMENT_METHODS. Ignored (order goes straight to PAID) when
     # credit covers 100%.
     payment_method: str = "BANK_TRANSFER"
+    # "Riscuoti subito cashback" -- only valid when the product allows it
+    # (OrderQuoteRead.cashback_available) and something is actually still
+    # owed in new money after any credit_applied_cents.
+    cashback_requested: bool = False
     note: str | None = Field(default=None, max_length=1000)
 
 
@@ -71,6 +80,12 @@ class OrderSelfCreateRequest(BaseModel):
     product_version_id: uuid.UUID
     credit_applied_cents: int = Field(default=0, ge=0)
     payment_method: str = "BANK_TRANSFER"
+    cashback_requested: bool = False
+    # Required (and verified server-side) whenever credit_applied_cents > 0
+    # -- see POST /orders/mine/request-credit-otp and
+    # orders/service.py::create_order's otp_code parameter. Irrelevant, and
+    # never checked, when no wallet LialCash is being spent.
+    otp_code: str | None = None
     note: str | None = Field(default=None, max_length=1000)
 
 

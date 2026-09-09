@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 # Import every domain's models module so SQLAlchemy's metadata (and therefore
 # Alembic autogenerate) sees all tables, even though nothing else here references
 # these imports directly.
+from app.domains.accounting.router import router as accounting_router
 from app.domains.audit import models as _audit_models  # noqa: F401
 from app.domains.auth import models as _auth_models  # noqa: F401
 from app.domains.auth.router import router as auth_router
@@ -71,6 +72,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(accounting_router, prefix="/api")
 app.include_router(network_router, prefix="/api")
 app.include_router(referral_router, prefix="/api")
 app.include_router(referral_authenticated_router, prefix="/api")

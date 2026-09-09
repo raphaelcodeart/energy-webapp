@@ -46,10 +46,19 @@ export function ProductCheckoutModal({
 
   const [creditAmount, setCreditAmount] = useState("0.00");
   const [paymentMethod, setPaymentMethod] = useState<"BANK_TRANSFER" | "CARD" | null>(null);
+  const [cashbackRequested, setCashbackRequested] = useState(false);
   const [step, setStep] = useState<"choose" | "bank_instructions" | "card_redirect" | "success">("choose");
   const [placedOrder, setPlacedOrder] = useState<OrderRead | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Spending existing LialCash needs a fresh OTP emailed to the customer
+  // first -- see orders/service.py::create_order's otp_code parameter and
+  // POST /orders/mine/request-credit-otp. Irrelevant (and never shown) when
+  // no wallet credit is being applied to this order.
+  const [otpCode, setOtpCode] = useState("");
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpRequesting, setOtpRequesting] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   const { data: paymentInfo } = useQuery({
     queryKey: ["customer", "payment-info"],
@@ -75,13 +84,36 @@ export function ProductCheckoutModal({
       )
     : 0;
   const residualCents = quote ? quote.amount_cents - creditCents : 0;
-  const needsPaymentMethod = residualCents > 0;
+  const canRequestCashback = !!quote?.cashback_available && residualCents > 0;
+  const cashbackSurchargeCents = canRequestCashback && cashbackRequested
+    ? Math.round((residualCents * (quote?.cashback_percentage ?? 0)) / 100)
+    : 0;
+  const totalToPayCents = residualCents + cashbackSurchargeCents;
+  const needsPaymentMethod = totalToPayCents > 0;
   const noMethodAvailable = quote ? !quote.bank_transfer_available && !quote.card_available : false;
+
+  async function handleRequestOtp() {
+    setOtpRequesting(true);
+    setOtpError(null);
+    try {
+      const res = await fetch("/api/proxy/orders/mine/request-credit-otp", { method: "POST" });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      setOtpRequested(true);
+    } catch (err: any) {
+      setOtpError(err.message || "Impossibile inviare il codice.");
+    } finally {
+      setOtpRequesting(false);
+    }
+  }
 
   async function handleConfirm() {
     if (!quote) return;
     if (needsPaymentMethod && !paymentMethod) {
       setSubmitError("Seleziona un metodo di pagamento.");
+      return;
+    }
+    if (creditCents > 0 && !otpCode.trim()) {
+      setSubmitError("Inserisci il codice di conferma ricevuto via email per usare i tuoi LialCash.");
       return;
     }
     setSubmitLoading(true);
@@ -93,6 +125,8 @@ export function ProductCheckoutModal({
         body: JSON.stringify({
           product_version_id: productVersionId,
           credit_applied_cents: creditCents,
+          cashback_requested: cashbackRequested,
+          otp_code: creditCents > 0 ? otpCode.trim() : null,
           payment_method: needsPaymentMethod ? paymentMethod : "BANK_TRANSFER",
         }),
       });
@@ -152,7 +186,7 @@ export function ProductCheckoutModal({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm text-slate-300 light:text-slate-600">
-              Ordine confermato -- pagato interamente con i tuoi crediti wallet.
+              Ordine confermato -- pagato interamente con i tuoi LialCash.
             </p>
             <button
               onClick={onClose}
@@ -200,7 +234,7 @@ export function ProductCheckoutModal({
               ) : (
                 <p className="text-slate-500">Contatta l'amministrazione per le coordinate bancarie.</p>
               )}
-              <p className="pt-1"><span className="text-slate-500">Causale consigliata:</span> <span className="font-mono text-orange-400">Ordine {placedOrder.id.slice(0, 8)}</span></p>
+              <p className="pt-1"><span className="text-slate-500">Causale consigliata:</span> <span className="font-mono text-orange-400">Ordine {placedOrder.id.slice(0, 8).toUpperCase()}</span></p>
             </div>
             <button
               onClick={onClose}
@@ -220,33 +254,92 @@ export function ProductCheckoutModal({
                 <p className="font-semibold text-white light:text-slate-900">{euro(quote.amount_cents)}</p>
               </div>
               <div>
-                <p className="text-[10px] text-slate-500 uppercase">Sconto max crediti</p>
+                <p className="text-[10px] text-slate-500 uppercase">Sconto max LialCash</p>
                 <p className="font-semibold text-orange-400">{quote.credit_discount_percentage}%</p>
               </div>
               <div>
                 <p className="text-[10px] text-slate-500 uppercase">Il tuo saldo</p>
-                <p className="font-semibold text-white light:text-slate-900">{euro(quote.customer_wallet_balance_cents)}</p>
+                <p className="font-semibold text-white light:text-slate-900">{euro(quote.customer_wallet_balance_cents)} LialCash</p>
               </div>
             </div>
 
             {quote.max_creditable_cents > 0 && (
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
-                  Crediti da usare (max {euro(Math.min(quote.max_creditable_cents, quote.customer_wallet_balance_cents))})
+                  LialCash da usare (max {euro(Math.min(quote.max_creditable_cents, quote.customer_wallet_balance_cents))})
                 </label>
                 <input
                   inputMode="decimal"
                   value={creditAmount}
-                  onChange={(e) => setCreditAmount(e.target.value)}
+                  onChange={(e) => { setCreditAmount(e.target.value); setOtpRequested(false); setOtpCode(""); }}
                   className="w-full max-w-[160px] rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
                 />
               </div>
             )}
 
+            {creditCents > 0 && (
+              <div className="p-3 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 space-y-2">
+                <p className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase">
+                  Conferma utilizzo LialCash
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Per sicurezza, ti mandiamo un codice via email per confermare l&apos;uso dei tuoi LialCash su questo ordine.
+                </p>
+                {!otpRequested ? (
+                  <button
+                    type="button"
+                    onClick={handleRequestOtp}
+                    disabled={otpRequesting}
+                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
+                  >
+                    {otpRequesting ? "Invio in corso..." : "Invia codice via email"}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      inputMode="numeric"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="Codice ricevuto via email"
+                      className="w-full max-w-[180px] rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRequestOtp}
+                      disabled={otpRequesting}
+                      className="text-[11px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer disabled:opacity-50"
+                    >
+                      Rinvia
+                    </button>
+                  </div>
+                )}
+                {otpError && <p className="text-[11px] text-rose-400">{otpError}</p>}
+              </div>
+            )}
+
+            {canRequestCashback && (
+              <label className="flex items-start gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer p-3 rounded-xl bg-orange-500/5 border border-orange-500/20">
+                <input
+                  type="checkbox"
+                  checked={cashbackRequested}
+                  onChange={(e) => setCashbackRequested(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
+                />
+                <span>
+                  <strong className="text-orange-400">Riscuoti subito cashback:</strong> paga il {quote.cashback_percentage}% in
+                  più ({euro(Math.round((residualCents * quote.cashback_percentage) / 100))}) e ricevi l&apos;intero importo
+                  pagato accreditato come LialCash sul tuo wallet non appena il pagamento è confermato.
+                </span>
+              </label>
+            )}
+
             <div className="pt-3 border-t border-white/5 light:border-slate-200">
               <p className="text-sm text-slate-300 light:text-slate-600 mb-2">
-                Residuo da pagare: <strong className={residualCents > 0 ? "text-orange-400" : "text-emerald-400"}>{euro(Math.max(residualCents, 0))}</strong>
-                {residualCents <= 0 && " -- coperto interamente dai crediti"}
+                Residuo da pagare: <strong className={totalToPayCents > 0 ? "text-orange-400" : "text-emerald-400"}>{euro(Math.max(totalToPayCents, 0))}</strong>
+                {totalToPayCents <= 0 && " -- coperto interamente dai LialCash"}
+                {cashbackSurchargeCents > 0 && (
+                  <span className="text-[11px] text-slate-500"> (include {euro(cashbackSurchargeCents)} di cashback)</span>
+                )}
               </p>
 
               {needsPaymentMethod && (
@@ -295,10 +388,14 @@ export function ProductCheckoutModal({
 
             <button
               onClick={handleConfirm}
-              disabled={submitLoading || (needsPaymentMethod && (noMethodAvailable || !paymentMethod))}
+              disabled={
+                submitLoading
+                || (needsPaymentMethod && (noMethodAvailable || !paymentMethod))
+                || (creditCents > 0 && !otpCode.trim())
+              }
               className="w-full px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-sm font-semibold text-white transition cursor-pointer disabled:opacity-50"
             >
-              {submitLoading ? "Elaborazione..." : residualCents > 0 ? "Conferma e procedi al pagamento" : "Conferma ordine"}
+              {submitLoading ? "Elaborazione..." : totalToPayCents > 0 ? "Conferma e procedi al pagamento" : "Conferma ordine"}
             </button>
           </div>
         )}

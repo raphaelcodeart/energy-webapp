@@ -23,6 +23,13 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+// The invoice itself and the 3% bank transfer are real EUR -- only what
+// actually lands as wallet credit afterward is LialCash. See
+// wallet-panel.tsx's identical helper.
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 async function fetchPartners(): Promise<PartnerRead[]> {
   const res = await fetch("/api/proxy/partners?active_only=true");
   if (!res.ok) throw new Error("Impossibile caricare i fornitori partner.");
@@ -267,7 +274,7 @@ export function InvoiceRedemptionPanel() {
                 <div className="mt-3 pt-3 border-t border-white/5 light:border-slate-200 text-xs space-y-1.5">
                   <p className="text-slate-300 light:text-slate-600">
                     Paga <strong className="text-orange-400">{euro(r.payment_due_cents ?? 0)}</strong> per riscattare{" "}
-                    <strong className="text-emerald-400">{euro(r.confirmed_amount_cents ?? 0)}</strong> di credito.
+                    <strong className="text-emerald-400">{lialCash(r.confirmed_amount_cents ?? 0)}</strong>.
                   </p>
                   {paymentInfo?.iban ? (
                     <>

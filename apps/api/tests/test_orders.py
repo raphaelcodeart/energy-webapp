@@ -5,10 +5,13 @@ straight-to-PAID shortcut when credit covers 100%, cancellation refunding
 the exact debit via a REVERSAL, and INTERNAL products being rejected."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.core.security import hash_password
+from app.core.security import hash_otp_code, hash_password
+from app.domains.auth import service as auth_service
+from app.domains.auth.models import OtpCode
 from app.domains.catalog import service as catalog_service
 from app.domains.catalog.schemas import ProductCreate
 from app.domains.orders import service as orders_service
@@ -17,6 +20,24 @@ from app.domains.organizations.schemas import OrganizationSettingsUpdate, Paymen
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users.models import User
 from app.domains.wallets import service as wallet_service
+
+VALID_OTP_CODE = "654321"
+
+
+async def _seed_credit_spend_otp(db, user_id):
+    """Same "seed the row directly, skip the email-sending request_otp()
+    call" pattern as test_promoter_self_service.py::_apply_as_promoter --
+    every test here that needs a valid code doesn't otherwise care about the
+    email itself."""
+    db.add(
+        OtpCode(
+            user_id=user_id,
+            purpose=auth_service.WALLET_CREDIT_SPEND_OTP_PURPOSE,
+            code_hash=hash_otp_code(VALID_OTP_CODE),
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    )
+    await db.commit()
 
 
 async def _configure_bank_transfer(db, organization_id):
@@ -68,12 +89,16 @@ async def _make_user_with_role(db, organization_id, *, role_code: str = "CUSTOME
     return user
 
 
-async def _make_product_version(db, organization_id, actor_user_id, *, category="DROPSHIPPING", price_cents=5000, discount_pct=20):
+async def _make_product_version(
+    db, organization_id, actor_user_id, *, category="DROPSHIPPING", price_cents=5000, discount_pct=20,
+    cashback_enabled=False,
+):
     product = await catalog_service.create_product(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         payload=ProductCreate(
             code=f"ORD-{uuid.uuid4().hex[:6]}", customer_type="PRIVATE", category=category,
             name="Gadget", base_price_cents=price_cents, credit_discount_percentage=discount_pct,
+            cashback_enabled=cashback_enabled,
         ),
     )
     _, versions = await catalog_service.get_product_with_versions(db, organization_id=organization_id, product_id=product.id)
@@ -102,6 +127,7 @@ async def test_partial_credit_debits_wallet_and_leaves_residual_awaiting_payment
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=1000, actor_user_id=admin.id,
+        require_otp_for_credit_spend=False,
     )
     assert order.status == "AWAITING_PAYMENT"
     assert order.amount_cents == 5000
@@ -132,6 +158,7 @@ async def test_credit_covering_full_amount_skips_straight_to_paid(db, organizati
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=3000, actor_user_id=admin.id,
+        require_otp_for_credit_spend=False,
     )
     assert order.status == "PAID"  # no bank transfer needed
     assert order.paid_at is not None
@@ -150,6 +177,7 @@ async def test_credit_over_cap_is_rejected(db, organization_id):
         await orders_service.create_order(
             db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
             credit_applied_cents=1001, actor_user_id=admin.id,  # cap is 1000
+            require_otp_for_credit_spend=False,
         )
 
 
@@ -165,6 +193,7 @@ async def test_credit_exceeding_balance_raises_and_creates_no_order(db, organiza
         await orders_service.create_order(
             db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
             credit_applied_cents=2500, actor_user_id=admin.id,
+            require_otp_for_credit_spend=False,
         )
 
     orders = await orders_service.list_orders(db, organization_id=organization_id)
@@ -187,6 +216,7 @@ async def test_cancel_refunds_the_exact_credit_debit(db, organization_id):
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=1000, actor_user_id=admin.id,
+        require_otp_for_credit_spend=False,
     )
     mid_wallet = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
     assert mid_wallet.balance_cents == 0
@@ -217,6 +247,7 @@ async def test_internal_category_product_is_not_orderable(db, organization_id):
         await orders_service.create_order(
             db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
             credit_applied_cents=0, actor_user_id=admin.id,
+            require_otp_for_credit_spend=False,
         )
 
 
@@ -316,6 +347,7 @@ async def test_full_credit_ignores_unconfigured_payment_method(db, organization_
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=3000, actor_user_id=admin.id, payment_method="CARD",  # unconfigured, irrelevant here
+        require_otp_for_credit_spend=False,
     )
     assert order.status == "PAID"
 
@@ -340,6 +372,7 @@ async def test_create_order_notifies_staff_but_not_the_actor(db, organization_id
     await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=0, actor_user_id=admin.id,
+        require_otp_for_credit_spend=False,
     )
 
     actor_notifications = await notifications_service.list_my_notifications(
@@ -371,6 +404,7 @@ async def test_confirm_payment_notifies_staff_and_sends_paid_email(db, organizat
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=0, actor_user_id=customer.id,
+        require_otp_for_credit_spend=False,
     )
 
     with patch.object(orders_service, "_send_order_paid_email", new_callable=AsyncMock) as mock_email:
@@ -509,6 +543,7 @@ async def test_change_payment_method_rejects_once_paid(db, organization_id):
     order = await orders_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
         credit_applied_cents=3000, actor_user_id=customer.id,
+        require_otp_for_credit_spend=False,
     )
     assert order.status == "PAID"
 
@@ -584,3 +619,268 @@ async def test_upload_payment_proof_rejects_a_card_order(db, organization_id):
             db, organization_id=organization_id, order=order, file_bytes=b"%PDF fake",
             content_type="application/pdf", original_filename="x.pdf", actor_user_id=customer.id,
         )
+
+
+# ---- Self-checkout OTP gate on spending existing wallet LialCash ----
+
+@pytest.mark.asyncio
+async def test_self_checkout_credit_spend_without_otp_is_rejected(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+
+    with pytest.raises(orders_service.InvalidOtpError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=1000, actor_user_id=customer.id,  # require_otp_for_credit_spend defaults True
+        )
+
+
+@pytest.mark.asyncio
+async def test_self_checkout_credit_spend_with_wrong_otp_is_rejected(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    await _seed_credit_spend_otp(db, customer.id)
+
+    with pytest.raises(orders_service.InvalidOtpError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=1000, actor_user_id=customer.id, otp_code="000000",
+        )
+
+
+@pytest.mark.asyncio
+async def test_self_checkout_credit_spend_with_valid_otp_succeeds(db, organization_id):
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    await _seed_credit_spend_otp(db, customer.id)
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=1000, actor_user_id=customer.id, otp_code=VALID_OTP_CODE,
+    )
+    assert order.credit_applied_cents == 1000
+
+    # verify_otp() consumes it -- a second order can't reuse the same code.
+    with pytest.raises(orders_service.InvalidOtpError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=500, actor_user_id=customer.id, otp_code=VALID_OTP_CODE,
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_created_order_never_needs_an_otp(db, organization_id):
+    """POST /orders (staff, wallet.manage-gated) passes
+    require_otp_for_credit_spend=False -- an admin applying a customer's
+    credit on their behalf can't complete an OTP that would be emailed to
+    the CUSTOMER's inbox, and doesn't need to: this is already a
+    permissioned, audited action."""
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=1000, actor_user_id=admin.id, require_otp_for_credit_spend=False,
+    )
+    assert order.credit_applied_cents == 1000
+
+
+# ---- "Riscuoti subito cashback" ----
+
+@pytest.mark.asyncio
+async def test_cashback_requires_the_product_to_allow_it(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=0, cashback_enabled=False)
+
+    with pytest.raises(orders_service.CashbackNotAvailableError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=0, actor_user_id=customer.id, cashback_requested=True,
+            require_otp_for_credit_spend=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_cashback_requires_a_real_residual_to_apply_to(db, organization_id):
+    """100% credit-discount covering the whole price leaves nothing new to
+    pay -- cashback (which pays back what was genuinely paid new) can't
+    apply to an order like that."""
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(
+        db, organization_id, admin.id, price_cents=3000, discount_pct=100, cashback_enabled=True
+    )
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=3000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    await _seed_credit_spend_otp(db, customer.id)
+
+    with pytest.raises(orders_service.CashbackNotAvailableError):
+        await orders_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+            credit_applied_cents=3000, actor_user_id=customer.id, cashback_requested=True, otp_code=VALID_OTP_CODE,
+        )
+
+
+@pytest.mark.asyncio
+async def test_cashback_surcharge_and_credit_on_bank_transfer_confirm(db, organization_id):
+    """The full, real-money happy path: a 100.00 EUR product, no credit
+    discount used, cashback requested -- must charge 105.00 EUR (5% surcharge
+    on the full residual) and, once an admin confirms the bank transfer,
+    credit exactly 105.00 EUR back as two LialCash rows (100.00 base + 5.00
+    bonus), never more than what was actually paid."""
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(
+        db, organization_id, admin.id, price_cents=10000, discount_pct=0, cashback_enabled=True
+    )
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=0, actor_user_id=customer.id, cashback_requested=True,
+        require_otp_for_credit_spend=False,
+    )
+    assert order.cashback_requested is True
+    assert order.cashback_surcharge_cents == 500  # 5% of 10000
+    row = await orders_service.to_read_dict(db, order)
+    assert row["residual_amount_cents"] == 10500
+
+    confirmed = await orders_service.confirm_payment(
+        db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id
+    )
+    assert confirmed.cashback_credited_at is not None
+
+    wallet_after = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
+    assert wallet_after.balance_cents == 10500  # 100% + 5%, exactly what was paid
+
+
+@pytest.mark.asyncio
+async def test_cashback_credited_via_stripe_webhook_and_not_double_credited_on_retry(db, organization_id):
+    await _configure_stripe(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(
+        db, organization_id, admin.id, price_cents=6000, discount_pct=0, cashback_enabled=True
+    )
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=0, actor_user_id=customer.id, payment_method="CARD", cashback_requested=True,
+        require_otp_for_credit_spend=False,
+    )
+    order = await orders_service.attach_stripe_checkout_session(db, order=order, session_id=f"cs_test_{uuid.uuid4().hex}")
+
+    paid = await orders_service.mark_paid_via_stripe(
+        db, organization_id=organization_id, stripe_checkout_session_id=order.stripe_checkout_session_id
+    )
+    assert paid.cashback_credited_at is not None
+    wallet_after = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
+    assert wallet_after.balance_cents == 6300  # 6000 + 5% = 6300
+
+    # Stripe retries webhook delivery -- must stay a no-op, not a second credit.
+    await orders_service.mark_paid_via_stripe(
+        db, organization_id=organization_id, stripe_checkout_session_id=order.stripe_checkout_session_id
+    )
+    wallet_again = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
+    assert wallet_again.balance_cents == 6300
+
+
+@pytest.mark.asyncio
+async def test_cashback_base_is_computed_after_credit_discount_not_before(db, organization_id):
+    """Spend 20.00 EUR of existing LialCash on a 100.00 EUR product (80.00
+    EUR residual), then request cashback on top: the 5% surcharge and the
+    cashback base must both be computed off the 80.00 EUR residual, never
+    the original 100.00 EUR price -- crediting cashback off a higher base
+    than what was genuinely paid NEW would let a customer manufacture credit
+    out of credit already spent."""
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(
+        db, organization_id, admin.id, price_cents=10000, discount_pct=50, cashback_enabled=True
+    )
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    await _seed_credit_spend_otp(db, customer.id)
+
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=2000, actor_user_id=customer.id, cashback_requested=True, otp_code=VALID_OTP_CODE,
+    )
+    assert order.cashback_surcharge_cents == 400  # 5% of the 8000 residual, not of 10000
+    row = await orders_service.to_read_dict(db, order)
+    assert row["residual_amount_cents"] == 8400  # 8000 + 400
+
+    await orders_service.confirm_payment(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
+
+    wallet_after = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
+    # Started with 2000, spent all 2000 (balance 0), then received back
+    # 8000 + 400 = 8400 in cashback. Net: 2000 - 2000 + 8400 = 8400.
+    assert wallet_after.balance_cents == 8400
+
+
+# ---- Product-level cashback_enabled toggle (catalog domain) ----
+
+@pytest.mark.asyncio
+async def test_cashback_enabled_is_forced_false_for_an_internal_product(db, organization_id):
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    product = await catalog_service.create_product(
+        db, organization_id=organization_id, actor_user_id=admin.id,
+        payload=ProductCreate(
+            code=f"INT-{uuid.uuid4().hex[:6]}", customer_type="PRIVATE", category="INTERNAL",
+            name="Luce Energia", base_price_cents=5000, cashback_enabled=True,
+        ),
+    )
+    _, versions = await catalog_service.get_product_with_versions(db, organization_id=organization_id, product_id=product.id)
+    assert versions[0].cashback_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_switching_category_to_internal_clears_cashback_enabled(db, organization_id):
+    from app.domains.catalog.schemas import ProductUpdate
+
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    version = await _make_product_version(db, organization_id, admin.id, category="PARTNER", cashback_enabled=True)
+    assert version.cashback_enabled is True
+
+    await catalog_service.update_product(
+        db, organization_id=organization_id, product_id=version.product_id,
+        payload=ProductUpdate(category="INTERNAL"), actor_user_id=admin.id,
+    )
+    _, versions = await catalog_service.get_product_with_versions(
+        db, organization_id=organization_id, product_id=version.product_id
+    )
+    assert versions[0].cashback_enabled is False

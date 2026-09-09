@@ -13,6 +13,12 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+// Wallet credit is LialCash, never plain EUR -- see wallet-panel.tsx's
+// identical helper.
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 /** Full product page shown before checkout -- an e-commerce shopping cart
     never sends the buyer straight from a grid card to payment, it shows the
     product page first. Only ever opened for DROPSHIPPING/PARTNER products
@@ -45,7 +51,7 @@ export function ProductDetailModal({
           </button>
           {product.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
             <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-emerald-500/90 text-white border-emerald-400/50 shadow-lg">
-              Fino al {v.credit_discount_percentage}% pagabile in crediti
+              Fino al {v.credit_discount_percentage}% pagabile in LialCash
             </span>
           )}
         </div>
@@ -76,9 +82,9 @@ export function ProductDetailModal({
             </div>
             {product.category !== "INTERNAL" && v.credit_discount_percentage > 0 && (
               <div className="pl-6 border-l border-white/10 light:border-slate-300">
-                <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Crediti usabili</p>
+                <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">LialCash usabili</p>
                 <p className="text-3xl font-extrabold text-emerald-400 tabular-nums">
-                  {euro(Math.round((v.base_price_cents * v.credit_discount_percentage) / 100))}
+                  {lialCash(Math.round((v.base_price_cents * v.credit_discount_percentage) / 100))}
                 </p>
                 <p className="text-[10px] text-slate-500 mt-0.5">dal tuo wallet Lial Energy</p>
               </div>

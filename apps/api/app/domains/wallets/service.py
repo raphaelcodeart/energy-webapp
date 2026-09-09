@@ -177,8 +177,12 @@ async def credit_wallet(
     # invoice_redemptions/service.py::confirm_payment, right after it calls
     # this function twice -- reference_invoice_redemption_id being set is
     # exactly how this function tells the two cases apart, so that flow
-    # never ends up sending the customer two emails for one credit.
-    if reference_invoice_redemption_id is None:
+    # never ends up sending the customer two emails for one credit. Same
+    # reasoning for reference_order_id: orders/service.py's own "pagamento
+    # completato" email already mentions the cashback credited alongside it
+    # (see orders/service.py::_send_order_paid_email), so this generic one
+    # would just be a second, redundant email for the same single event.
+    if reference_invoice_redemption_id is None and reference_order_id is None:
         await _send_wallet_credited_email(db, user_id=wallet.user_id, amount_cents=amount_cents, note=note)
     return txn
 

@@ -236,6 +236,7 @@ export type ProductVersionRead = {
   contract_duration_months: number | null;
   commission_tokens: Record<string, number>;
   credit_discount_percentage: number;
+  cashback_enabled: boolean;
   valid_from: string;
   valid_to: string | null;
   status: string;
@@ -482,6 +483,9 @@ export type OrderRead = {
   amount_cents: number;
   credit_applied_cents: number;
   residual_amount_cents: number;
+  cashback_requested: boolean;
+  cashback_surcharge_cents: number;
+  cashback_credited_at: string | null;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
   payment_method: "BANK_TRANSFER" | "CARD";
   stripe_checkout_session_id: string | null;
@@ -502,6 +506,22 @@ export type OrderQuoteRead = {
   customer_wallet_balance_cents: number;
   bank_transfer_available: boolean;
   card_available: boolean;
+  cashback_available: boolean;
+  cashback_percentage: number;
+};
+
+export type FinancialMovementRead = {
+  id: string;
+  kind: "WALLET" | "ORDER_PAYMENT";
+  type: string | null;
+  source: string | null;
+  payment_method: "BANK_TRANSFER" | "CARD" | null;
+  amount_cents: number;
+  currency: "LIALCASH" | "EUR";
+  product_name: string | null;
+  order_id: string | null;
+  note: string | null;
+  created_at: string;
 };
 
 export type InvoiceRedemptionRead = {

@@ -27,6 +27,13 @@ def _clamp_credit_discount(category: str, requested: int) -> int:
     return requested if category != "INTERNAL" else 0
 
 
+def _clamp_cashback_enabled(category: str, requested: bool) -> bool:
+    """Same invariant as _clamp_credit_discount, for the other economic
+    toggle: an INTERNAL product never offers "riscuoti subito cashback" no
+    matter what the caller asks for."""
+    return requested if category != "INTERNAL" else False
+
+
 async def list_products(db: AsyncSession, *, organization_id: uuid.UUID) -> list[Product]:
     stmt = (
         select(Product)
@@ -109,6 +116,7 @@ async def create_product(
         contract_duration_months=payload.contract_duration_months,
         commission_tokens=payload.commission_tokens,
         credit_discount_percentage=_clamp_credit_discount(payload.category, payload.credit_discount_percentage),
+        cashback_enabled=_clamp_cashback_enabled(payload.category, payload.cashback_enabled),
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -153,6 +161,7 @@ async def add_product_version(
         contract_duration_months=payload.contract_duration_months,
         commission_tokens=payload.commission_tokens,
         credit_discount_percentage=_clamp_credit_discount(product.category, payload.credit_discount_percentage),
+        cashback_enabled=_clamp_cashback_enabled(product.category, payload.cashback_enabled),
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -208,6 +217,8 @@ async def update_product_version(
         version.commission_tokens = payload.commission_tokens
     if payload.credit_discount_percentage is not None:
         version.credit_discount_percentage = _clamp_credit_discount(product.category, payload.credit_discount_percentage)
+    if payload.cashback_enabled is not None:
+        version.cashback_enabled = _clamp_cashback_enabled(product.category, payload.cashback_enabled)
     if payload.status is not None:
         version.status = payload.status
 
@@ -283,11 +294,12 @@ async def update_product(
         product.category = payload.category
         if payload.category == "INTERNAL":
             # Switching back to INTERNAL must not leave a stale nonzero
-            # discount sitting on any version -- see _clamp_credit_discount.
+            # discount or an enabled cashback flag sitting on any version --
+            # see _clamp_credit_discount / _clamp_cashback_enabled.
             await db.execute(
                 update(ProductVersion)
                 .where(ProductVersion.product_id == product_id)
-                .values(credit_discount_percentage=0)
+                .values(credit_discount_percentage=0, cashback_enabled=False)
             )
 
     await audit_service.record(

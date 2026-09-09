@@ -39,7 +39,11 @@ async def create_checkout_session_for_order(
     if not secret_key:
         raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
 
-    residual_cents = order.amount_cents - order.credit_applied_cents
+    # Includes the cashback surcharge when the order opted into "riscuoti
+    # subito cashback" (0 otherwise) -- see orders/service.py::create_order
+    # and ORDER_CASHBACK_PERCENTAGE. Never the full price, always just what's
+    # actually still owed in new money.
+    residual_cents = order.amount_cents - order.credit_applied_cents + order.cashback_surcharge_cents
     session = stripe.checkout.Session.create(
         api_key=secret_key,
         mode="payment",

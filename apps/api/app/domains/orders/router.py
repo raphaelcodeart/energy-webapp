@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
+from app.core.rate_limit import rate_limit
 from app.domains.orders import service as orders_service
 from app.domains.orders.schemas import (
     CheckoutSessionRead,
@@ -30,7 +31,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 def _order_error_to_http(exc: orders_service.OrderError) -> HTTPException:
     if isinstance(exc, (orders_service.ProductNotEligibleError, orders_service.InvalidCreditAmountError,
-                         orders_service.InvalidPaymentMethodError, orders_service.PaymentMethodNotAvailableError)):
+                         orders_service.InvalidPaymentMethodError, orders_service.PaymentMethodNotAvailableError,
+                         orders_service.CashbackNotAvailableError, orders_service.InvalidOtpError)):
         return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
 
@@ -86,12 +88,45 @@ async def create_order(
             db, organization_id=current_user.organization_id, customer_user_id=payload.customer_user_id,
             product_version_id=payload.product_version_id, credit_applied_cents=payload.credit_applied_cents,
             actor_user_id=current_user.user_id, payment_method=payload.payment_method, note=payload.note,
+            cashback_requested=payload.cashback_requested,
+            # An admin applying a customer's own credit on their behalf is
+            # already a permissioned, audited action -- no OTP (which would
+            # go to the CUSTOMER's inbox, not this admin's) is required or
+            # even possible to check here. See create_order's docstring.
+            require_otp_for_credit_spend=False,
         )
     except orders_service.OrderError as exc:
         raise _order_error_to_http(exc) from exc
     except wallets_service.InsufficientBalanceError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return OrderRead(**(await orders_service.to_read_dict(db, order)))
+
+
+@router.post(
+    "/mine/request-credit-otp",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit("order-credit-otp", max_requests=5, window_seconds=300))],
+)
+async def request_my_order_credit_otp(
+    current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Emails the OTP code POST /orders/mine must be given (via otp_code)
+    whenever it spends existing wallet LialCash (credit_applied_cents > 0)
+    -- see auth/service.py::request_otp and
+    orders/service.py::create_order. Same "prove you still control the
+    inbox before this sensitive self-service action goes through" pattern
+    as POST /agents/apply/request-otp."""
+    from app.domains.auth import service as auth_service
+    from app.domains.users.models import User
+
+    user = await db.get(User, current_user.user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    await auth_service.request_otp(
+        db, user=user, purpose=auth_service.WALLET_CREDIT_SPEND_OTP_PURPOSE,
+        context_line="Usa questo codice per confermare l'utilizzo dei tuoi LialCash su questo ordine.",
+    )
+    return {"ok": True}
 
 
 @router.post("/mine", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
@@ -104,12 +139,16 @@ async def create_my_order(
     taken from the request body -- same rule as POST /wallets/transfer's
     from_wallet_id. No permission beyond authentication: a customer can only
     ever spend their own wallet credit and create an order in their own
-    name."""
+    name. Spending any wallet LialCash here also requires a fresh OTP (see
+    POST /mine/request-credit-otp above) -- enforced inside create_order,
+    not here, so it can never be bypassed by a caller that skips this
+    specific router function."""
     try:
         order = await orders_service.create_order(
             db, organization_id=current_user.organization_id, customer_user_id=current_user.user_id,
             product_version_id=payload.product_version_id, credit_applied_cents=payload.credit_applied_cents,
             actor_user_id=current_user.user_id, payment_method=payload.payment_method, note=payload.note,
+            cashback_requested=payload.cashback_requested, otp_code=payload.otp_code,
         )
     except orders_service.OrderError as exc:
         raise _order_error_to_http(exc) from exc

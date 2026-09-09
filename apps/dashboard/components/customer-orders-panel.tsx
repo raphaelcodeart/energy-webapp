@@ -36,6 +36,12 @@ function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+// Wallet credit is LialCash, never plain EUR -- see wallet-panel.tsx's
+// identical helper. Bonifico/Carta amounts always stay euro().
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
 }
@@ -108,8 +114,14 @@ function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
             </div>
             {order.credit_applied_cents > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Crediti applicati</p>
-                <p className="font-bold text-emerald-400">-{euro(order.credit_applied_cents)}</p>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">LialCash usati</p>
+                <p className="font-bold text-emerald-400">-{lialCash(order.credit_applied_cents)}</p>
+              </div>
+            )}
+            {order.cashback_surcharge_cents > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Cashback richiesto</p>
+                <p className="font-bold text-orange-400">+{euro(order.cashback_surcharge_cents)}</p>
               </div>
             )}
             {order.status === "AWAITING_PAYMENT" && (
@@ -131,6 +143,18 @@ function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
             )}
             {order.payment_method === "BANK_TRANSFER" && (
               <p>Causale bonifico: <span className="font-mono text-orange-400">Ordine {orderCode(order.id)}</span></p>
+            )}
+            {order.cashback_requested && (
+              <p>
+                Cashback:{" "}
+                {order.cashback_credited_at ? (
+                  <span className="text-emerald-400">
+                    accreditato il {formatDateTime(order.cashback_credited_at)} ({lialCash(order.amount_cents - order.credit_applied_cents + order.cashback_surcharge_cents)})
+                  </span>
+                ) : (
+                  <span className="text-amber-400">richiesto, verrà accreditato a pagamento confermato</span>
+                )}
+              </p>
             )}
           </div>
 
@@ -392,7 +416,12 @@ export function CustomerOrdersPanel() {
                   <div className="flex items-center gap-3 mt-2 text-xs flex-wrap">
                     <span className="text-slate-400 light:text-slate-500">Totale <strong className="text-white light:text-slate-900">{euro(o.amount_cents)}</strong></span>
                     {o.credit_applied_cents > 0 && (
-                      <span className="text-emerald-400">-{euro(o.credit_applied_cents)} crediti</span>
+                      <span className="text-emerald-400">-{lialCash(o.credit_applied_cents)}</span>
+                    )}
+                    {o.cashback_requested && (
+                      <span className="text-orange-400" title={o.cashback_credited_at ? "Cashback accreditato" : "Cashback richiesto"}>
+                        {o.cashback_credited_at ? "✓ Cashback accreditato" : "Cashback richiesto"}
+                      </span>
                     )}
                     {awaiting && (
                       <span className="text-amber-400">Residuo {euro(o.residual_amount_cents)}</span>

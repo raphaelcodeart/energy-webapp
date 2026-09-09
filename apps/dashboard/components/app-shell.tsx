@@ -52,10 +52,10 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   PROMOTER_REJECTED: "Promoter non approvato",
   COMMISSION_EARNED: "Nuova provvigione",
   CASHBACK_RECEIVED: "Cashback ricevuto",
-  WALLET_TRANSFER_RECEIVED: "Bonifico wallet ricevuto",
+  WALLET_TRANSFER_RECEIVED: "LialCash ricevuti",
   INVOICE_REDEMPTION_VERIFIED: "Fattura verificata",
   INVOICE_REDEMPTION_REJECTED: "Fattura rifiutata",
-  ORDER_CREDIT_APPLIED: "Crediti usati per un ordine",
+  ORDER_CREDIT_APPLIED: "LialCash usati per un ordine",
   ORDER_PAID: "Ordine confermato",
 };
 

@@ -30,6 +30,7 @@ class ProductVersionRead(BaseModel):
     # org-wide Rank.personal_token_cents at calculation time.
     commission_tokens: dict[str, int]
     credit_discount_percentage: int
+    cashback_enabled: bool
     valid_from: datetime
     valid_to: datetime | None
     status: str
@@ -55,6 +56,7 @@ class ProductVersionRead(BaseModel):
             contract_duration_months=version.contract_duration_months,
             commission_tokens=version.commission_tokens or {},
             credit_discount_percentage=version.credit_discount_percentage,
+            cashback_enabled=version.cashback_enabled,
             valid_from=version.valid_from,
             valid_to=version.valid_to,
             status=version.status,
@@ -108,6 +110,8 @@ class ProductCreate(BaseModel):
     # Only meaningful when category != INTERNAL -- catalog/service.py forces
     # this to 0 for INTERNAL regardless of what's sent here.
     credit_discount_percentage: int = Field(default=0, ge=0, le=100)
+    # Same INTERNAL-forced-False rule -- catalog/service.py enforces it.
+    cashback_enabled: bool = False
 
     @field_validator("product_type")
     @classmethod
@@ -137,6 +141,7 @@ class ProductVersionCreate(BaseModel):
     contract_duration_months: int | None = 12
     commission_tokens: dict[str, int] = {}
     credit_discount_percentage: int = Field(default=0, ge=0, le=100)
+    cashback_enabled: bool = False
 
 
 class ProductVersionUpdate(BaseModel):
@@ -150,6 +155,7 @@ class ProductVersionUpdate(BaseModel):
     contract_duration_months: int | None = None
     commission_tokens: dict[str, int] | None = None
     credit_discount_percentage: int | None = Field(default=None, ge=0, le=100)
+    cashback_enabled: bool | None = None
     status: str | None = None
 
 

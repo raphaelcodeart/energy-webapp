@@ -52,6 +52,29 @@ class PaymentProofError(OrderError):
     AWAITING_PAYMENT)."""
 
 
+class CashbackNotAvailableError(OrderError):
+    """Raised when cashback_requested=True but either the product doesn't
+    offer it (ProductVersion.cashback_enabled is False) or there's no real
+    new payment for it to apply to (the wallet credit already covers the
+    whole price)."""
+
+
+class InvalidOtpError(OrderError):
+    """Raised when self-checkout spends existing wallet LialCash
+    (credit_applied_cents > 0) without a valid, still-fresh OTP code -- see
+    create_order's otp_code parameter and
+    auth/service.py::WALLET_CREDIT_SPEND_OTP_PURPOSE."""
+
+
+# Fixed, same "flat, admin can't override it per product" design as
+# invoice_redemptions/models.py::CASHBACK_PERCENTAGE (3% there, 5% here --
+# two different flows, deliberately not sharing a constant). What the
+# customer pays extra, on top of whatever they actually owe in new money, to
+# opt into "riscuoti subito cashback" on an eligible order -- see
+# _credit_order_cashback() below for where it's paid back.
+ORDER_CASHBACK_PERCENTAGE = 5
+
+
 async def _get_sellable_product_version(
     db: AsyncSession, *, organization_id: uuid.UUID, product_version_id: uuid.UUID
 ) -> tuple[ProductVersion, Product]:
@@ -103,6 +126,8 @@ async def get_quote(
         "customer_wallet_balance_cents": wallet.balance_cents if wallet else 0,
         "bank_transfer_available": methods["bank_transfer"],
         "card_available": methods["card"],
+        "cashback_available": version.cashback_enabled,
+        "cashback_percentage": ORDER_CASHBACK_PERCENTAGE,
     }
 
 
@@ -151,7 +176,13 @@ async def to_read_dict(db: AsyncSession, order: Order) -> dict:
         "created_by_user_id": order.created_by_user_id,
         "amount_cents": order.amount_cents,
         "credit_applied_cents": order.credit_applied_cents,
-        "residual_amount_cents": order.amount_cents - order.credit_applied_cents,
+        # Includes the cashback surcharge (0 when cashback wasn't requested)
+        # -- this is the actual amount owed in new money for this order, via
+        # bank transfer or card.
+        "residual_amount_cents": order.amount_cents - order.credit_applied_cents + order.cashback_surcharge_cents,
+        "cashback_requested": order.cashback_requested,
+        "cashback_surcharge_cents": order.cashback_surcharge_cents,
+        "cashback_credited_at": order.cashback_credited_at,
         "status": order.status,
         "payment_method": order.payment_method,
         "stripe_checkout_session_id": order.stripe_checkout_session_id,
@@ -178,7 +209,18 @@ async def create_order(
     actor_user_id: uuid.UUID,
     payment_method: str = "BANK_TRANSFER",
     note: str | None = None,
+    cashback_requested: bool = False,
+    otp_code: str | None = None,
+    require_otp_for_credit_spend: bool = True,
 ) -> Order:
+    """require_otp_for_credit_spend defaults to True (self-checkout, POST
+    /orders/mine) -- spending existing wallet LialCash needs a fresh emailed
+    OTP so a stolen session token alone can't drain a wallet. The staff
+    endpoint (POST /orders, wallet.manage-gated) passes False: an admin
+    applying a customer's credit on their behalf is already an audited,
+    permissioned action, and the OTP would go to the CUSTOMER's inbox, not
+    the admin's -- requiring it there would make the admin flow unusable,
+    not safer."""
     version, _product = await _get_sellable_product_version(
         db, organization_id=organization_id, product_version_id=product_version_id
     )
@@ -189,12 +231,42 @@ async def create_order(
             f"credit_applied_cents must be between 0 and {cap} for this product ({version.credit_discount_percentage}% of {amount_cents})"
         )
 
+    if credit_applied_cents > 0 and require_otp_for_credit_spend:
+        from app.domains.auth import service as auth_service
+
+        if not otp_code or not await auth_service.verify_otp(
+            db, user_id=customer_user_id, purpose=auth_service.WALLET_CREDIT_SPEND_OTP_PURPOSE, code=otp_code
+        ):
+            raise InvalidOtpError("Codice di conferma mancante, non valido o scaduto.")
+
+    # residual_before_cashback is the actual "100%" base this order owes in
+    # new money before any cashback surcharge -- also what a returned
+    # cashback credit is computed FROM (see _credit_order_cashback), never
+    # the pre-credit-discount amount_cents. Crediting cashback off a higher
+    # base than what was genuinely paid new would let a customer manufacture
+    # credit from credit already spent -- exactly the invariant this
+    # wallet's whole design (docs/cashback-partner-invoices-plan.md) exists
+    # to prevent.
+    residual_before_cashback = amount_cents - credit_applied_cents
+    cashback_surcharge_cents = 0
+    if cashback_requested:
+        if not version.cashback_enabled:
+            raise CashbackNotAvailableError("Questo prodotto non consente il cashback.")
+        if residual_before_cashback <= 0:
+            raise CashbackNotAvailableError(
+                "Il cashback richiede un pagamento residuo maggiore di zero -- il credito wallet copre già l'intero importo."
+            )
+        cashback_surcharge_cents = round(residual_before_cashback * ORDER_CASHBACK_PERCENTAGE / 100)
+
+    total_to_charge = residual_before_cashback + cashback_surcharge_cents
+
     # Only matters when something is actually going to be charged -- if
-    # credit alone covers the price, payment_method is stored as-given but
-    # never acted upon (the order skips straight to PAID below), so an
-    # unavailable/garbage value there shouldn't block a 100%-credit order.
-    residual = amount_cents - credit_applied_cents
-    if residual > 0:
+    # credit alone covers the price (and no cashback was requested, which
+    # would be impossible in that case anyway), payment_method is stored
+    # as-given but never acted upon (the order skips straight to PAID
+    # below), so an unavailable/garbage value there shouldn't block a
+    # 100%-credit order.
+    if total_to_charge > 0:
         if payment_method not in ORDER_PAYMENT_METHODS:
             raise InvalidPaymentMethodError(f"payment_method must be one of {ORDER_PAYMENT_METHODS}")
         available = await get_available_payment_methods(db, organization_id=organization_id)
@@ -229,6 +301,8 @@ async def create_order(
         created_by_user_id=actor_user_id,
         amount_cents=amount_cents,
         credit_applied_cents=credit_applied_cents,
+        cashback_requested=cashback_requested,
+        cashback_surcharge_cents=cashback_surcharge_cents,
         status="AWAITING_PAYMENT",
         payment_method=payment_method,
         note=note,
@@ -249,7 +323,7 @@ async def create_order(
 
     if credit_applied_cents > 0:
         assert wallet is not None
-        if residual == 0:
+        if total_to_charge == 0:
             order.status = "PAID"
             order.paid_by_user_id = actor_user_id
             order.paid_at = utcnow()
@@ -289,9 +363,14 @@ async def _send_order_confirmation_email(
         return
 
     settings = get_settings()
-    residual_cents = order.amount_cents - order.credit_applied_cents
+    residual_cents = order.amount_cents - order.credit_applied_cents + order.cashback_surcharge_cents
     order_code = str(order.id)[:8].upper()
     order_code_line = f"<p>Numero ordine: <strong>#{order_code}</strong></p>"
+    cashback_line = (
+        f"<p>Include il {ORDER_CASHBACK_PERCENTAGE}% per il cashback che riceverai come LialCash "
+        "non appena il pagamento sarà confermato.</p>"
+        if order.cashback_requested else ""
+    )
     cta_label: str | None = None
     cta_url: str | None = None
 
@@ -301,7 +380,7 @@ async def _send_order_confirmation_email(
             order_code_line
             + f"<p>Il tuo ordine per <strong>{version.name}</strong> è confermato.</p>"
             f"<p>Totale: {order.amount_cents / 100:.2f} &euro;"
-            + (f" (di cui {order.credit_applied_cents / 100:.2f} &euro; da crediti wallet)" if order.credit_applied_cents else "")
+            + (f" (di cui {order.credit_applied_cents / 100:.2f} LialCash)" if order.credit_applied_cents else "")
             + "</p><p>Non è richiesto alcun pagamento aggiuntivo.</p>"
         )
     elif order.payment_method == "CARD":
@@ -312,8 +391,10 @@ async def _send_order_confirmation_email(
             order_code_line
             + f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
             f"<p>Da pagare: <strong>{residual_cents / 100:.2f} &euro;</strong>"
-            + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
-            + "</p><p>Completa il pagamento con carta cliccando il pulsante qui sotto.</p>"
+            + (f" (dopo {order.credit_applied_cents / 100:.2f} LialCash già applicati)" if order.credit_applied_cents else "")
+            + "</p>"
+            + cashback_line
+            + "<p>Completa il pagamento con carta cliccando il pulsante qui sotto.</p>"
         )
         try:
             cta_url = await payments_service.create_checkout_session_for_order(
@@ -338,8 +419,9 @@ async def _send_order_confirmation_email(
             order_code_line
             + f"<p>Il tuo ordine per <strong>{version.name}</strong> è stato registrato.</p>"
             f"<p>Da pagare tramite bonifico: <strong>{residual_cents / 100:.2f} &euro;</strong>"
-            + (f" (dopo {order.credit_applied_cents / 100:.2f} &euro; di crediti già applicati)" if order.credit_applied_cents else "")
+            + (f" (dopo {order.credit_applied_cents / 100:.2f} LialCash già applicati)" if order.credit_applied_cents else "")
             + "</p>"
+            + cashback_line
         )
         if iban:
             body_html += (
@@ -388,14 +470,25 @@ async def _send_order_paid_email(
     method_label = "Carta (Stripe)" if order.payment_method == "CARD" else "Bonifico bancario"
     product_name = version.name if version else "un prodotto"
     paid_at_label = order.paid_at.strftime("%d/%m/%Y %H:%M") if order.paid_at else "-"
+    # What actually landed as new money on THIS payment -- not the raw
+    # product price, which credit/cashback can both make different from what
+    # was really charged (see to_read_dict's residual_amount_cents).
+    amount_paid_cents = order.amount_cents - order.credit_applied_cents + order.cashback_surcharge_cents
+    cashback_credited_line = ""
+    if order.cashback_requested and order.cashback_credited_at:
+        total_cashback_cents = (order.amount_cents - order.credit_applied_cents) + order.cashback_surcharge_cents
+        cashback_credited_line = (
+            f"<p>Hai ricevuto <strong>{total_cashback_cents / 100:.2f} LialCash</strong> sul tuo wallet.</p>"
+        )
     body_html = (
         "<p>Il pagamento del tuo ordine &egrave; stato confermato.</p>"
         f"<p><strong>Numero ordine:</strong> #{str(order.id)[:8].upper()}<br>"
         f"<strong>Prodotto:</strong> {product_name}<br>"
-        f"<strong>Importo:</strong> {order.amount_cents / 100:.2f} &euro;<br>"
+        f"<strong>Importo pagato:</strong> {amount_paid_cents / 100:.2f} &euro;<br>"
         f"<strong>Metodo di pagamento:</strong> {method_label}<br>"
         "<strong>Stato:</strong> Pagato<br>"
         f"<strong>Data:</strong> {paid_at_label}</p>"
+        + cashback_credited_line
     )
     html = render_email(
         preheader="Pagamento completato con successo",
@@ -459,6 +552,56 @@ async def list_orders_for_customer(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def _credit_order_cashback(
+    db: AsyncSession, *, organization_id: uuid.UUID, order: Order, version: ProductVersion | None,
+    actor_user_id: uuid.UUID | None,
+) -> None:
+    """The other half of "riscuoti subito cashback": once an order that
+    opted in reaches PAID (bank transfer admin-confirmed, or Stripe
+    webhook), credits the customer's wallet with exactly what they just
+    paid new for this order -- the pre-surcharge residual (100%) plus the
+    surcharge itself (the 5% bonus) -- as two separate LialCash rows, same
+    "the ledger always shows the split explicitly" reasoning as
+    invoice_redemptions/service.py::confirm_payment's base+bonus pair.
+    Never more than that: the credited total is always <= what genuinely
+    landed as real revenue on this exact order, so this can never manufacture
+    credit out of credit already spent (see create_order's
+    residual_before_cashback comment for the same invariant enforced at the
+    other end).
+
+    Idempotent two ways at once: the guard below (cashback_credited_at is
+    only ever set once) and, independently, credit_wallet()'s own
+    idempotency-key dedup (derived from the order id, never client-supplied)
+    -- either alone would be enough to make a retried Stripe webhook a
+    no-op, but there is no reason not to have both."""
+    if not order.cashback_requested or order.cashback_credited_at is not None:
+        return
+    base_cents = order.amount_cents - order.credit_applied_cents
+    bonus_cents = order.cashback_surcharge_cents
+    if base_cents <= 0 or bonus_cents <= 0:
+        # Should be unreachable (create_order already refuses cashback with
+        # no real residual to reward) -- defensive, not a real code path.
+        return
+
+    product_name = version.name if version else "un prodotto"
+    wallet = await wallets_service.get_or_create_wallet(
+        db, organization_id=organization_id, user_id=order.customer_user_id
+    )
+    await wallets_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=base_cents,
+        type_="ADMIN_CREDIT", actor_user_id=actor_user_id, source="ORDER_CASHBACK_BASE",
+        reference_order_id=order.id, note=f"Cashback ordine {product_name}",
+        idempotency_key=f"order:{order.id}:cashback-base",
+    )
+    await wallets_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=bonus_cents,
+        type_="ADMIN_CREDIT", actor_user_id=actor_user_id, source="ORDER_CASHBACK_BONUS",
+        reference_order_id=order.id, note=f"Bonus {ORDER_CASHBACK_PERCENTAGE}% cashback ordine {product_name}",
+        idempotency_key=f"order:{order.id}:cashback-bonus",
+    )
+    order.cashback_credited_at = utcnow()
+
+
 async def confirm_payment(
     db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID, actor_user_id: uuid.UUID
 ) -> Order:
@@ -499,6 +642,11 @@ async def confirm_payment(
         title=f"Bonifico confermato: {version.name if version else 'ordine'}",
         body=f"{order.amount_cents / 100:.2f} EUR", exclude_user_id=actor_user_id,
     )
+    # credit_wallet() (called from here) commits internally -- this captures
+    # the PAID transition and notifications above together with the
+    # cashback credit rows, atomically, same pattern as create_order's own
+    # debit_wallet_for_purchase call.
+    await _credit_order_cashback(db, organization_id=organization_id, order=order, version=version, actor_user_id=actor_user_id)
     await db.commit()
     await db.refresh(order)
     await _send_order_paid_email(db, order=order, version=version)
@@ -672,6 +820,10 @@ async def mark_paid_via_stripe(
         title=f"Pagamento Stripe confermato: {version.name if version else 'ordine'}",
         body=f"{order.amount_cents / 100:.2f} EUR",
     )
+    # No actor here either -- Stripe confirmed this, not an admin. See
+    # _credit_order_cashback's own docstring for why this is idempotent
+    # against Stripe's webhook retries.
+    await _credit_order_cashback(db, organization_id=organization_id, order=order, version=version, actor_user_id=None)
     await db.commit()
     await db.refresh(order)
     await _send_order_paid_email(db, order=order, version=version)

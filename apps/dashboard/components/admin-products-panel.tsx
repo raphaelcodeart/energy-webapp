@@ -94,6 +94,10 @@ interface ProductFormState {
   // meaningful when the product's category isn't INTERNAL -- see
   // catalog/service.py::_clamp_credit_discount.
   creditDiscountPercentage: string;
+  // Whether "riscuoti subito cashback" is offerable at checkout for this
+  // product -- same INTERNAL-forced-off rule as creditDiscountPercentage,
+  // see catalog/service.py::_clamp_cashback_enabled.
+  cashbackEnabled: boolean;
 }
 
 const EMPTY_FORM: ProductFormState = {
@@ -108,6 +112,7 @@ const EMPTY_FORM: ProductFormState = {
   contractDurationMonths: "12",
   commissionTokens: {},
   creditDiscountPercentage: "0",
+  cashbackEnabled: false,
 };
 
 function ProductFormFields({
@@ -224,6 +229,34 @@ function ProductFormFields({
         )}
       </div>
 
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
+          Cashback al checkout
+        </label>
+        {category === "INTERNAL" ? (
+          <p className="text-[10px] text-slate-500">
+            Non disponibile per i prodotti Interno Lial Energy.
+          </p>
+        ) : (
+          <>
+            <label className="flex items-center gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.cashbackEnabled}
+                onChange={(e) => onChange({ cashbackEnabled: e.target.checked })}
+                className="w-4 h-4 rounded border-white/20 accent-orange-500"
+              />
+              Abilita &ldquo;riscuoti subito cashback&rdquo; per questo prodotto
+            </label>
+            <p className="text-[10px] text-slate-500">
+              Se attivo, il cliente può scegliere in fase di acquisto di pagare il {" "}
+              <span className="font-mono">5%</span> in più per ricevere l&apos;intero importo pagato (100% + 5%)
+              accreditato subito come LialCash sul suo wallet, una volta confermato il pagamento.
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="space-y-1 pt-2 border-t border-white/5 light:border-slate-200">
         <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
           Gettone provvigionale per grado (EUR)
@@ -303,6 +336,7 @@ export function AdminProductsPanel() {
       contractDurationMonths: v?.contract_duration_months != null ? String(v.contract_duration_months) : "",
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
       creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
+      cashbackEnabled: v?.cashback_enabled ?? false,
     });
     setCreateError(null);
     setIsDuplicating(true);
@@ -336,6 +370,7 @@ export function AdminProductsPanel() {
             : null,
           commission_tokens: commissionTokensToCents(createForm.commissionTokens),
           credit_discount_percentage: category === "INTERNAL" ? 0 : (parseInt(createForm.creditDiscountPercentage, 10) || 0),
+          cashback_enabled: category === "INTERNAL" ? false : createForm.cashbackEnabled,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -365,6 +400,7 @@ export function AdminProductsPanel() {
       contractDurationMonths: v?.contract_duration_months != null ? String(v.contract_duration_months) : "",
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
       creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
+      cashbackEnabled: v?.cashback_enabled ?? false,
     });
     setEditError(null);
     setEditingProduct(product);
@@ -392,6 +428,7 @@ export function AdminProductsPanel() {
             : null,
           commission_tokens: commissionTokensToCents(editForm.commissionTokens),
           credit_discount_percentage: editingProduct.category === "INTERNAL" ? 0 : (parseInt(editForm.creditDiscountPercentage, 10) || 0),
+          cashback_enabled: editingProduct.category === "INTERNAL" ? false : editForm.cashbackEnabled,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -554,7 +591,12 @@ export function AdminProductsPanel() {
                   </span>
                   {p.category !== "INTERNAL" && p.current_version && p.current_version.credit_discount_percentage > 0 && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                      {p.current_version.credit_discount_percentage}% in crediti
+                      {p.current_version.credit_discount_percentage}% in LialCash
+                    </span>
+                  )}
+                  {p.category !== "INTERNAL" && p.current_version?.cashback_enabled && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-orange-500/10 text-orange-400 border-orange-500/20">
+                      Cashback attivo
                     </span>
                   )}
                 </div>

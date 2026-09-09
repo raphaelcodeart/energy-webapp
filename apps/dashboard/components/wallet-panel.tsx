@@ -13,13 +13,17 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 // Finer-grained label than TYPE_LABELS alone -- distinguishes a plain admin
-// top-up from the two lines a partner-invoice redemption always writes
-// together (see docs/cashback-partner-invoices-plan.md), without needing to
-// read the free-text note.
+// top-up from the lines a partner-invoice redemption or a product-order
+// cashback request always write together (see
+// docs/cashback-partner-invoices-plan.md and
+// orders/service.py::_credit_order_cashback), without needing to read the
+// free-text note.
 const SOURCE_LABELS: Record<string, string> = {
   MANUAL_ADMIN: "Ricarica manuale",
   INVOICE_REDEMPTION_BASE: "Riscatto fattura",
   INVOICE_REDEMPTION_BONUS: "Bonus 3% riscatto fattura",
+  ORDER_CASHBACK_BASE: "Cashback ordine",
+  ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
 };
 
 function transactionLabel(t: { type: string; source: string | null }): string {
@@ -27,8 +31,13 @@ function transactionLabel(t: { type: string; source: string | null }): string {
   return sourceLabel ?? TYPE_LABELS[t.type] ?? t.type;
 }
 
-function euro(cents: number): string {
-  return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+// The wallet only ever holds LialCash, Lial Energy's internal credit -- see
+// docs/business-rules.md#internal-wallet. Never format a wallet
+// balance/transaction amount as plain EUR; real-money payments (Stripe,
+// bonifico) are formatted separately, with euro(), wherever they appear
+// (e.g. customer-orders-panel.tsx, admin-orders-panel.tsx).
+function lialCash(cents: number): string {
+  return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
 }
 
 async function fetchMyWallet(): Promise<WalletRead> {
@@ -126,7 +135,7 @@ export function WalletPanel() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Saldo disponibile</p>
-              <p className="text-3xl font-bold text-white light:text-slate-900">{euro(wallet.balance_cents)}</p>
+              <p className="text-3xl font-bold text-white light:text-slate-900">{lialCash(wallet.balance_cents)}</p>
             </div>
             <div>
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Il tuo indirizzo wallet</p>
@@ -171,7 +180,7 @@ export function WalletPanel() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (EUR)</label>
+            <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Importo (LialCash)</label>
             <input
               required
               inputMode="decimal"
@@ -239,7 +248,7 @@ export function WalletPanel() {
                       </td>
                       <td className="py-2 px-5 text-slate-500">{t.note ?? "—"}</td>
                       <td className={`py-2 px-5 text-right font-semibold ${isOutgoing ? "text-rose-400" : "text-emerald-400"}`}>
-                        {isOutgoing ? "-" : "+"}{euro(t.amount_cents)}
+                        {isOutgoing ? "-" : "+"}{lialCash(t.amount_cents)}
                       </td>
                       <td className="py-2 px-5">{new Date(t.created_at).toLocaleString("it-IT")}</td>
                     </tr>
