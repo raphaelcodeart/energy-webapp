@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
+from app.core.normalization import normalize_email, normalize_person_name
+
 
 class AgentProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -151,7 +153,17 @@ class AgentCreateRequest(BaseModel):
     # creating a login-less suggestion. See router.py create_agent.
     customer_email: EmailStr | None = None
 
-    @field_validator("first_name", "last_name", "promoter_code", "customer_email", mode="before")
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("customer_email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
+
+    @field_validator("promoter_code", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
@@ -165,11 +177,23 @@ class RootPromoterCreateRequest(BaseModel):
     # as the self-service "lavora con noi" flow -- see _generate_promoter_code.
     promoter_code: str | None = None
 
-    @field_validator("first_name", "last_name", "email", "promoter_code", mode="before")
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        """A stray leading/trailing space (copy-pasted name) must not end up
+        baked into the login or the shareable referral code -- and every
+        person's name is stored uppercase regardless of how it was typed,
+        see normalize_person_name."""
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
+
+    @field_validator("promoter_code", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
-        """A stray leading/trailing space (copy-pasted name/email) must not
-        end up baked into the login or the shareable referral code."""
         return v.strip() if isinstance(v, str) else v
 
 
@@ -191,7 +215,12 @@ class RecruitRequest(BaseModel):
     promoter_code: str
     current_rank_id: uuid.UUID | None = None
 
-    @field_validator("first_name", "last_name", "promoter_code", mode="before")
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("promoter_code", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
@@ -210,6 +239,11 @@ class PromoterApplicationRequest(BaseModel):
     # The 6-digit code emailed by POST /agents/apply/request-otp.
     otp_code: str
 
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
     @field_validator("otp_code", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
@@ -226,6 +260,11 @@ class AgentUpdateRequest(BaseModel):
     # noi" goes through manual PENDING_APPROVAL/approve instead of
     # auto-activating. Set false to lift a blacklist. Omit to leave unchanged.
     is_blacklisted: bool | None = None
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
 
 
 class AgentRejectRequest(BaseModel):

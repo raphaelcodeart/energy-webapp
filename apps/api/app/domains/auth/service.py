@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -57,8 +57,15 @@ async def authenticate(
 ) -> tuple[str, str]:
     """Returns (access_token, refresh_token). Raises AuthenticationError /
     AccountLockedError with an identical message shape for unknown-email and
-    wrong-password cases, to avoid account enumeration."""
-    stmt = select(User).where(User.organization_id == organization_id, User.email == email)
+    wrong-password cases, to avoid account enumeration. Case-insensitive
+    lookup (func.lower on both sides): new accounts are always stored
+    lowercase (see RegisterRequest/LoginRequest's normalize_email
+    validators), but this must still find accounts created before that
+    normalization existed, whatever case their email happens to be stored
+    in."""
+    stmt = select(User).where(
+        User.organization_id == organization_id, func.lower(User.email) == email.lower()
+    )
     user = (await db.execute(stmt)).scalar_one_or_none()
 
     if user is None:
@@ -219,7 +226,9 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
 
     existing = (
         await db.execute(
-            select(User).where(User.organization_id == organization_id, User.email == payload.email)
+            select(User).where(
+                User.organization_id == organization_id, func.lower(User.email) == payload.email.lower()
+            )
         )
     ).scalar_one_or_none()
     if existing is not None:
@@ -384,7 +393,9 @@ async def request_password_reset(
     account -- same enumeration-safety principle as authenticate(): a caller
     must never be able to use this endpoint to discover which emails have
     accounts."""
-    stmt = select(User).where(User.organization_id == organization_id, User.email == email)
+    stmt = select(User).where(
+        User.organization_id == organization_id, func.lower(User.email) == email.lower()
+    )
     user = (await db.execute(stmt)).scalar_one_or_none()
     if user is None:
         await audit_service.record(

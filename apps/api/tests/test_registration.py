@@ -43,14 +43,18 @@ async def test_registration_with_valid_referral_code_creates_attributed_customer
     await _make_customer_role(db, organization_id)
     agent, promoter_code = await _make_promoter_with_code(db, organization_id)
 
+    # Mixed case and padding on purpose -- RegisterRequest's normalize_email/
+    # normalize_person_name validators must clean this up before it ever
+    # reaches the DB (see app/core/normalization.py), regardless of how the
+    # customer actually typed it.
     payload = RegisterRequest(
         organization_id=str(organization_id),
         referral_code=promoter_code.code,
-        email="new.customer@example.com",
+        email="  New.Customer@Example.COM ",
         password="correct-horse-battery-staple",
         kind="PRIVATE",
-        first_name="Nuovo",
-        last_name="Cliente",
+        first_name="  nuovo  ",
+        last_name="cliente",
     )
     user = await auth_service.register_with_referral(db, organization_id=organization_id, payload=payload)
 
@@ -60,7 +64,8 @@ async def test_registration_with_valid_referral_code_creates_attributed_customer
     assert customer.email == "new.customer@example.com"
 
     profile = (await db.execute(select(CustomerProfile).where(CustomerProfile.customer_id == customer.id))).scalar_one()
-    assert profile.first_name == "Nuovo"
+    assert profile.first_name == "NUOVO"
+    assert profile.last_name == "CLIENTE"
 
     attribution = (
         await db.execute(select(CustomerAttribution).where(CustomerAttribution.customer_id == customer.id))
@@ -107,6 +112,34 @@ async def test_registration_rejects_duplicate_email(db, organization_id):
 
     with pytest.raises(auth_service.RegistrationError):
         await auth_service.register_with_referral(db, organization_id=organization_id, payload=payload)
+
+
+@pytest.mark.asyncio
+async def test_registration_rejects_duplicate_email_regardless_of_case(db, organization_id):
+    """The duplicate check (and the email column itself) must not let the
+    same real inbox register twice just because the second attempt was typed
+    in different case -- RegisterRequest normalizes to lowercase before this
+    check ever runs, but the check itself is also case-insensitive
+    (func.lower on both sides, see auth/service.py::register_with_referral)
+    as a second line of defense for any pre-existing row stored with mixed
+    case from before that normalization existed."""
+    await _make_customer_role(db, organization_id)
+    _, promoter_code = await _make_promoter_with_code(db, organization_id)
+
+    first = RegisterRequest(
+        organization_id=str(organization_id), referral_code=promoter_code.code,
+        email="CaseSensitive@Example.com", password="correct-horse-battery-staple",
+        kind="PRIVATE", first_name="Primo", last_name="Cliente",
+    )
+    await auth_service.register_with_referral(db, organization_id=organization_id, payload=first)
+
+    second = RegisterRequest(
+        organization_id=str(organization_id), referral_code=promoter_code.code,
+        email="casesensitive@example.com", password="correct-horse-battery-staple",
+        kind="PRIVATE", first_name="Secondo", last_name="Cliente",
+    )
+    with pytest.raises(auth_service.RegistrationError):
+        await auth_service.register_with_referral(db, organization_id=organization_id, payload=second)
 
 
 @pytest.mark.asyncio

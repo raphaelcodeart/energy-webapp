@@ -2,6 +2,8 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.core.normalization import normalize_email
+
 
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -15,6 +17,11 @@ class UserRead(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
 
 
 class ProfileRead(BaseModel):

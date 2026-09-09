@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { PasswordInput } from "@/components/password-input";
 import { translateErrorDetail } from "@/lib/api-error";
 
 function ResetPasswordForm() {
@@ -83,14 +84,14 @@ function ResetPasswordForm() {
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider">Nuova Password</label>
-                <input required type="password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                <PasswordInput required minLength={8} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Almeno 8 caratteri"
                   className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider">Ripeti Password</label>
-                <input required type="password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                <PasswordInput required minLength={8} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Ripeti la password"
                   className={`w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 ${
                     confirmPassword && newPassword !== confirmPassword ? "border-rose-500/50" : ""

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PasswordInput } from "@/components/password-input";
 import { friendlyApiError } from "@/lib/api-error";
 import type { OrganizationSettingsRead, PaymentSettingsRead } from "@/lib/types";
 
@@ -231,8 +232,8 @@ function AdminStripeSettingsCard({ organizationId }: { organizationId?: string }
         </div>
         <div className="space-y-1">
           <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Chiave segreta (secret key)</label>
-          <input
-            type="password"
+          <PasswordInput
+            autoComplete="off"
             value={secretKey}
             onChange={(e) => setSecretKey(e.target.value)}
             placeholder={payment?.stripe_secret_key_configured ? "Già impostata -- lascia vuoto per non cambiarla" : "sk_live_... oppure sk_test_..."}
@@ -241,8 +242,8 @@ function AdminStripeSettingsCard({ organizationId }: { organizationId?: string }
         </div>
         <div className="space-y-1">
           <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Chiave segreta del webhook</label>
-          <input
-            type="password"
+          <PasswordInput
+            autoComplete="off"
             value={webhookSecret}
             onChange={(e) => setWebhookSecret(e.target.value)}
             placeholder={payment?.stripe_webhook_secret_configured ? "Già impostata -- lascia vuoto per non cambiarla" : "whsec_..."}

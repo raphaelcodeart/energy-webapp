@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
+from app.core.normalization import normalize_email, normalize_person_name
+
 
 class CustomerRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -51,6 +53,16 @@ class CustomerCreate(BaseModel):
             raise ValueError(f"kind must be one of {sorted(allowed)}")
         return v
 
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
+
 
 class CustomerUpdate(BaseModel):
     email: EmailStr | None = None
@@ -61,6 +73,16 @@ class CustomerUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     company_name: str | None = None
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
 
 
 class AddressRead(BaseModel):

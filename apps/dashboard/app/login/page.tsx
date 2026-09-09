@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PasswordInput } from "@/components/password-input";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/config";
 
@@ -98,9 +99,9 @@ export default function LoginPage() {
             <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase tracking-wider" htmlFor="password">
               Password
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
+              autoComplete="current-password"
               className="w-full rounded-xl glass-input px-4 py-3 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

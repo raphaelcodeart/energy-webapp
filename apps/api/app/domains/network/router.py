@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -359,7 +359,8 @@ async def create_agent(
         user = (
             await db.execute(
                 select(User).where(
-                    User.organization_id == current_user.organization_id, User.email == payload.customer_email
+                    User.organization_id == current_user.organization_id,
+                    func.lower(User.email) == payload.customer_email.lower(),
                 )
             )
         ).scalar_one_or_none()

@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
+import { PasswordInput } from "@/components/password-input";
 import { translateErrorDetail } from "@/lib/api-error";
 import type { PromoterCodeRead } from "@/lib/types";
 
@@ -190,14 +191,14 @@ export default function ReferralLandingPage({ params }: { params: Promise<{ code
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Password</label>
-                <input required type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
+                <PasswordInput required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)}
                   placeholder="Almeno 8 caratteri"
                   className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Ripeti Password</label>
-                <input required type="password" minLength={8} value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
+                <PasswordInput required minLength={8} autoComplete="new-password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)}
                   placeholder="Ripeti la password"
                   className={`w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500 ${
                     passwordConfirm && password !== passwordConfirm ? "border-rose-500/50" : ""

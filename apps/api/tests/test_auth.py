@@ -29,6 +29,24 @@ async def test_successful_login_issues_tokens(db, organization_id):
 
 
 @pytest.mark.asyncio
+async def test_login_is_case_insensitive_against_a_legacy_mixed_case_stored_email(db, organization_id):
+    """New registrations always store email lowercase (RegisterRequest's
+    normalize_email validator), but authenticate()'s lookup must still work
+    for accounts created before that normalization existed -- real accounts
+    on this server have emails stored fully uppercase. Login here on purpose
+    with yet another casing than what's stored, to prove the match doesn't
+    depend on the two happening to agree."""
+    await _make_user(db, organization_id, "ALICE@EXAMPLE.COM", "correct-horse-battery-staple")
+
+    access_token, refresh_token = await auth_service.authenticate(
+        db, organization_id=organization_id, email="Alice@example.com",
+        password="correct-horse-battery-staple", ip_address="127.0.0.1", user_agent="pytest",
+    )
+    assert access_token
+    assert refresh_token
+
+
+@pytest.mark.asyncio
 async def test_wrong_password_and_unknown_email_give_identical_error_message(db, organization_id):
     await _make_user(db, organization_id, "bob@example.com", "correct-horse-battery-staple")
 

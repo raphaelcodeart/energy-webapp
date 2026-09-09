@@ -1,11 +1,14 @@
 from pydantic import BaseModel, EmailStr, field_validator
 
+from app.core.normalization import normalize_email, normalize_person_name
+
 
 def _strip(v: object) -> object:
-    """A stray leading/trailing space from copy-pasting an email or password is
-    not a real credential mismatch -- strip it before any further validation
-    (EmailStr would otherwise reject " foo@bar.com" outright, and a padded
-    password would just silently fail to match the real one)."""
+    """A stray leading/trailing space from copy-pasting a password is not a
+    real credential mismatch -- strip it before any further validation (a
+    padded password would otherwise just silently fail to match the real
+    one). Email fields use normalize_email instead (strip + lowercase), see
+    below."""
     return v.strip() if isinstance(v, str) else v
 
 
@@ -14,7 +17,12 @@ class LoginRequest(BaseModel):
     password: str
     organization_id: str
 
-    @field_validator("email", "password", mode="before")
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
+
+    @field_validator("password", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
         return _strip(v)
@@ -55,7 +63,17 @@ class RegisterRequest(BaseModel):
     # the server-side backstop, see auth/service.py::register_with_referral.
     accept_privacy: bool = False
 
-    @field_validator("email", "password", "referral_code", mode="before")
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def normalize_name_fields(cls, v: object) -> object:
+        return normalize_person_name(v) if isinstance(v, str) else v
+
+    @field_validator("password", "referral_code", "company_name", mode="before")
     @classmethod
     def strip_whitespace(cls, v: object) -> object:
         return _strip(v)
@@ -89,8 +107,8 @@ class ForgotPasswordRequest(BaseModel):
 
     @field_validator("email", mode="before")
     @classmethod
-    def strip_whitespace(cls, v: object) -> object:
-        return _strip(v)
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
 
 
 class ResetPasswordRequest(BaseModel):

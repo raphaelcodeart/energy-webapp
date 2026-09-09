@@ -428,7 +428,11 @@ async def create_root_promoter_with_login(
     from app.domains.users.models import User
 
     existing_user = (
-        await db.execute(select(User).where(User.organization_id == organization_id, User.email == email))
+        await db.execute(
+            select(User).where(
+                User.organization_id == organization_id, func.lower(User.email) == email.lower()
+            )
+        )
     ).scalar_one_or_none()
     if existing_user is not None:
         raise RootPromoterConflictError(f"An account with email '{email}' already exists")

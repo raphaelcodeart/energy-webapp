@@ -1,6 +1,8 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.normalization import normalize_email
 
 
 class OrganizationRead(BaseModel):
@@ -41,6 +43,11 @@ class OrganizationSettingsUpdate(BaseModel):
     bank_account_holder: str | None = Field(default=None, max_length=255)
     bank_transfer_instructions: str | None = Field(default=None, max_length=2000)
     admin_notification_email: str | None = Field(default=None, max_length=255)
+
+    @field_validator("admin_notification_email", mode="before")
+    @classmethod
+    def normalize_email_field(cls, v: object) -> object:
+        return normalize_email(v) if isinstance(v, str) else v
 
 
 class PaymentSettingsRead(BaseModel):
