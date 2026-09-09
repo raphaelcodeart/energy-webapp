@@ -219,7 +219,11 @@ async def change_my_order_payment_method(
     return OrderRead(**(await orders_service.to_read_dict(db, order)))
 
 
-@router.post("/mine/{order_id}/payment-proof", response_model=OrderRead)
+@router.post(
+    "/mine/{order_id}/payment-proof",
+    response_model=OrderRead,
+    dependencies=[Depends(rate_limit("payment-proof-upload", max_requests=20, window_seconds=300))],
+)
 async def upload_my_order_payment_proof(
     order_id: uuid.UUID,
     file: UploadFile = File(...),

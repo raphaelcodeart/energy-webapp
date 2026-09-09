@@ -57,6 +57,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   INVOICE_REDEMPTION_REJECTED: "Fattura rifiutata",
   ORDER_CREDIT_APPLIED: "LialCash usati per un ordine",
   ORDER_PAID: "Ordine confermato",
+  ORDER_PAYMENT_PROOF_UPLOADED: "Prova di pagamento caricata",
+  INVOICE_REDEMPTION_PAYMENT_PROOF_UPLOADED: "Prova di pagamento riscatto caricata",
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {

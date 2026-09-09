@@ -11,13 +11,26 @@ from app.core.db import Base, TimestampMixin, UUIDPKMixin
 #   look at it. confirmed_amount_cents and payment_reference_code are NULL.
 # PAYMENT_PENDING -- an admin verified the document and confirmed the real
 #   amount (confirmed_amount_cents set, payment_reference_code generated).
-#   The customer now knows how much to wire (3% of confirmed_amount_cents)
-#   and where to put the reference code.
-# CREDITED -- terminal. An admin confirmed the 3% bank transfer arrived; the
-#   wallet has been credited with exactly two rows (base + bonus), both
-#   tagged with this row's id -- see service.py::confirm_payment().
+#   The customer now knows how much to pay (3% of confirmed_amount_cents,
+#   see payment_due_cents()) via bank transfer (payment_reference_code as
+#   causale) or card (Stripe Checkout) -- see payment_method below.
+# CREDITED -- terminal. Either an admin confirmed the bank transfer arrived
+#   (service.py::confirm_payment) or Stripe confirmed the card charge
+#   (service.py::mark_paid_via_stripe); either way the wallet has been
+#   credited with exactly two rows (base + bonus), both tagged with this
+#   row's id -- see service.py::_credit_redemption().
 # REJECTED -- terminal, reachable from SUBMITTED or PAYMENT_PENDING.
 INVOICE_REDEMPTION_STATUSES = ["SUBMITTED", "PAYMENT_PENDING", "CREDITED", "REJECTED"]
+
+# How the payment_due_cents() amount gets paid -- irrelevant before
+# PAYMENT_PENDING. Same two methods, same semantics as orders/models.py's
+# ORDER_PAYMENT_METHODS: BANK_TRANSFER is confirmed manually by an admin
+# (POST /invoice-redemptions/admin/{id}/confirm-payment), CARD is confirmed
+# automatically by the Stripe webhook. Defaults to BANK_TRANSFER at verify()
+# time (preserves the original, card-less behavior for anyone who doesn't
+# switch), switchable via PATCH /invoice-redemptions/mine/{id}/payment-method
+# while still PAYMENT_PENDING.
+INVOICE_REDEMPTION_PAYMENT_METHODS = ["BANK_TRANSFER", "CARD"]
 
 # Both the redemption's base credit and its bonus, as a percentage of the
 # confirmed invoice amount -- e.g. a 100,00E invoice yields a 3,00E payment
@@ -79,6 +92,27 @@ class InvoiceRedemption(UUIDPKMixin, TimestampMixin, Base):
 
     status: Mapped[str] = mapped_column(String(16), default="SUBMITTED", index=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Set to "BANK_TRANSFER" the moment verify() opens the payment window
+    # (preserves the original behavior); switchable to "CARD" while still
+    # PAYMENT_PENDING via change_payment_method(), same pattern as
+    # orders/models.py.
+    payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Set only once a Stripe Checkout Session has been created for
+    # payment_due_cents() -- the webhook looks a redemption up by this to
+    # confirm payment automatically. Unique so a session can never be
+    # attached to two redemptions; a retried checkout overwrites it, only
+    # the latest attempt is ever valid (same as orders.stripe_checkout_session_id).
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+
+    # Customer-uploaded evidence of the (bank-transfer) payment already
+    # sent -- purely advisory extra evidence for the admin deciding whether
+    # to confirm; uploading one never changes status by itself. Reuses
+    # core/storage.py's private documents bucket directly, same pattern as
+    # orders.payment_proof_storage_key.
+    payment_proof_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    payment_proof_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_proof_uploaded_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     verified_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True

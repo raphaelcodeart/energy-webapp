@@ -588,7 +588,7 @@ async def test_upload_payment_proof_stores_it_and_notifies_staff(db, organizatio
     assert order.payment_proof_uploaded_at is None
 
     updated = await orders_service.upload_payment_proof(
-        db, organization_id=organization_id, order=order, file_bytes=b"%PDF fake receipt",
+        db, organization_id=organization_id, order=order, file_bytes=b"%PDF-1.4\nfake receipt",
         content_type="application/pdf", original_filename="bonifico.pdf", actor_user_id=customer.id,
     )
     assert updated.payment_proof_uploaded_at is not None
@@ -616,7 +616,7 @@ async def test_upload_payment_proof_rejects_a_card_order(db, organization_id):
     )
     with pytest.raises(orders_service.PaymentProofError):
         await orders_service.upload_payment_proof(
-            db, organization_id=organization_id, order=order, file_bytes=b"%PDF fake",
+            db, organization_id=organization_id, order=order, file_bytes=b"%PDF-1.4\nfake",
             content_type="application/pdf", original_filename="x.pdf", actor_user_id=customer.id,
         )
 

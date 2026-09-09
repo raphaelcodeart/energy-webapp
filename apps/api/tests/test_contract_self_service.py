@@ -235,7 +235,7 @@ async def test_uploading_all_required_documents_auto_advances_to_under_review(db
     for i, doc_type in enumerate(required_types):
         await documents_service.upload_document(
             db, organization_id=organization_id, contract_id=contract.id, document_type=doc_type,
-            file_bytes=b"fake", content_type="application/pdf", original_filename=f"doc-{i}.pdf",
+            file_bytes=b"%PDF-1.4\nfake", content_type="application/pdf", original_filename=f"doc-{i}.pdf",
             actor_user_id=user.id, actor_role="CUSTOMER",
         )
 
@@ -256,7 +256,7 @@ async def test_uploading_some_but_not_all_documents_does_not_advance(db, organiz
     required_types = documents_service.required_document_types_for("PRIVATE")
     await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type=required_types[0],
-        file_bytes=b"fake", content_type="application/pdf", original_filename="doc-0.pdf",
+        file_bytes=b"%PDF-1.4\nfake", content_type="application/pdf", original_filename="doc-0.pdf",
         actor_user_id=user.id, actor_role="CUSTOMER",
     )
 

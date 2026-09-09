@@ -448,14 +448,15 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
-ricostruzione a memoria (rigenerato 2026-09-04, allineato alla revision
-Alembic `c9a1e4b6d2f3` / migrazione `0018_wallets`;
+ricostruzione a memoria (rigenerato 2026-09-09, allineato alla revision
+Alembic `6c1d4e9f2a58` / migrazione `0032_invoice_redemption_payment`;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le 51 tabelle con
+usa un utente Postgres diverso da `lial`). Contiene tutte le 56 tabelle con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
-file torna a essere stale (è già successo una volta: era rimasto indietro di
-tre domini interi prima di questa sessione).
+file torna a essere stale (è già successo più di una volta: era rimasto
+indietro di interi domini prima di essere risincronizzato, l'ultima volta
+in Session 33).
 
 La spiegazione **concettuale** (perché ogni tabella esiste, come si collegano,
 diagramma ER) è in `docs/database-model.md` — leggila insieme allo schema SQL,
@@ -476,11 +477,14 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 51 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 56 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
-                    user_roles, sessions, audit_log, password_reset_tokens
+                    user_roles, sessions, audit_log, password_reset_tokens,
+                    email_verification_tokens, otp_codes (codici generici
+                    a scopo -- verifica email, conferma OTP per spendere
+                    crediti wallet al checkout, ecc.)
 Rete commerciale:  agent_profiles (ha anche photo_url, approved_by_user_id/
                     approved_at/rejection_reason, is_blacklisted,
                     first_name/last_name -- display_name resta derivato),
@@ -489,12 +493,15 @@ Rete commerciale:  agent_profiles (ha anche photo_url, approved_by_user_id/
                     network_snapshot_nodes
 Referral:          promoter_codes, referral_events, referral_sessions,
                     customer_attributions, attribution_corrections
-Catalogo/clienti:  products, product_versions (ha anche
+Catalogo/clienti:  products (ha anche category: INTERNAL/DROPSHIPPING/
+                    PARTNER), product_versions (ha anche
                     contract_duration_months, token per grado su
-                    commissions.services.rank_evaluation), customers (ha
-                    anche photo_url, pec), customer_profiles, companies,
-                    addresses, supply_points (ha anche label)
-Contratti:         contracts (ha anche activated_at/expires_at/iban),
+                    commissions.services.rank_evaluation,
+                    credit_discount_percentage, cashback_enabled),
+                    customers (ha anche photo_url, pec), customer_profiles,
+                    companies, addresses, supply_points (ha anche label)
+Contratti:         contracts (ha anche activated_at/expires_at/iban, email
+                    per-contratto separata dall'email di login), 
                     contract_status_history, contract_events,
                     contract_attributions, documents (documenti sensibili
                     del contratto -- bucket privato lial-documents)
@@ -505,20 +512,35 @@ Provvigioni:       ranks, agent_rank_history, commission_plan_versions,
                     commission_adjustments, commission_offsets,
                     commission_reversals
 Notifiche:         notifications (in-app, popolate da approvazioni,
-                    promozioni/retrocessioni di grado, ecc.)
+                    promozioni/retrocessioni di grado, cashback, ordini, ecc.)
 Documentazione:    documentation_posts (news/materiale admin per clienti e
                     promoter, allegati sul bucket pubblico lial-media)
-Wallet:            wallets (saldo interno per utente, indirizzo stile
-                    crypto), wallet_transactions (ledger globale
-                    ricariche/cashback, trasferimenti P2P, storni)
+Wallet ("LialCash"): wallets (saldo interno per utente, indirizzo stile
+                    crypto -- mostrato in dashboard come "LialCash", non EUR),
+                    wallet_transactions (ledger globale ricariche/cashback,
+                    trasferimenti P2P, storni, debiti d'acquisto)
+Partner/cashback:  partners (anagrafica fornitori esterni), invoice_redemptions
+                    (riscatto fattura partner in LialCash: upload, verifica
+                    admin, pagamento del 3% con bonifico O carta, accredito)
+Ordini Shop:       orders (acquisto prodotti DROPSHIPPING/PARTNER: sconto
+                    crediti opzionale, "riscuoti subito cashback" 5%
+                    opzionale, pagamento con bonifico O carta -- vedi
+                    dominio `accounting`, nessuna tabella propria, che
+                    unisce questa tabella e wallet_transactions in
+                    un'unica vista di sola lettura per il cliente)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```
 
 **Object storage (non nel database Postgres)**: due bucket MinIO/S3, entrambi
 creati/gestiti dall'applicazione, mai a mano:
-- `lial-documents` (`S3_BUCKET_DOCUMENTS`) — privato, riservato a documenti
-  reali (dominio `documents`, non ancora costruito in questa versione).
+- `lial-documents` (`S3_BUCKET_DOCUMENTS`) — privato, nessuna policy
+  pubblica, accesso solo via URL presigned a scadenza breve (vedi
+  `security-model.md`). Ci vivono i documenti KYC dei contratti (dominio
+  `documents`), le foto/PDF di riscatto fattura e le relative prove di
+  pagamento (`invoice_redemptions`), e le prove di pagamento degli ordini
+  Shop (`orders.payment_proof_storage_key`) -- ognuno con il proprio
+  prefisso di chiave, stesso bucket, stesso modello di accesso.
 - `lial-media` (`S3_BUCKET_MEDIA`) — pubblico in lettura (foto profilo
   cliente/promoter, foto prodotto), creato automaticamente con la sua policy
   di lettura anonima al primo avvio del container `api`

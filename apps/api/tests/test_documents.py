@@ -80,7 +80,7 @@ async def test_upload_document_and_read_back(db, organization_id):
 
     document = await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type="IDENTITY",
-        file_bytes=b"fake pdf bytes for a test", content_type="application/pdf",
+        file_bytes=b"%PDF-1.4\nfake pdf bytes for a test", content_type="application/pdf",
         original_filename="carta_identita.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
     )
     assert document.status == "PENDING_REVIEW"
@@ -100,7 +100,7 @@ async def test_upload_document_rejects_unknown_document_type(db, organization_id
     with pytest.raises(documents_service.DocumentValidationError):
         await documents_service.upload_document(
             db, organization_id=organization_id, contract_id=contract.id, document_type="NOT_A_REAL_TYPE",
-            file_bytes=b"irrelevant", content_type="application/pdf",
+            file_bytes=b"%PDF-1.4\nirrelevant", content_type="application/pdf",
             original_filename="x.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
         )
 
@@ -111,7 +111,7 @@ async def test_contract_documents_status_shows_missing_and_uploaded(db, organiza
 
     await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type="IDENTITY",
-        file_bytes=b"id bytes", content_type="application/pdf",
+        file_bytes=b"%PDF-1.4\nid bytes", content_type="application/pdf",
         original_filename="id.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
     )
 
@@ -132,7 +132,7 @@ async def test_review_document_approve_and_reject(db, organization_id):
 
     document = await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type="UTILITY_BILL",
-        file_bytes=b"bill bytes", content_type="image/jpeg",
+        file_bytes=b"\xff\xd8\xffbill bytes", content_type="image/jpeg",
         original_filename="bolletta.jpg", actor_user_id=actor_user_id, actor_role="CUSTOMER",
     )
 
@@ -157,7 +157,7 @@ async def test_presigned_document_url_is_time_limited_and_not_the_internal_endpo
     contract, customer, actor_user_id = await _make_contract(db, organization_id)
     document = await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type="IDENTITY",
-        file_bytes=b"sensitive id document bytes", content_type="application/pdf",
+        file_bytes=b"%PDF-1.4\nsensitive id document bytes", content_type="application/pdf",
         original_filename="id.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
     )
 
@@ -174,7 +174,7 @@ async def test_get_document_returns_none_for_wrong_organization(db, organization
     contract, customer, actor_user_id = await _make_contract(db, organization_id)
     document = await documents_service.upload_document(
         db, organization_id=organization_id, contract_id=contract.id, document_type="IDENTITY",
-        file_bytes=b"x", content_type="application/pdf",
+        file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
         original_filename="id.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
     )
     other_org_id = uuid.uuid4()

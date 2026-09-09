@@ -4,6 +4,103 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 33 — 2026-09-09 — Per-product cashback, "LialCash" branding, Contabilità, real payment channel for invoice redemptions, upload security hardening
+
+Two requests handled back to back. First, the biggest single feature added
+this session: a per-product "riscuoti subito cashback" checkout option with
+strict anti-fraud requirements set by the user up front ("non deve poter
+rubare soldi"). Then, after committing that, a security audit of every file
+upload surface plus a follow-up feature request to give the partner-invoice
+redemption fee a real payment channel (it only ever supported manual bank
+transfer before). Full design detail lives in `business-rules.md` (Product
+cashback / LialCash / Accounting / Partner-invoice cashback sections),
+`security-model.md`, and `database-model.md` §9-14 -- this entry is the
+session-level summary.
+
+**Per-product cashback + OTP + "Contabilità" + LialCash rebrand**:
+- `product_versions.cashback_enabled` (admin-toggleable, forced false for
+  INTERNAL products, same enforcement pattern as `credit_discount_percentage`).
+- `orders.cashback_requested`/`cashback_surcharge_cents`/`cashback_credited_at`:
+  opting in at checkout adds a flat 5% surcharge on the residual owed in new
+  money; once PAID, `_credit_order_cashback()` mints the base+bonus back to
+  the wallet as two rows, computed from the real amount paid (never a
+  pre-discount base) and idempotency-guarded.
+- Self-checkout spending of existing wallet credit now requires an emailed
+  OTP (`WALLET_CREDIT_SPEND_OTP_PURPOSE`, reusing the existing generic OTP
+  system) -- admin-created orders are exempt (OTP would go to the customer,
+  not the admin).
+- "LialCash": every wallet balance/transaction display renamed from EUR to
+  a LialCash label across the dashboard (never the underlying schema/currency
+  field) to keep it visually distinct from real Stripe/bank-transfer money.
+- New `accounting` domain (`GET /accounting/mine`, no new table -- merges
+  `wallet_transactions` and paid `orders`' real-money legs on the fly) backing
+  a new customer-facing "Contabilità" nav section: filters, totals, CSV export.
+- 191 backend tests passing (177 existing + 14 new), ruff/mypy clean
+  (4 pre-existing `Result.rowcount` false positives only), frontend build
+  clean, full live verification via synthetic data (OTP flow, cashback
+  surcharge/crediting on both bank-transfer and Stripe paths, idempotency on
+  a retried webhook, accounting feed contents) then cleaned up.
+
+**Upload security audit + hardening** (the user asked directly: "sono
+sicuri i documenti caricati?"):
+- The existing design (private bucket, no public policy, presigned URLs
+  only, nginx Host-header signature mechanics, MIME whitelist + size caps)
+  was already solid -- documented in full in `security-model.md`. Two real
+  gaps found and fixed, not just narrated:
+  1. **Magic-byte verification** (`core/storage.py::_verify_magic_bytes`):
+     the client-supplied `Content-Type` header alone was trusted against the
+     whitelist -- trivially spoofable. Now the file's actual leading bytes
+     are checked against the real signature for every upload path (media,
+     documentation, private documents bucket).
+  2. **Rate limiting** added to every upload endpoint that lacked it
+     (contract documents, order/redemption payment proofs, invoice-redemption
+     submission) -- 20 requests/5min per IP, same mechanism as the auth
+     endpoints.
+  - Existing test fixtures using fake byte content (`b"fake"`,
+    `b"irrelevant"`, etc.) for PDF/JPEG uploads had to be updated to carry
+    real magic-byte prefixes (`%PDF-1.4`, `\xff\xd8\xff`) once the check
+    started actually enforcing -- a maintenance side-effect of tightening
+    the check, not a bug in it.
+
+**Invoice-redemption fee now payable by card, with proof upload for bank
+transfer** (previously the 3% fee was bank-transfer-only, manually
+reconciled by an admin with no self-service card option and no proof
+upload -- the user asked directly whether a payment path existed):
+- `invoice_redemptions` gained `payment_method`/`stripe_checkout_session_id`/
+  `payment_proof_*` columns, mirroring `orders` exactly. New endpoints:
+  `PATCH .../payment-method`, `POST .../checkout-session`,
+  `POST .../payment-proof`, `GET .../payment-proof-url` (customer and admin).
+- `payments/service.py` generalized: `handle_webhook_event` now routes on
+  the Stripe session's own `metadata.kind` ("order" vs "invoice_redemption",
+  defaulting to "order" for pre-existing sessions) instead of assuming every
+  webhook is for an order.
+- **Real bug caught and fixed before it shipped**: the first draft of
+  `invoice_redemptions/service.py::confirm_payment` (the manual admin
+  action) did NOT refuse a CARD-method redemption -- meaning an admin could
+  have manually minted wallet credit for a Stripe-selected redemption
+  without Stripe ever confirming a real charge, exactly the "steal money"
+  scenario the user's very first cashback request warned against. Caught
+  while writing tests (mirroring `orders/service.py::confirm_payment`'s
+  existing refusal, which the redemption path had been missing), fixed
+  immediately, and specifically tested (`test_confirm_payment_refuses_a_card_redemption`)
+  plus verified live before considering the feature done.
+- Emails improved along the way: `verify()`/`reject()` on a redemption now
+  send full branded emails (previously in-app notification only), and the
+  credited-cashback email switched from raw EUR to "LialCash" wording for
+  consistency with the rebrand above.
+- 198 backend tests passing (191 + 7 new), ruff/mypy clean, frontend build
+  clean. Live verification: magic-byte rejection of a spoofed PDF, full
+  submit→verify→switch-to-CARD→(manual confirm correctly refused)→Stripe-
+  webhook-credits→(retry doesn't double-credit) cycle, all test data cleaned
+  up afterward.
+
+**Docs updated this session**: `business-rules.md`, `security-model.md`,
+`database-model.md` (§9-11 extended, new §14), `cashback-partner-invoices-plan.md`,
+`docs/database-schema.sql` (regenerated via `scripts/dump-schema.sh`, now
+includes every column above). Rebuilt/redeployed api+celery-worker+dashboard
+images, migrations `0031_order_cashback`/`0032_invoice_redemption_payment`
+applied to the live dev database.
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption

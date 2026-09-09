@@ -671,6 +671,79 @@ the plain admin `ADMIN_CREDIT` top-up above -- see
   is what a SUPER_ADMIN pastes into their own Stripe Dashboard's webhook
   config, and is what keeps one endpoint correct for every tenant in
   principle, even though this deployment currently has one organization.
+- **Redemption fee now also payable by card, with a proof-upload option for
+  bank transfer (Session 33)**: originally the 3% redemption fee could only
+  be paid by bank transfer with a reference code, manually reconciled by an
+  admin with no self-service card option and no proof upload. It now works
+  exactly like an order's residual: `invoice_redemptions.payment_method`
+  (default `BANK_TRANSFER` at `verify()` time, switchable to `CARD` via
+  `PATCH /invoice-redemptions/mine/{id}/payment-method` while still
+  `PAYMENT_PENDING`), a Stripe Checkout Session for exactly
+  `payment_due_cents()` (`POST
+  /invoice-redemptions/mine/{id}/checkout-session`), and an optional
+  bank-transfer receipt upload (`POST
+  /invoice-redemptions/mine/{id}/payment-proof`, purely advisory, same
+  private-bucket pattern as an order's payment proof). `confirm_payment()`
+  (the manual admin action) refuses a `CARD`-method redemption
+  server-side -- only the Stripe webhook may credit those, same anti-fraud
+  rule as an order (see `security-model.md`).
+
+## Product cashback -- "riscuoti subito cashback" (added Session 33)
+
+A third, separate way wallet credit enters the system (alongside the plain
+admin top-up and the partner-invoice redemption above), this time earned
+directly from a Shop purchase rather than an external bill:
+
+- **Per-product toggle**: an admin can enable `cashback_enabled` on any
+  DROPSHIPPING/PARTNER product version (never on an INTERNAL Lial Energy
+  product -- same forced-off invariant, same single enforcement point
+  pattern, as `credit_discount_percentage`).
+- **At checkout**: if the product allows it, the customer sees a
+  "riscuoti subito cashback" option. Opting in adds a flat
+  `ORDER_CASHBACK_PERCENTAGE` (5%) surcharge on top of whatever is actually
+  still owed in new money (`amount_cents - credit_applied_cents` -- i.e.
+  AFTER any wallet-credit discount is already applied, never before it).
+  Cashback can only be requested when that residual is greater than zero --
+  a 100%-credit-covered order has nothing left to earn cashback on.
+- **Payout**: once the order reaches `PAID` -- an admin confirming a bank
+  transfer, or the Stripe webhook for a card charge -- the whole extra
+  payment (the residual actually paid + the 5% surcharge) is credited back
+  to the customer's wallet as LialCash, as two separate transaction rows
+  (`ORDER_CASHBACK_BASE`/`ORDER_CASHBACK_BONUS`), exactly mirroring the
+  partner-invoice redemption's base+bonus split above.
+- **Anti-fraud, by explicit request**: the credited amount is always
+  computed from the real new money paid in *that* order, never a
+  pre-discount or otherwise inflated base -- so a customer can never use
+  wallet credit to pay, then have cashback computed as if they'd paid more,
+  manufacturing credit from credit. Crediting is idempotent
+  (`orders.cashback_credited_at` guard + deterministic idempotency keys).
+- **Spending existing credit now needs an OTP**: see the OTP bullet under
+  "Internal wallet" above / `security-model.md` -- any self-checkout order
+  that applies `credit_applied_cents > 0` requires a fresh emailed OTP,
+  regardless of whether cashback was also requested on the same order.
+
+## "LialCash" -- wallet balance/transaction labeling (added Session 33)
+
+Purely a dashboard label, not a new concept: every wallet balance and
+transaction amount (top-ups, redemption/cashback credits, peer transfers,
+purchase debits) is displayed with a "LialCash" suffix instead of a euro
+sign, to keep it visually unmistakable from *real* money. Real-money
+amounts -- what a customer actually paid via Stripe or bank transfer on an
+order or a redemption fee -- are always shown in genuine EUR, labeled with
+the payment method. No schema or currency-field change; `wallets.currency`
+is still `"EUR"` in the database, this is presentation-only.
+
+## Accounting / "Contabilità" (added Session 33)
+
+A new customer-facing dashboard section (`GET /accounting/mine`, no
+permission beyond authentication -- same pattern as `GET /wallets/me`)
+merges a user's own `wallet_transactions` (LialCash movements) and their
+own paid orders' real-money payments (EUR, tagged Bonifico/Carta) into one
+chronological, filterable feed with running totals per category and a CSV
+export. Computed on the fly from the two existing tables (see
+`database-model.md` §14) -- deliberately not a new persisted table, so
+there is nothing here that can drift from the wallet ledger or the orders
+table, which remain the actual source of truth for their own domains.
 
 ## Account gates (Session 27)
 

@@ -481,7 +481,16 @@ public `lial-media` bucket (marketing material, not the sensitive-document
 workflow in §4/`documents`), uploaded via
 `core/storage.py::upload_documentation_attachment()`.
 
-## 9. Internal wallet (added Session 21; extended Sessions 23-24)
+## 9. Internal wallet (added Session 21; extended Sessions 23-24, 33)
+
+**"LialCash" (Session 33)**: purely a UI label, not a schema/domain change --
+every `wallets`/`wallet_transactions` amount is still `balance_cents`/
+`amount_cents` in the same table, same currency (`EUR` string, unchanged).
+The dashboard (customer- and admin-facing) formats every wallet balance and
+transaction amount with a `LialCash` suffix instead of a euro sign, to keep
+it visually distinct from the *real* money columns on `orders` and
+`invoice_redemptions` (paid via Stripe or bank transfer, always shown in
+actual EUR with the payment method named). See `business-rules.md#internal-wallet`.
 
 ```
 wallets
@@ -510,10 +519,12 @@ wallet_transactions                                     -- the ledger
     PURCHASE_DEBIT added Session 24, the mirror of ADMIN_CREDIT: to_wallet_id
     NULL instead of from_wallet_id NULL, money leaves a wallet to pay for an
     order and ceases to exist),
-  source nullable (added Session 23 -- MANUAL_ADMIN / INVOICE_REDEMPTION_BASE
-    / INVOICE_REDEMPTION_BONUS, a structured tag distinguishing WHY an
-    ADMIN_CREDIT row exists without parsing free-text `note`; NULL for
-    TRANSFER/PURCHASE_DEBIT/REVERSAL, where `type` alone already says enough),
+  source nullable (added Session 23, extended Session 33 -- MANUAL_ADMIN /
+    INVOICE_REDEMPTION_BASE / INVOICE_REDEMPTION_BONUS /
+    ORDER_CASHBACK_BASE / ORDER_CASHBACK_BONUS, a structured tag
+    distinguishing WHY an ADMIN_CREDIT row exists without parsing
+    free-text `note`; NULL for TRANSFER/PURCHASE_DEBIT/REVERSAL, where
+    `type` alone already says enough),
   reference_contract_id nullable (links a cashback credit to the purchase
     that triggered it -- always NULL for TRANSFER/REVERSAL),
   reference_invoice_redemption_id nullable (added Session 23, FK
@@ -554,7 +565,7 @@ correctly. A `REVERSAL` itself can never be reversed.
 No real-money withdrawal or payment-provider integration exists or is
 planned for this domain -- it is a purely internal, virtual balance.
 
-## 10. Partner-invoice cashback: `partners` & `invoice_redemptions` (added Session 23)
+## 10. Partner-invoice cashback: `partners` & `invoice_redemptions` (added Session 23; real payment channel added Session 33)
 
 ```
 partners
@@ -575,23 +586,51 @@ invoice_redemptions
   payment_reference_code nullable, unique (short code generated once
     confirmed_amount_cents is set, e.g. "RIS-8D4384" -- the customer puts it
     in the bank transfer's causale so an admin can match the incoming wire),
+  payment_method nullable (BANK_TRANSFER / CARD -- added Session 33, set to
+    BANK_TRANSFER the moment verify() opens the payment window, switchable
+    to CARD by the customer while still PAYMENT_PENDING; same shape as
+    orders.payment_method below),
+  stripe_checkout_session_id nullable, unique (added Session 33 -- set once
+    a Stripe Checkout Session is created for payment_due_cents(); the
+    webhook uses this to confirm CREDITED automatically, exactly like
+    orders.stripe_checkout_session_id),
+  payment_proof_storage_key/payment_proof_original_filename/
+    payment_proof_uploaded_at nullable (added Session 33 -- customer-
+    uploaded evidence of the bank-transfer payment, purely advisory, same
+    private-bucket-reuse pattern as `storage_key` above and as
+    `orders.payment_proof_storage_key`),
   status (SUBMITTED / PAYMENT_PENDING / CREDITED / REJECTED),
   rejection_reason nullable,
   verified_by_user_id/verified_at nullable, credited_by_user_id/credited_at
-    nullable
+    nullable (credited_by_user_id stays NULL for a Stripe-confirmed payment
+    -- there is no human actor, see invoice_redemptions/service.py::
+    mark_paid_via_stripe, same convention as orders.paid_by_user_id)
 ```
 
 Lifecycle: `SUBMITTED` (uploaded) → `PAYMENT_PENDING` (an admin verified the
 real amount and a payment reference code was generated -- one action, not
-two separate states) → `CREDITED` (an admin confirmed the 3% wire arrived;
-this is the one moment two `wallet_transactions` rows get written together,
+two separate states) → `CREDITED` (the CASHBACK_PERCENTAGE% payment
+arrived, confirmed either by an admin for a bank transfer or automatically
+by the Stripe webhook for a card charge -- either way this is the one
+moment two `wallet_transactions` rows get written together,
 `INVOICE_REDEMPTION_BASE` + `INVOICE_REDEMPTION_BONUS`, never a single
-combined row -- see §9). `REJECTED` is reachable from `SUBMITTED` or
+combined row -- see §9 and `invoice_redemptions/service.py::
+_credit_redemption()`). `REJECTED` is reachable from `SUBMITTED` or
 `PAYMENT_PENDING`. No OCR: the customer types the amount, an admin always
 verifies against the document before anything is unlocked -- see
 `docs/cashback-partner-invoices-plan.md`.
 
-## 11. Product credit categories & orders (added Sessions 23-24; payment method + self-checkout Session 26)
+**Anti-fraud guard (Session 33)**: `confirm_payment()` (the manual "Conferma
+bonifico ricevuto" admin action) explicitly refuses a redemption whose
+`payment_method` is `CARD` -- only `mark_paid_via_stripe()`, reached
+exclusively from the Stripe webhook once Stripe itself confirms the charge,
+may credit a CARD redemption. Enforced server-side (`InvalidRedemptionStateError`,
+not just a hidden button), the identical rule and reasoning as
+`orders/service.py::confirm_payment` refusing a CARD order -- an admin (or
+anyone who compromised an admin session) must never be able to mint wallet
+credit without Stripe's own confirmation of a real charge.
+
+## 11. Product credit categories & orders (added Sessions 23-24; payment method + self-checkout Session 26; payment proof Session 28ish; product cashback Session 33)
 
 ```
 products (extended)
@@ -608,6 +647,11 @@ product_versions (extended)
     is enforced, including when a product's category is changed back to
     INTERNAL after having a discount configured, which zeroes it on every
     version in one bulk update.)
+  cashback_enabled (Boolean, default false -- added Session 33. Whether the
+    checkout may offer "riscuoti subito cashback" on THIS version at all.
+    Same INTERNAL-forced-false invariant and same single-enforcement-point
+    pattern as credit_discount_percentage above --
+    catalog/service.py::_clamp_cashback_enabled().)
 
 orders                                    -- DROPSHIPPING/PARTNER purchases
   id, organization_id,
@@ -625,6 +669,16 @@ orders                                    -- DROPSHIPPING/PARTNER purchases
     only when credit_applied_cents > 0, points at the PURCHASE_DEBIT row so
     cancelling can reverse that exact row rather than minting a fresh,
     less-traceable refund),
+  cashback_requested (Boolean, default false -- added Session 33, "riscuoti
+    subito cashback" opted in at checkout; only permitted when the
+    product_version has cashback_enabled AND the residual after credit is
+    > 0, see orders/service.py::create_order),
+  cashback_surcharge_cents (BigInteger, default 0 -- added Session 33,
+    ORDER_CASHBACK_PERCENTAGE (5%) of the residual owed in new money,
+    frozen at order creation same as amount_cents),
+  cashback_credited_at nullable (added Session 33, set once
+    _credit_order_cashback() has run for this order -- doubles as the
+    idempotency guard against a retried webhook double-crediting),
   status (AWAITING_PAYMENT / PAID / CANCELLED),
   payment_method (BANK_TRANSFER default / CARD -- added Session 26, only
     meaningful when there's a residual to pay; irrelevant and unenforced
@@ -633,12 +687,47 @@ orders                                    -- DROPSHIPPING/PARTNER purchases
     a Stripe Checkout Session is created for the residual; overwritten, not
     appended, on a retried checkout attempt, so only the latest attempt is
     ever honored by the webhook),
+  payment_proof_storage_key/payment_proof_original_filename/
+    payment_proof_uploaded_at nullable -- customer-uploaded evidence of a
+    bank-transfer payment already sent, purely advisory (never changes
+    `status` by itself), reuses core/storage.py's private documents bucket
+    directly under an `order-payment-proofs/{customer_user_id}/` prefix
+    (never the `documents` domain, whose contract_id is NOT NULL by
+    design).
   note nullable,
   paid_by_user_id/paid_at nullable (paid_by_user_id stays NULL for a
     Stripe-confirmed payment -- there is no human actor, see
     orders/service.py::mark_paid_via_stripe), cancelled_by_user_id/
     cancelled_at/cancellation_reason nullable
 ```
+
+**"Riscuoti subito cashback" (Session 33)**: when the customer opts in at
+checkout (only offerable on a `cashback_enabled` product version), the
+residual owed in new money gets a flat `ORDER_CASHBACK_PERCENTAGE` (5%)
+surcharge. Once the order reaches `PAID` -- bank transfer admin-confirmed,
+or the Stripe webhook -- `orders/service.py::_credit_order_cashback()`
+credits the customer's wallet with the base amount actually paid PLUS the
+5% bonus, as two separate `wallet_transactions` rows
+(`ORDER_CASHBACK_BASE`/`ORDER_CASHBACK_BONUS`, same "never one combined
+row" discipline as invoice-redemption credit in §10). **Security
+invariant**: the cashback base is always computed from `amount_cents -
+credit_applied_cents` -- the actual new money owed AFTER any wallet-credit
+discount was already applied, never the pre-discount price -- so a
+customer can never manufacture credit by first paying with credit and then
+having cashback computed off a higher, unpaid base. Idempotency is a
+double guard: the `cashback_credited_at` column on the order, plus
+deterministic (non-client-supplied) idempotency keys
+(`order:{id}:cashback-base|bonus`) on the two `credit_wallet()` calls.
+
+**Spending existing wallet credit now requires an OTP (Session 33)**: at
+self-checkout (`POST /orders/mine`), if `credit_applied_cents > 0` the
+request must also carry a fresh `otp_code`, emailed via
+`POST /orders/mine/request-credit-otp` (`WALLET_CREDIT_SPEND_OTP_PURPOSE`,
+reusing the platform's existing generic OTP infrastructure --
+`auth/service.py::request_otp`/`verify_otp`). An admin creating an order on
+a customer's behalf (`POST /orders`, `wallet.manage`-gated) is exempt --
+the OTP would land in the customer's inbox, not the admin's, and the
+action is already permissioned and audited.
 
 Deliberately **not** an extension of `Contract` -- `Contract.supply_point_id`
 is NOT NULL by design (every contract is an energy supply), which has no
@@ -725,3 +814,27 @@ erDiagram
 
 Full ER diagram will grow as Phase F/G tables land; kept mermaid so it renders directly
 wherever this doc is viewed.
+
+## 14. Accounting view (added Session 33)
+
+**No new table.** `GET /accounting/mine` (`accounting/service.py::
+list_my_movements`) computes a unified, read-only, newest-first feed of a
+user's own financial activity purely by querying two existing sources and
+merging them in Python -- deliberately not a materialized/persisted table,
+so there is nothing here that can drift from `wallet_transactions`/`orders`,
+which remain each domain's own single source of truth:
+
+- Every `wallet_transactions` row touching the caller's own wallet (both
+  in/out), formatted as a `"WALLET"` / `"LIALCASH"` movement, signed
+  (negative = money left the wallet). Product name resolved via
+  `reference_order_id` when set.
+- Every one of the caller's own `PAID` `orders` where real money was
+  actually charged (`amount_cents - credit_applied_cents +
+  cashback_surcharge_cents > 0`), formatted as an `"ORDER_PAYMENT"` /
+  `"EUR"` movement carrying `payment_method`. An order fully covered by
+  wallet credit produces no row here at all -- that spend is already shown
+  as its own `WALLET` row.
+
+This is what the customer-facing "Contabilità" dashboard section renders
+(filters by LialCash/Bonifico/Carta, totals, CSV export) -- see
+`business-rules.md#internal-wallet`.

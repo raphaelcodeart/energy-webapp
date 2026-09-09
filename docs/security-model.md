@@ -122,6 +122,34 @@
     carries a client-generated `idempotency_key` (unique DB constraint) so a
     double-submitted request can never double-apply. `POST /wallets/transfer`
     is additionally rate-limited per IP (20/60s) against scripted abuse.
+  - **Spending existing wallet credit needs a fresh OTP (Session 33)**: at
+    self-checkout (`POST /orders/mine`), any `credit_applied_cents > 0`
+    requires an `otp_code` matching one just emailed via `POST
+    /orders/mine/request-credit-otp` (reuses the platform's generic OTP
+    infrastructure -- `auth/service.py::request_otp`/`verify_otp`, single-use,
+    10-minute expiry). A stolen session token alone can no longer drain a
+    wallet at checkout. The staff endpoint (`POST /orders`, `wallet.manage`-
+    gated) is exempt by design: an admin applying a customer's credit on
+    their behalf is already an audited, permissioned action, and the OTP
+    would land in the customer's inbox, not the admin's.
+  - **Cashback can only ever be minted against a real, confirmed charge
+    (Session 33)**: both the per-product "riscuoti subito cashback"
+    (`orders`) and the partner-invoice redemption bonus
+    (`invoice_redemptions`) compute the credited amount from the money
+    actually paid in *that* transaction, never a higher pre-discount base
+    (see `database-model.md` §11/§10 for the exact arithmetic) -- this is
+    what prevents a customer from using credit to pay, then having cashback
+    computed off the un-discounted price and manufacturing credit from
+    credit. Crediting is idempotent (a status-column guard plus
+    deterministic, non-client-supplied `idempotency_key`s). And critically:
+    an admin's manual "confirm bank transfer received" action is refused
+    server-side (`InvalidOrderStateError`/`InvalidRedemptionStateError`, not
+    just a hidden button) for any order/redemption whose `payment_method`
+    is `CARD` -- only the Stripe webhook, once Stripe itself confirms a real
+    charge, may credit those. Verified live during Session 33: a CARD-method
+    redemption manually "confirmed" by an admin is rejected and mints
+    nothing; the same redemption is correctly credited once the webhook
+    fires.
 
 ## Multi-tenancy
 - Every tenant-scoped table carries `organization_id`. All repository queries filter on
@@ -133,10 +161,48 @@
   enough that "always filter by org_id in the repository" stops being a reliable
   guarantee by convention alone.
 
-## Documents (identity, fiscal code, utility bill, chamber-of-commerce — Session 14)
+## Documents (identity, fiscal code, utility bill, chamber-of-commerce — Session 14; hardened Session 33)
 - Uploads (`app/domains/documents/`) are validated by MIME whitelist
   (`application/pdf`, `image/jpeg`, `image/png` only) and a 15 MB size limit
   before storage; rejected content never reaches MinIO.
+- **Magic-byte verification (Session 33)**: the `Content-Type` header an
+  upload arrives with is client-supplied and trivially spoofable (rename
+  `payload.html` to `bolletta.pdf`, send it with
+  `Content-Type: application/pdf`, and a whitelist check alone would wave
+  it through). `core/storage.py::_verify_magic_bytes()` additionally checks
+  the file's actual leading bytes against the real signature for its
+  claimed type (`%PDF-` for PDF, `\xff\xd8\xff` for JPEG, the PNG/GIF/WEBP
+  signatures) before any upload reaches MinIO, for **every** bucket this
+  module writes to: the public media bucket, the documentation attachment
+  bucket, and the private documents bucket (KYC documents, order payment
+  proofs, invoice-redemption uploads and their payment proofs -- see
+  below). Not a full antivirus/content scan (that gap is still separate
+  and deliberate, see `ensure_documents_bucket()`'s docstring below) --
+  this only proves the bytes are *structurally* what they claim to be.
+- **Rate limiting on upload endpoints (Session 33)**: `POST
+  /contracts/{id}/documents`, `POST /orders/mine/{id}/payment-proof`, `POST
+  /invoice-redemptions`, and `POST
+  /invoice-redemptions/mine/{id}/payment-proof` are all rate-limited (20
+  requests / 5 min per IP, `core/rate_limit.py`, same fail-open mechanism
+  as the auth endpoints) as defense-in-depth against an authenticated
+  session being used to spam-upload and fill storage.
+- **Order payment proofs and invoice-redemption uploads reuse this same
+  private bucket and access model (Sessions 28-33)**: a customer's
+  bank-transfer receipt photo (`orders.payment_proof_storage_key`,
+  `invoice_redemptions.payment_proof_storage_key`) and an invoice-
+  redemption's own uploaded invoice photo (`invoice_redemptions.
+  storage_key`) are never routed through the `documents` table (whose
+  `contract_id` is NOT NULL by design) -- they call
+  `core/storage.py::upload_document`/`generate_presigned_document_url`
+  directly, under their own key prefixes
+  (`order-payment-proofs/{customer_user_id}/`,
+  `invoice-redemption-payment-proofs/{customer_user_id}/`,
+  `invoice-redemptions/{customer_user_id}/`). Same private bucket, same
+  no-bucket-policy-at-all default, same short-lived-presigned-URL-only
+  access pattern, same ownership/permission checks in each domain's own
+  router (`get_owned()` for the caller's own upload, `wallet.manage` for
+  staff) as KYC documents below -- there is no separate, weaker code path
+  for these.
 - **Private bucket, no public access of any kind**: `lial-documents`
   (`S3_BUCKET_DOCUMENTS`) is a SEPARATE MinIO bucket from the public
   `lial-media` photo bucket below, and deliberately gets **no bucket policy

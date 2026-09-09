@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
+from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError
 from app.domains.contracts.models import Contract
 from app.domains.customers.models import Company, Customer, CustomerProfile
@@ -92,7 +93,12 @@ async def _document_read(db: AsyncSession, document: Document) -> dict:
     }
 
 
-@router.post("/contracts/{contract_id}/documents", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/contracts/{contract_id}/documents",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("document-upload", max_requests=20, window_seconds=300))],
+)
 async def upload_contract_document(
     contract_id: uuid.UUID,
     document_type: str = Form(...),

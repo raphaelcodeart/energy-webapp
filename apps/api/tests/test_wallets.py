@@ -135,7 +135,7 @@ async def test_credit_wallet_skips_email_when_already_sent_by_invoice_redemption
     )
     redemption = await redemptions_service.submit_redemption(
         db, organization_id=organization_id, customer_user_id=customer.id, partner_id=partner.id,
-        declared_amount_cents=10000, file_bytes=b"%PDF fake invoice", content_type="application/pdf",
+        declared_amount_cents=10000, file_bytes=b"%PDF-1.4\nfake invoice", content_type="application/pdf",
         original_filename="bolletta.pdf",
     )
 

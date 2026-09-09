@@ -87,9 +87,17 @@ aprire un ticket vero (non solo un modulo che scompare): resta visibile nella
 tua area finché non viene risolto, e vedi le risposte dell'amministrazione
 direttamente nella conversazione.
 
-Cosa non è ancora disponibile: acquisto/checkout diretto dallo shop (oggi la
-vetrina è consultabile, l'attivazione di un contratto passa dall'amministrazione
-o dal promoter), storico pagamenti/fatture.
+Lo Shop mostra separatamente le **offerte luce/gas Lial Energy** (voce di menu
+dedicata "Contratti Lial Energy" -- attivazione contratto, come sopra) dai
+**prodotti Dropshipping/Partner** (gadget e prodotti di terzi): questi ultimi
+si acquistano **direttamente dal cliente**, senza passare dall'amministrazione
+-- carrello con sconto opzionale in LialCash (se il prodotto lo prevede),
+possibilità di richiedere "cashback subito" (paghi un 5% in più e lo riavrai
+accreditato a pagamento confermato), e pagamento del residuo con bonifico o
+carta (Stripe). Il risultato si vede nella nuova voce **I miei Ordini**: stato
+(in attesa/pagato/annullato), filtri, dettaglio, prova di pagamento
+caricabile per un ordine a bonifico, possibilità di cambiare metodo di
+pagamento o pagare subito con carta un ordine già creato a bonifico.
 
 **Documentazione** — feed di sola lettura con annunci e materiale pubblicati
 dall'amministrazione (testo, e opzionalmente un'immagine, un PDF o un link
@@ -106,16 +114,34 @@ manuale). Chi ha sia il ruolo Cliente sia quello Promoter vede in cima
 all'intestazione (e nel menu account) un selettore **"Area Cliente / Area
 Promoter"** per passare dall'una all'altra senza fare logout.
 
-**Wallet** — un portafoglio interno in euro, personale e sempre disponibile,
-pensato come un "finto wallet crypto": ha un saldo, un indirizzo univoco
-(stile `0x...`, da copiare con un click) e uno storico di tutte le
-transazioni. L'amministrazione può accreditare del cashback su questo
-wallet dopo un acquisto (o anche solo come ricarica). Da qui puoi anche
-**inviare denaro a un altro wallet** conoscendo il suo indirizzo — funziona
-come un vero wallet crypto: basta l'indirizzo del destinatario, nessuna
-relazione richiesta. Ogni movimento (ricevuto o inviato) resta nello
-storico con data, importo e controparte. Il saldo è puramente interno: non
-è collegato a conti bancari reali e non si può prelevare.
+**Wallet** — un portafoglio interno, personale e sempre disponibile, pensato
+come un "finto wallet crypto": ha un saldo, un indirizzo univoco (stile
+`0x...`, da copiare con un click) e uno storico di tutte le transazioni. Il
+saldo e ogni transazione sono mostrati in **"LialCash"**, non in euro --
+un'etichetta scelta apposta per non confonderlo mai con un pagamento reale
+(quelli, con carta o bonifico, si vedono sempre in euro veri, sia
+nell'ordine sia in Contabilità, vedi sotto). L'amministrazione può
+accreditare LialCash su questo wallet dopo un acquisto (o anche solo come
+ricarica). Da qui puoi anche **inviare LialCash a un altro wallet**
+conoscendo il suo indirizzo — funziona come un vero wallet crypto: basta
+l'indirizzo del destinatario, nessuna relazione richiesta (funzione
+disattivata di default, va abilitata singolarmente dall'amministrazione).
+Ogni movimento (ricevuto o inviato) resta nello storico con data, importo e
+controparte. Il saldo è puramente interno: non è collegato a conti bancari
+reali e non si può prelevare.
+
+**Riscatta Cashback** — hai già pagato una bolletta/fattura a uno dei
+fornitori partner di Lial Energy (o a Lial Energy stessa)? Carica la foto o
+il PDF e l'importo dichiarato: appena un amministratore verifica il
+documento e conferma l'importo reale, ti viene chiesto di pagare solo il 3%
+di quell'importo (con carta, subito, o con bonifico indicando il codice
+causale mostrato) per riscattare il 100% + un ulteriore 3% di bonus in
+LialCash sul tuo wallet.
+
+**Contabilità** — la tua rendicontazione personale: un unico elenco che
+unisce i movimenti LialCash del wallet e i pagamenti reali (bonifico o
+carta) dei tuoi ordini, con filtri per tipo, totali riepilogativi e un
+pulsante per scaricare tutto in CSV.
 
 ### 3.2 Area Promoter (`/promoter`)
 
@@ -160,11 +186,12 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 - **Documentazione** — lo stesso feed di annunci/materiale che vede il
   cliente, quando l'amministrazione lo pubblica anche (o solo) per i
   promoter.
-- **Wallet** — lo stesso portafoglio interno in euro descritto per l'area
-  Cliente: saldo, indirizzo personale, invio/ricezione verso qualsiasi altro
-  wallet della piattaforma, storico transazioni. È lo stesso wallet
-  indipendentemente dal ruolo con cui accedi (se hai sia login Cliente sia
-  Promoter, il saldo è unico e condiviso tra le due aree).
+- **Wallet** — lo stesso portafoglio interno (saldo e storico mostrati in
+  "LialCash", non euro) descritto per l'area Cliente: saldo, indirizzo
+  personale, invio/ricezione verso qualsiasi altro wallet della piattaforma,
+  storico transazioni. È lo stesso wallet indipendentemente dal ruolo con
+  cui accedi (se hai sia login Cliente sia Promoter, il saldo è unico e
+  condiviso tra le due aree).
 
 Se hai anche un account Cliente collegato allo stesso login, in cima
 all'intestazione trovi lo stesso selettore **"Area Cliente / Area Promoter"**
@@ -249,7 +276,29 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   uguale per tutti i prodotti). Pulsanti **Duplica** (crea un nuovo prodotto
   precompilato da uno esistente, inclusi eventuali gettoni personalizzati) ed
   **Elimina** (con conferma; rifiutato se il prodotto ha già contratti
-  collegati).
+  collegati). Per un prodotto Dropshipping/Partner puoi anche impostare uno
+  **sconto pagabile in LialCash** (percentuale del prezzo) e/o abilitare
+  **"cashback subito"**: se attivo, il cliente potrà scegliere in fase di
+  acquisto di pagare un 5% in più per farselo riaccreditare in LialCash a
+  pagamento confermato. Nessuna delle due opzioni è mai disponibile sui
+  prodotti Lial Energy (categoria Interno).
+- **Ordini** — la coda di tutti gli ordini Shop (prodotti Dropshipping/
+  Partner, creati dal cliente stesso o da un amministratore per suo conto):
+  filtro per stato/metodo di pagamento, dettaglio con id prodotto, LialCash
+  applicati, eventuale sovrapprezzo cashback, prova di pagamento caricata
+  dal cliente (se bonifico). **Conferma bonifico ricevuto** segna l'ordine
+  pagato e, se il prodotto lo prevede, accredita automaticamente il
+  cashback; un ordine pagato con carta si conferma da solo non appena
+  Stripe conferma l'addebito (il bottone manuale è disabilitato in quel
+  caso, per non poter mai accreditare cashback senza un pagamento reale
+  confermato da Stripe). **Nuovo Ordine** crea un ordine per conto di un
+  cliente.
+- **Riscatti Fatture** — la coda delle richieste "Riscatta Cashback" dei
+  clienti: **Verifica importo** (apri il documento caricato, conferma
+  l'importo reale -- da questo momento il cliente sa quanto pagare e può
+  farlo con carta o bonifico), **Conferma bonifico ricevuto** (solo se il
+  cliente ha scelto bonifico; se ha scelto carta l'accredito è automatico
+  alla conferma di Stripe), **Rifiuta** con motivo.
 - **Documentazione** — crea/modifica/archivia annunci e materiale (testo, più
   opzionalmente un'immagine, un PDF o un link video) da pubblicare per i
   clienti, i promoter, o entrambi — visibili nella rispettiva scheda
@@ -269,16 +318,24 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   subito nell'area del cliente/promoter. Una risposta su un ticket "Aperto" lo
   sposta automaticamente in "In lavorazione"; solo l'amministrazione può
   segnarlo come "Risolto" o "Chiuso".
-- **Wallet** — visione d'insieme di tutti i portafogli della piattaforma:
-  saldo e indirizzo di ogni cliente/promoter (con ricerca per nome, email o
+- **Wallet** — visione d'insieme di tutti i portafogli della piattaforma
+  (saldo e ogni transazione mostrati in "LialCash", non euro): saldo e
+  indirizzo di ogni cliente/promoter (con ricerca per nome, email o
   indirizzo), più il registro globale di tutte le transazioni (ricariche,
-  trasferimenti tra utenti, storni), filtrabile per tipo ed esportabile in
-  CSV. Da qui puoi anche **stornare** una transazione fatta per errore (un
-  clic su "Storna" con motivazione): non cancella la transazione originale,
-  ne registra una di correzione collegata, così lo storico resta sempre
-  tracciabile. La ricarica di un singolo cliente si fa più comodamente dal
-  suo popup in "Anagrafiche Clienti" (vedi sopra); questa sezione è la vista
-  d'insieme su tutta l'organizzazione.
+  trasferimenti tra utenti, storni, debiti d'acquisto ordini, cashback),
+  filtrabile per tipo ed esportabile in CSV. Da qui puoi anche **stornare**
+  una transazione fatta per errore (un clic su "Storna" con motivazione):
+  non cancella la transazione originale, ne registra una di correzione
+  collegata, così lo storico resta sempre tracciabile. La ricarica manuale
+  di un singolo cliente ("Ricarica") è riservata al **Super Admin**
+  (permesso `wallet.credit`, più stretto del resto della superficie
+  wallet); si fa più comodamente dal suo popup in "Anagrafiche Clienti"
+  (vedi sopra) oppure da questa sezione, che resta la vista d'insieme su
+  tutta l'organizzazione.
+- **Contabilità** — non esiste una vista admin separata: ogni cliente vede
+  la propria in "Contabilità" nella sua area (LialCash del wallet + ordini
+  pagati in euro, filtri, totali, export CSV); l'amministrazione ha
+  l'equivalente organizzativo nelle sezioni **Wallet** e **Ordini** sopra.
 
 ## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 

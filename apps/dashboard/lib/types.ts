@@ -536,6 +536,9 @@ export type InvoiceRedemptionRead = {
   confirmed_amount_cents: number | null;
   payment_due_cents: number | null;
   payment_reference_code: string | null;
+  payment_method: "BANK_TRANSFER" | "CARD" | null;
+  stripe_checkout_session_id: string | null;
+  payment_proof_uploaded_at: string | null;
   status: "SUBMITTED" | "PAYMENT_PENDING" | "CREDITED" | "REJECTED";
   rejection_reason: string | null;
   created_at: string;

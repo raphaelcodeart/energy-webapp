@@ -65,11 +65,121 @@ export function InvoiceRedemptionPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const proofInputRef = useRef<HTMLInputElement>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [uploadingProofId, setUploadingProofId] = useState<string | null>(null);
+  const [proofRedemptionId, setProofRedemptionId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: partners, isLoading: partnersLoading } = useQuery({ queryKey: ["invoice-redemptions", "partners"], queryFn: fetchPartners });
   const noPartnersConfigured = !partnersLoading && (partners ?? []).length === 0;
   const { data: mine, error: loadError } = useQuery({ queryKey: ["invoice-redemptions", "mine"], queryFn: fetchMine });
   const { data: paymentInfo } = useQuery({ queryKey: ["invoice-redemptions", "payment-info"], queryFn: fetchPaymentInfo });
+
+  async function invalidate() {
+    await queryClient.invalidateQueries({ queryKey: ["invoice-redemptions", "mine"] });
+  }
+
+  async function startCardCheckout(redemption: InvoiceRedemptionRead) {
+    setActionError(null);
+    setPayingId(redemption.id);
+    try {
+      // Opens Stripe in a NEW TAB, same reasoning as customer-orders-panel.tsx's
+      // startCardCheckout -- a failed/abandoned payment never loses the
+      // dashboard tab. success_url lands back here with a banner (see
+      // customer-client-page.tsx's PaymentReturnBanner).
+      const returnUrl = new URL("/customer", window.location.origin);
+      returnUrl.searchParams.set("tab", "cashback");
+      const successUrl = new URL(returnUrl);
+      successUrl.searchParams.set("payment", "success");
+      const cancelUrl = new URL(returnUrl);
+      cancelUrl.searchParams.set("payment", "cancelled");
+
+      const res = await fetch(
+        `/api/proxy/invoice-redemptions/mine/${redemption.id}/checkout-session?success_url=${encodeURIComponent(successUrl.toString())}&cancel_url=${encodeURIComponent(cancelUrl.toString())}`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      const { checkout_url } = await res.json();
+      window.open(checkout_url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setActionError(err.message || "Impossibile avviare il pagamento.");
+    } finally {
+      setPayingId(null);
+    }
+  }
+
+  function handlePay(r: InvoiceRedemptionRead) {
+    setActionError(null);
+    if (r.payment_method === "BANK_TRANSFER") {
+      setExpandedId(expandedId === r.id ? null : r.id);
+      return;
+    }
+    startCardCheckout(r);
+  }
+
+  async function handleSwitchMethod(r: InvoiceRedemptionRead, newMethod: "CARD" | "BANK_TRANSFER") {
+    setActionError(null);
+    setSwitchingId(r.id);
+    try {
+      const res = await fetch(`/api/proxy/invoice-redemptions/mine/${r.id}/payment-method`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_method: newMethod }),
+      });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      const updated: InvoiceRedemptionRead = await res.json();
+      await invalidate();
+      if (newMethod === "CARD") {
+        await startCardCheckout(updated);
+      } else {
+        setExpandedId(r.id);
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Impossibile cambiare il metodo di pagamento.");
+    } finally {
+      setSwitchingId(null);
+    }
+  }
+
+  function openProofPicker(redemptionId: string) {
+    setActionError(null);
+    setProofRedemptionId(redemptionId);
+    proofInputRef.current?.click();
+  }
+
+  async function handleProofSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const proofFile = e.target.files?.[0];
+    e.target.value = "";
+    if (!proofFile || !proofRedemptionId) return;
+    setUploadingProofId(proofRedemptionId);
+    setActionError(null);
+    try {
+      const body = new FormData();
+      body.append("file", proofFile);
+      const res = await fetch(`/api/proxy/invoice-redemptions/mine/${proofRedemptionId}/payment-proof`, { method: "POST", body });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      await invalidate();
+    } catch (err: any) {
+      setActionError(err.message || "Impossibile caricare la prova di pagamento.");
+    } finally {
+      setUploadingProofId(null);
+      setProofRedemptionId(null);
+    }
+  }
+
+  async function handleViewPaymentProof(redemptionId: string) {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/proxy/invoice-redemptions/mine/${redemptionId}/payment-proof-url`);
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setActionError(err.message || "Impossibile aprire la prova di pagamento.");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -107,13 +217,6 @@ export function InvoiceRedemptionPanel() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  function handleRowAction(r: InvoiceRedemptionRead) {
-    if (r.status === "PAYMENT_PENDING") {
-      setExpandedId(expandedId === r.id ? null : r.id);
-    } else {
-      handleViewPhoto(r.id);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -131,7 +234,7 @@ export function InvoiceRedemptionPanel() {
         </div>
         <p className="text-xs text-slate-500">
           Hai già pagato una bolletta/fattura a uno dei nostri fornitori partner? Carica la foto e riscatta il suo valore in
-          crediti, pagando solo il 3% del totale — riceverai il 100% + un ulteriore 3% di bonus.
+          LialCash, pagando solo il 3% del totale (con carta, subito, o con bonifico) — riceverai il 100% + un ulteriore 3% di bonus.
         </p>
 
         {noPartnersConfigured && (
@@ -236,6 +339,12 @@ export function InvoiceRedemptionPanel() {
         )}
       </div>
 
+      <input ref={proofInputRef} type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={handleProofSelected} />
+
+      {actionError && (
+        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{actionError}</div>
+      )}
+
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 divide-y divide-white/5 light:divide-slate-200 overflow-hidden">
         <div className="p-5 pb-3">
           <h3 className="text-sm font-semibold text-white light:text-slate-900">Le tue richieste</h3>
@@ -248,7 +357,7 @@ export function InvoiceRedemptionPanel() {
         ) : (
           mine.map((r) => (
             <div key={r.id} className="p-5">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-medium text-white light:text-slate-900">{r.partner_name}</span>
@@ -262,29 +371,93 @@ export function InvoiceRedemptionPanel() {
                   </p>
                   {r.rejection_reason && <p className="text-[11px] text-rose-400 mt-1">{r.rejection_reason}</p>}
                 </div>
-                <button
-                  onClick={() => handleRowAction(r)}
-                  className="px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer shrink-0"
-                >
-                  {r.status === "PAYMENT_PENDING" ? (expandedId === r.id ? "Nascondi" : "Come pagare") : "Vedi foto"}
-                </button>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  {r.status === "PAYMENT_PENDING" && (
+                    <>
+                      <button
+                        onClick={() => handlePay(r)}
+                        disabled={payingId === r.id}
+                        className="flex-1 min-w-[130px] px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      >
+                        {payingId === r.id ? "Apertura Stripe..." : r.payment_method === "CARD" ? "Paga con carta" : "Vedi coordinate bonifico"}
+                      </button>
+                      <button
+                        onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                        title="Altre opzioni di pagamento"
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                      >
+                        {expandedId === r.id ? "Nascondi" : "Altre opzioni"}
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => handleViewPhoto(r.id)}
+                    className="flex-1 min-w-[110px] px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Vedi fattura
+                  </button>
+                </div>
               </div>
 
               {r.status === "PAYMENT_PENDING" && expandedId === r.id && (
-                <div className="mt-3 pt-3 border-t border-white/5 light:border-slate-200 text-xs space-y-1.5">
+                <div className="mt-3 pt-3 border-t border-white/5 light:border-slate-200 text-xs space-y-2">
                   <p className="text-slate-300 light:text-slate-600">
                     Paga <strong className="text-orange-400">{euro(r.payment_due_cents ?? 0)}</strong> per riscattare{" "}
-                    <strong className="text-emerald-400">{lialCash(r.confirmed_amount_cents ?? 0)}</strong>.
+                    <strong className="text-emerald-400">{lialCash(r.confirmed_amount_cents ?? 0)}</strong> in LialCash.
                   </p>
-                  {paymentInfo?.iban ? (
-                    <>
-                      <p><span className="text-slate-500">IBAN:</span> <span className="font-mono">{paymentInfo.iban}</span></p>
-                      <p><span className="text-slate-500">Intestatario:</span> {paymentInfo.holder}</p>
-                    </>
-                  ) : (
-                    <p className="text-slate-500">Contatta l'amministrazione per le coordinate bancarie.</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {r.payment_method === "BANK_TRANSFER" ? (
+                      <button
+                        onClick={() => handleSwitchMethod(r, "CARD")}
+                        disabled={switchingId === r.id}
+                        className="flex-1 min-w-[150px] px-3 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      >
+                        {switchingId === r.id ? "..." : "Paga subito con carta invece"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleSwitchMethod(r, "BANK_TRANSFER")}
+                        disabled={switchingId === r.id}
+                        className="flex-1 min-w-[150px] px-3 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      >
+                        {switchingId === r.id ? "..." : "Paga con bonifico invece"}
+                      </button>
+                    )}
+                    {r.payment_method === "BANK_TRANSFER" && (
+                      <>
+                        <button
+                          onClick={() => openProofPicker(r.id)}
+                          disabled={uploadingProofId === r.id}
+                          className="flex-1 min-w-[150px] px-3 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                        >
+                          {uploadingProofId === r.id ? "Caricamento..." : r.payment_proof_uploaded_at ? "Sostituisci prova bonifico" : "Aggiungi prova bonifico"}
+                        </button>
+                        {r.payment_proof_uploaded_at && (
+                          <button
+                            onClick={() => handleViewPaymentProof(r.id)}
+                            className="flex-1 min-w-[150px] px-3 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer"
+                          >
+                            Vedi prova caricata
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {r.payment_method === "BANK_TRANSFER" && (
+                    <div className="space-y-1.5 pt-1">
+                      {paymentInfo?.iban ? (
+                        <>
+                          <p><span className="text-slate-500">IBAN:</span> <span className="font-mono">{paymentInfo.iban}</span></p>
+                          <p><span className="text-slate-500">Intestatario:</span> {paymentInfo.holder}</p>
+                        </>
+                      ) : (
+                        <p className="text-slate-500">Contatta l'amministrazione per le coordinate bancarie.</p>
+                      )}
+                      <p><span className="text-slate-500">Causale (obbligatoria):</span> <span className="font-mono text-orange-400">{r.payment_reference_code}</span></p>
+                    </div>
                   )}
-                  <p><span className="text-slate-500">Causale (obbligatoria):</span> <span className="font-mono text-orange-400">{r.payment_reference_code}</span></p>
                 </div>
               )}
             </div>

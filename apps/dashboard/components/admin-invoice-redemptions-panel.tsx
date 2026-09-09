@@ -11,6 +11,10 @@ const STATUS_LABELS: Record<string, string> = {
   CREDITED: "Accreditata",
   REJECTED: "Rifiutata",
 };
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  BANK_TRANSFER: "Bonifico",
+  CARD: "Carta (Stripe)",
+};
 const STATUS_COLORS: Record<string, string> = {
   SUBMITTED: "bg-sky-500/10 text-sky-400 border-sky-500/20",
   PAYMENT_PENDING: "bg-amber-500/10 text-amber-400 border-amber-500/20",
@@ -56,6 +60,13 @@ export function AdminInvoiceRedemptionsPanel() {
 
   async function handleViewPhoto(id: string) {
     const res = await fetch(`/api/proxy/invoice-redemptions/admin/${id}/photo-url`);
+    if (!res.ok) return;
+    const { url } = await res.json();
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleViewPaymentProof(id: string) {
+    const res = await fetch(`/api/proxy/invoice-redemptions/admin/${id}/payment-proof-url`);
     if (!res.ok) return;
     const { url } = await res.json();
     window.open(url, "_blank", "noopener,noreferrer");
@@ -164,9 +175,10 @@ export function AdminInvoiceRedemptionsPanel() {
                     Partner: {r.partner_name} · Dichiarato: {euro(r.declared_amount_cents)}
                     {r.confirmed_amount_cents != null && <> · Confermato: {euro(r.confirmed_amount_cents)}</>}
                   </p>
-                  {r.payment_reference_code && (
+                  {r.status === "PAYMENT_PENDING" && (
                     <p className="text-[11px] font-mono text-slate-500 mt-1">
-                      Codice bonifico: {r.payment_reference_code}
+                      Metodo: {r.payment_method ? PAYMENT_METHOD_LABELS[r.payment_method] ?? r.payment_method : "—"}
+                      {r.payment_reference_code && <> · Codice bonifico: {r.payment_reference_code}</>}
                       {r.payment_due_cents != null && <> · Atteso: {euro(r.payment_due_cents)}</>}
                     </p>
                   )}
@@ -189,14 +201,28 @@ export function AdminInvoiceRedemptionsPanel() {
                       Verifica importo
                     </button>
                   )}
-                  {r.status === "PAYMENT_PENDING" && (
+                  {r.status === "PAYMENT_PENDING" && r.payment_proof_uploaded_at && (
                     <button
-                      onClick={() => handleConfirmPayment(r.id)}
-                      disabled={actionLoadingId === r.id}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      onClick={() => handleViewPaymentProof(r.id)}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
                     >
-                      {actionLoadingId === r.id ? "..." : "Conferma bonifico ricevuto"}
+                      Vedi prova pagamento
                     </button>
+                  )}
+                  {r.status === "PAYMENT_PENDING" && (
+                    r.payment_method === "CARD" ? (
+                      <span className="px-2.5 py-1.5 rounded-lg bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 text-slate-400 light:text-slate-500 text-xs font-medium">
+                        In attesa di conferma Stripe
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleConfirmPayment(r.id)}
+                        disabled={actionLoadingId === r.id}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      >
+                        {actionLoadingId === r.id ? "..." : "Conferma bonifico ricevuto"}
+                      </button>
+                    )
                   )}
                   {(r.status === "SUBMITTED" || r.status === "PAYMENT_PENDING") && (
                     <button

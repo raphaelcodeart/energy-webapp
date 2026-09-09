@@ -41,6 +41,41 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB -- profile/product photos, not docume
 ALLOWED_DOCUMENTATION_CONTENT_TYPES = ALLOWED_IMAGE_CONTENT_TYPES | {"application/pdf"}
 MAX_DOCUMENTATION_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB -- PDFs, not just photos
 
+# Magic-byte signatures for every content type this module ever accepts.
+# The `Content-Type` an upload arrives with is just a client-supplied HTTP
+# header -- trivially spoofable (rename anything.html to bolletta.pdf, send
+# it with Content-Type: application/pdf, and the whitelist check alone would
+# wave it through). Checking the first bytes against the real file format's
+# signature closes that gap: a mismatch is rejected before it ever reaches
+# MinIO, for every bucket (public media, documentation, and the private
+# documents bucket used by KYC documents, order payment proofs, and invoice
+# redemption uploads -- see security-model.md §Documents). Not a full
+# antivirus/content scan (that gap is separately documented and deliberate,
+# see ensure_documents_bucket's docstring) -- this only proves the bytes are
+# *structurally* what they claim to be.
+_MAGIC_BYTE_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    "application/pdf": (b"%PDF-",),
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/gif": (b"GIF87a", b"GIF89a"),
+    "image/webp": (b"RIFF",),  # bytes 8-12 must also be b"WEBP", checked below
+}
+
+
+def _verify_magic_bytes(*, file_bytes: bytes, content_type: str) -> None:
+    signatures = _MAGIC_BYTE_SIGNATURES.get(content_type)
+    if signatures is None:
+        return  # no known signature for this type -- nothing to check against
+    if not any(file_bytes.startswith(sig) for sig in signatures):
+        raise UploadValidationError(
+            f"Il contenuto del file non corrisponde al tipo dichiarato ({content_type})."
+        )
+    if content_type == "image/webp" and file_bytes[8:12] != b"WEBP":
+        raise UploadValidationError(
+            f"Il contenuto del file non corrisponde al tipo dichiarato ({content_type})."
+        )
+
+
 _client = None
 
 
@@ -99,6 +134,7 @@ def upload_media(*, file_bytes: bytes, content_type: str, key_prefix: str) -> st
         raise UploadValidationError(f"Unsupported content type: {content_type}")
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise UploadValidationError("File too large (max 5 MB)")
+    _verify_magic_bytes(file_bytes=file_bytes, content_type=content_type)
 
     extension = mimetypes.guess_extension(content_type) or ".bin"
     key = f"{key_prefix}/{uuid.uuid4().hex}{extension}"
@@ -126,6 +162,7 @@ def upload_documentation_attachment(
         raise UploadValidationError(f"Unsupported content type: {content_type}")
     if len(file_bytes) > MAX_DOCUMENTATION_UPLOAD_BYTES:
         raise UploadValidationError("File too large (max 20 MB)")
+    _verify_magic_bytes(file_bytes=file_bytes, content_type=content_type)
 
     extension = mimetypes.guess_extension(content_type) or ".bin"
     key = f"{key_prefix}/{uuid.uuid4().hex}{extension}"
@@ -162,6 +199,7 @@ def upload_document(*, file_bytes: bytes, content_type: str, key_prefix: str) ->
         raise UploadValidationError(f"Unsupported content type: {content_type}")
     if len(file_bytes) > MAX_DOCUMENT_BYTES:
         raise UploadValidationError("File too large (max 15 MB)")
+    _verify_magic_bytes(file_bytes=file_bytes, content_type=content_type)
 
     extension = mimetypes.guess_extension(content_type) or ".bin"
     key = f"{key_prefix}/{uuid.uuid4().hex}{extension}"

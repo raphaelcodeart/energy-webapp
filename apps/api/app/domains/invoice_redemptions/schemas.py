@@ -23,6 +23,9 @@ class InvoiceRedemptionRead(BaseModel):
     # is set (i.e. before an admin has verified the document).
     payment_due_cents: int | None
     payment_reference_code: str | None
+    payment_method: str | None = None
+    stripe_checkout_session_id: str | None = None
+    payment_proof_uploaded_at: datetime | None = None
     status: str
     rejection_reason: str | None
     created_at: datetime
@@ -50,3 +53,19 @@ class InvoiceRedemptionVerifyRequest(BaseModel):
 
 class InvoiceRedemptionRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class InvoiceRedemptionPaymentMethodUpdate(BaseModel):
+    """Lets a customer switch a PAYMENT_PENDING redemption between
+    BANK_TRANSFER and CARD -- see
+    invoice_redemptions/service.py::change_payment_method."""
+
+    payment_method: str
+
+
+class InvoiceRedemptionCheckoutSessionRead(BaseModel):
+    checkout_url: str
+
+
+class InvoiceRedemptionPaymentProofUrlRead(BaseModel):
+    url: str

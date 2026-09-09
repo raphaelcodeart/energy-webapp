@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict KBMcM5jRl6hukww0uBt5VvWVZuZMnqNaQ7WfXqWIZVYqn3eueMUVBbu39iwiLJ6
+\restrict AXdNWgFdx0t0yyB2b9BAk2Yshfdcdtia1k5t8R3LwVNzJ8So8xQi4Chzyyt4LwA
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -345,7 +345,8 @@ CREATE TABLE public.contracts (
     activated_at timestamp with time zone,
     expires_at timestamp with time zone,
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    email character varying(320)
 );
 
 
@@ -488,6 +489,11 @@ CREATE TABLE public.invoice_redemptions (
     verified_at timestamp with time zone,
     credited_by_user_id uuid,
     credited_at timestamp with time zone,
+    payment_method character varying(16),
+    stripe_checkout_session_id character varying(255),
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp without time zone,
     CONSTRAINT ck_invoice_redemptions_ck_invoice_redemptions_confirmed_a796 CHECK (((confirmed_amount_cents IS NULL) OR (confirmed_amount_cents > 0)))
 );
 
@@ -620,6 +626,12 @@ CREATE TABLE public.orders (
     cancellation_reason character varying(500),
     payment_method character varying(16) DEFAULT 'BANK_TRANSFER'::character varying NOT NULL,
     stripe_checkout_session_id character varying(255),
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp without time zone,
+    cashback_requested boolean DEFAULT false NOT NULL,
+    cashback_surcharge_cents bigint DEFAULT '0'::bigint NOT NULL,
+    cashback_credited_at timestamp without time zone,
     CONSTRAINT ck_orders_ck_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
     CONSTRAINT ck_orders_ck_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents))
 );
@@ -719,7 +731,8 @@ CREATE TABLE public.product_versions (
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
     commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL,
-    credit_discount_percentage integer DEFAULT 0 NOT NULL
+    credit_discount_percentage integer DEFAULT 0 NOT NULL,
+    cashback_enabled boolean DEFAULT false NOT NULL
 );
 
 
@@ -1481,6 +1494,14 @@ ALTER TABLE ONLY public.invoice_redemptions
 
 ALTER TABLE ONLY public.invoice_redemptions
     ADD CONSTRAINT uq_invoice_redemptions_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: invoice_redemptions uq_invoice_redemptions_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_redemptions
+    ADD CONSTRAINT uq_invoice_redemptions_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
 
 
 --
@@ -3412,5 +3433,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict KBMcM5jRl6hukww0uBt5VvWVZuZMnqNaQ7WfXqWIZVYqn3eueMUVBbu39iwiLJ6
+\unrestrict AXdNWgFdx0t0yyB2b9BAk2Yshfdcdtia1k5t8R3LwVNzJ8So8xQi4Chzyyt4LwA
 

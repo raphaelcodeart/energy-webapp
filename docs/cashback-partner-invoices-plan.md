@@ -2,12 +2,32 @@
 
 **Stato: Fasi 0-4 implementate e verificate end-to-end via HTTP reale il
 2026-09-05, PIÙ self-checkout cliente e pagamento con carta (Stripe) aggiunti
-in una sessione successiva lo stesso giorno (Session 26).** Il progetto è
-ora completo dal riscatto alla spesa E dal lato admin che dal lato cliente:
-un cliente riscatta una fattura partner in crediti, poi può acquistare da
-solo un prodotto dropshipping/partner dallo Shop, pagando il residuo in
-bonifico o (quando configurato) con carta. Resta solo l'OCR vero
-(deliberatamente rimandato -- vedi sotto).
+in una sessione successiva lo stesso giorno (Session 26), PIÙ cashback
+per-prodotto ("riscuoti subito"), rebrand "LialCash", sezione Contabilità,
+e canale di pagamento reale (carta + prova bonifico) anche per il riscatto
+fattura, aggiunti Session 33 (2026-09-09).** Il progetto è ora completo dal
+riscatto alla spesa E dal lato admin che dal lato cliente, con DUE fonti di
+cashback distinte (vedi §Due percentuali sotto) entrambe pagabili con carta
+o bonifico. Resta solo l'OCR vero (deliberatamente rimandato -- vedi sotto).
+
+## Due percentuali di cashback -- da non confondere (Session 33)
+
+Il progetto ha ora due meccanismi di cashback separati, ciascuno con la
+propria percentuale fissa, definiti in punti diversi del codice:
+
+- **Riscatto fattura partner** (questo documento, Fasi 0-2):
+  `invoice_redemptions/models.py::CASHBACK_PERCENTAGE = 3` -- il cliente
+  paga il 3% di una fattura già pagata a un fornitore esterno per riscattarne
+  il 100%+3% in LialCash.
+- **Cashback su ordine prodotto** ("riscuoti subito cashback", Session 33,
+  vedi `business-rules.md#product-cashback----riscuoti-subito-cashback-added-session-33`):
+  `orders/service.py::ORDER_CASHBACK_PERCENTAGE = 5` -- il cliente paga il
+  5% in più sul residuo di un ordine Shop per farselo riaccreditare
+  (100%+5%) in LialCash.
+
+Stessa logica (paga X%, ricevi 100%+X% in LialCash, mai contro lo spendere
+credito esistente), percentuali diverse, due costanti separate -- se un
+domani vanno allineate, sono due punti distinti da modificare, non uno.
 
 Se stai riprendendo questo lavoro dopo un crash/reset di sessione, questo file
 ti dice esattamente a che punto siamo — leggilo prima di chiedere di nuovo
@@ -277,6 +297,63 @@ ragionevole reimpostare la password di un account cliente reale solo per
 un test). La logica è comunque coperta a fondo dai test automatici e dalle
 chiamate HTTP dirette sopra elencate.
 
+## Session 33 (2026-09-09) — Canale di pagamento reale per il riscatto fattura, cashback per-prodotto, LialCash, Contabilità, hardening upload
+
+L'utente ha chiesto esplicitamente se il riscatto fattura avesse un vero
+percorso di pagamento (prima esisteva solo bonifico manuale con codice
+causale, nessuna opzione carta, nessun upload prova). In parallelo ha
+chiesto una verifica di sicurezza sugli upload documenti e una nuova
+funzionalità di cashback per-prodotto sullo Shop.
+
+**Cashback per-prodotto + LialCash + Contabilità**: vedi
+`business-rules.md` (sezioni "Product cashback", "LialCash", "Accounting")
+e `database-model.md` §9/§11/§14 per il dettaglio completo dello schema e
+delle regole. Riassunto: `product_versions.cashback_enabled` (toggle admin,
+forzato a false per INTERNAL), `orders.cashback_requested`/
+`cashback_surcharge_cents`/`cashback_credited_at` (sovrapprezzo 5%,
+accredito automatico alla conferma pagamento), OTP obbligatorio per
+spendere crediti wallet esistenti al self-checkout, rebrand di ogni
+saldo/transazione wallet da EUR a "LialCash" (solo etichetta, nessun
+cambio di schema), nuovo dominio `accounting` (`GET /accounting/mine`,
+nessuna tabella nuova) dietro una nuova sezione dashboard "Contabilità".
+
+**Hardening sicurezza upload** (`security-model.md` ha il dettaglio
+completo): il disegno esistente (bucket privato, nessuna policy pubblica,
+URL presigned a scadenza breve, meccanica Host header nginx) era già solido
+e verificato. Due gap reali trovati e corretti: verifica dei magic-byte del
+file (il `Content-Type` client era fidato solo contro una whitelist di
+stringhe, facilmente falsificabile) e rate-limiting mancante su tutti gli
+endpoint di upload.
+
+**Canale di pagamento per il riscatto fattura** -- `invoice_redemptions`
+ha ora `payment_method`/`stripe_checkout_session_id`/`payment_proof_*`,
+identici a `orders`. Nuovi endpoint: `PATCH .../payment-method`,
+`POST .../checkout-session`, `POST .../payment-proof`,
+`GET .../payment-proof-url` (cliente e admin). `payments/service.py::
+handle_webhook_event` ora instrada in base a `metadata.kind` della sessione
+Stripe ("order" vs "invoice_redemption") invece di assumere sempre un
+ordine.
+
+**Bug reale trovato e corretto prima di consegnare**: la prima stesura di
+`confirm_payment()` (l'azione admin manuale "Conferma bonifico ricevuto")
+NON rifiutava un riscatto con `payment_method = CARD` -- un admin avrebbe
+potuto accreditare manualmente un riscatto impostato per pagare con carta
+senza che Stripe confermasse mai un pagamento reale, esattamente lo
+scenario "rubare soldi" contro cui l'utente aveva messo in guardia fin
+dalla prima richiesta di cashback. Trovato scrivendo i test (rispecchiando
+il rifiuto già presente in `orders/service.py::confirm_payment`, che il
+lato riscatti non aveva), corretto subito, testato esplicitamente
+(`test_confirm_payment_refuses_a_card_redemption`) e verificato dal vivo
+prima di considerare la funzionalità completa.
+
+**Verificato dal vivo** (HTTP reale + script diretti contro il servizio):
+rifiuto di un file con content-type falsificato; ciclo completo
+submit → verify (payment_method default BANK_TRANSFER) → switch a CARD →
+tentativo di conferma manuale correttamente rifiutato → webhook Stripe
+accredita → retry del webhook non duplica l'accredito. Suite completa:
+**198/198 test passati**, ruff/mypy puliti (stessi 4 falsi positivi
+preesistenti su `Result.rowcount`). Dati di test rimossi al termine.
+
 ## Cosa NON è stato costruito
 
 - [ ] **OCR reale**: il wizard chiede l'importo a mano al cliente; non c'è
@@ -328,6 +405,10 @@ chiamate HTTP dirette sopra elencate.
       dell'utente Session 26.
 - [x] **IBAN reale**: `IT66W0883330410000000015702`, "Lial Energy Srl" --
       fornito e configurato dall'utente il 2026-09-05.
+- [x] **Il canone/fee del riscatto fattura (3%) è pagabile anche con carta,
+      non solo bonifico** -- Session 33, richiesta esplicita dell'utente.
+      Stessa infrastruttura Stripe già costruita per gli ordini, stesso
+      guard anti-frode (conferma manuale rifiutata per un riscatto CARD).
 
 ## Decisioni ancora da prendere
 
@@ -350,9 +431,12 @@ chiamate HTTP dirette sopra elencate.
 
 1. Leggi questo file per intero prima di fare qualunque altra cosa: **tutte
    le Fasi 0-4 sono FATTE e verificate, self-checkout cliente e pagamento
-   con carta (Stripe) sono FATTI e verificati (Session 26)**, non
+   con carta (Stripe) sono FATTI e verificati (Session 26), cashback
+   per-prodotto/LialCash/Contabilità/canale di pagamento carta per il
+   riscatto fattura sono FATTI e verificati (Session 33)**, non
    richiederli da capo. Il progetto è funzionalmente completo dal riscatto
-   fattura fino all'acquisto da parte del cliente stesso.
+   fattura fino all'acquisto da parte del cliente stesso, con entrambe le
+   fonti di cashback pagabili sia con bonifico sia con carta.
 2. Se l'utente chiede di continuare, i pezzi mancanti sono solo: OCR reale,
    controllo anti-duplicato fatture, inserimento delle chiavi Stripe VERE
    (il pannello per farlo esiste già, aspetta solo le chiavi), un
