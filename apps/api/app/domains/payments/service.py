@@ -154,7 +154,14 @@ async def handle_webhook_event(
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        kind = (session.get("metadata") or {}).get("kind", "order")
+        # session/session.metadata are stripe.StripeObject, not a dict --
+        # this SDK version's StripeObject deliberately has no .get() (raises
+        # AttributeError pointing at .to_dict()/subscript access instead),
+        # only attribute access and __getitem__ for known keys. getattr()
+        # with a default is what safely handles both "no metadata at all"
+        # (a session created before Session 30 added this field) and "no
+        # kind key in metadata" in one expression.
+        kind = getattr(getattr(session, "metadata", None), "kind", "order")
         if kind == "invoice_redemption":
             try:
                 await invoice_redemptions_service.mark_paid_via_stripe(

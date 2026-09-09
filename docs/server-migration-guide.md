@@ -714,6 +714,22 @@ probabilmente il problema è un altro. Documentati per intero in
     con un IP diverso, non solo per un uso da sviluppatore). Dopo il fix,
     verifica con `curl -X POST https://tuodominio/api/payments/stripe/webhook/<org-id>`
     che risponda 400 (firma mancante attesa), mai 404.
+16. **(Session 33, stesso giorno) Webhook risponde 500 invece di 200 anche
+    con firma valida, un pagamento continua a non confermarsi anche DOPO il
+    fix del bug #15**: `payments/service.py::handle_webhook_event` leggeva
+    `session.get("metadata")` -- ma `session` (e anche `session.metadata`)
+    è un `stripe.StripeObject`, non un `dict`: in questa versione dell'SDK
+    Stripe `StripeObject` NON implementa `.get()` (lo fa apposta, solleva
+    `AttributeError` e rimanda a `.to_dict()`/accesso per attributo). Ogni
+    test esistente chiamava `mark_paid_via_stripe()` direttamente, saltando
+    `construct_event()` e quindi non passava mai da un vero `StripeObject`
+    -- il bug è arrivato in produzione due volte prima di essere scoperto
+    da una segnalazione utente reale. Fix: `getattr(getattr(session,
+    "metadata", None), "kind", "order")` invece di `.get()`. Aggiunto
+    `tests/test_payments.py`, che firma davvero un payload con HMAC-SHA256
+    (stesso schema di Stripe) e chiama `handle_webhook_event()` per
+    intero, così un futuro uso scorretto di `.get()`/altri metodi dict su
+    un oggetto Stripe fallisce nei test invece che in produzione.
 
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
 risolto, per lo stesso motivo per cui questi lo sono.

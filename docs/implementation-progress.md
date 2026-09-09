@@ -179,6 +179,26 @@ pending stuck order (confirmed genuinely paid via a direct Stripe API check)
 was reconciled the same way. See `server-migration-guide.md §8` bug #15 and
 `business-rules.md §Partner-invoice-cashback`.
 
+**Incident 3 (found immediately after "fixing" incident 2)**: the user tried
+another real test payment and it still didn't confirm -- the nginx fix alone
+wasn't enough. `payments/service.py::handle_webhook_event` called
+`session.get("metadata")`, but `session`/`session.metadata` are
+`stripe.StripeObject`, and this SDK version's `StripeObject` deliberately has
+no `.get()` (raises `AttributeError`, points at `.to_dict()`/attribute access
+instead) -- every existing test called `mark_paid_via_stripe()` directly,
+bypassing `construct_event()` entirely, so no test ever exercised a real
+`StripeObject` here. This is why the same class of bug shipped twice in a
+row. Fixed with `getattr(getattr(session, "metadata", None), "kind",
+"order")`. Added `tests/test_payments.py` -- builds a real HMAC-SHA256
+Stripe-style signature and calls `handle_webhook_event()` end-to-end (order
+path, invoice-redemption path, missing-metadata fallback, bad-signature
+rejection), so this exact bug class fails a test next time instead of
+shipping. Verified live all the way through the real public domain: a
+genuinely HMAC-signed `curl` POST to `https://app.lialenergy.it/api/
+payments/stripe/webhook/<org-id>` now returns `200 {"received":true}`
+instead of 500. 202/202 tests passing (198 + 4 new), ruff/mypy clean.
+Rebuilt/redeployed api+celery-worker.
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption
