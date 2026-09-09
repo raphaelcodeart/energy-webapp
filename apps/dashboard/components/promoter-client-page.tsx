@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
+import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
 import { BranchVisualizer } from "@/components/branch-visualizer";
 import { MyCommissions } from "@/components/my-commissions";
 import { CommissionSimulator } from "@/components/commission-simulator";
@@ -166,6 +167,26 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
       </svg>
     ),
   },
+  {
+    key: "wallet",
+    label: "Wallet",
+    description: "Saldo, storico, invia LialCash",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+      </svg>
+    ),
+  },
+  {
+    key: "cashback",
+    label: "Riscatta Cashback",
+    description: "Trasforma una fattura partner in LialCash",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
@@ -258,12 +279,20 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
         <div>
           {activeTab === "azienda" && (
             <div className="space-y-6">
-              <SectionBanner image="energy" alt="La mia Azienda" />
+              <SectionBanner image="energy" alt="La mia Azienda" compact>
+                <div>
+                  <p className="text-[11px] font-semibold text-orange-300 uppercase tracking-wider">Bentornato</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-white truncate max-w-[70vw] sm:max-w-none">{me.display_name}</h2>
+                </div>
+              </SectionBanner>
+
+              <DashboardWalletStats />
 
               {/* Quick-access section shortcuts, same pattern as the admin
                   Panoramica -- makes the rest of the promoter area one click
                   away instead of only reachable via the sidebar. */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Accesso rapido</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {QUICK_LINKS.map((link) => (
                   <button
                     key={link.key}

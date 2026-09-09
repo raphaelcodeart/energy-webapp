@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AccountingPanel } from "@/components/accounting-panel";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
+import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
@@ -262,6 +263,73 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+];
+
+/** Quick-access shortcuts on the dashboard home -- one click into the
+    sections a customer actually returns to often, instead of only
+    reachable via the sidebar. Same pattern as the promoter home and the
+    admin Panoramica. */
+const HOME_QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
+  {
+    key: "products",
+    label: "Shop",
+    description: "Sfoglia prodotti partner e dropshipping",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
+    key: "orders",
+    label: "I miei Ordini",
+    description: "Stato e dettaglio dei tuoi acquisti",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 2l1 4H4a1 1 0 00-1 1v1a1 1 0 001 1h16a1 1 0 001-1V7a1 1 0 00-1-1h-6l1-4M5 9v9a2 2 0 002 2h10a2 2 0 002-2V9M10 13h4" />
+      </svg>
+    ),
+  },
+  {
+    key: "cashback",
+    label: "Riscatta Cashback",
+    description: "Trasforma una fattura partner in LialCash",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    key: "wallet",
+    label: "Wallet",
+    description: "Saldo, storico, invia LialCash",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
+      </svg>
+    ),
+  },
+  {
+    key: "accounting",
+    label: "Contabilità",
+    description: "Tutte le tue transazioni, con filtri",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
+    key: "support",
+    label: "Supporto",
+    description: "Hai bisogno di aiuto? Apri un ticket",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
       </svg>
     ),
   },
@@ -550,7 +618,38 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
 
       {activeTab === "lial-contracts" && (
         <div className="space-y-6">
-          <SectionBanner image="energy" alt="Contratti Lial Energy" />
+          <SectionBanner image="energy" alt="Area Cliente" compact>
+            <div>
+              <p className="text-[11px] font-semibold text-orange-300 uppercase tracking-wider">Bentornato</p>
+              <h2 className="text-lg sm:text-xl font-bold text-white truncate max-w-[70vw] sm:max-w-none">{email}</h2>
+            </div>
+          </SectionBanner>
+
+          <DashboardWalletStats />
+
+          <div>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">Accesso rapido</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {HOME_QUICK_LINKS.map((link) => (
+                <button
+                  key={link.key}
+                  onClick={() => setActiveTab(link.key as typeof activeTab)}
+                  className="group flex flex-col items-start gap-3 p-4 rounded-2xl border border-white/5 light:border-slate-200 bg-gradient-to-br from-slate-900/60 to-slate-900/20 light:from-white light:to-slate-50 hover:border-orange-500/40 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-200 cursor-pointer text-left"
+                >
+                  <span className="p-2.5 rounded-xl bg-orange-500/10 text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                    {link.icon}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-white light:text-slate-900 truncate">
+                      {link.label}
+                    </span>
+                    <span className="block text-[11px] text-slate-500 truncate">{link.description}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <CustomerPromoterApplicationCard hideWhenActive />
           <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
         </div>

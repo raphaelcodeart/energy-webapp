@@ -199,6 +199,41 @@ payments/stripe/webhook/<org-id>` now returns `200 {"received":true}`
 instead of 500. 202/202 tests passing (198 + 4 new), ruff/mypy clean.
 Rebuilt/redeployed api+celery-worker.
 
+### Session 33 (same day, continued) — Cashback unified to 5%, timestamps, demo product, checkout UX, dashboard home redesign
+
+Four smaller, user-driven follow-ups in one pass:
+
+- **Cashback percentage unified**: `invoice_redemptions/models.py::
+  CASHBACK_PERCENTAGE` was 3%, `orders/service.py::
+  ORDER_CASHBACK_PERCENTAGE` was 5% -- purely an artifact of being built in
+  separate sessions. Both now 5%, every UI string and test assertion
+  updated to match.
+- **Full timestamps, not just dates**, on orders (customer + admin) and
+  invoice redemptions (customer + admin, which previously showed no
+  timestamp at all) -- wallet/accounting already had them.
+- **Real demo product created**: `CASHBACK-TOTALE-01` ("Power Bank
+  20000mAh - Cashback Totale", 50,00 EUR, 20% payable in LialCash,
+  cashback_enabled), a permanent catalog entry (same precedent as Session
+  26's two demo products), showing both mechanics together in the Shop.
+- **`product-checkout-modal.tsx` redesigned**: was one flat block of
+  controls; now numbered sections (spend LialCash / OTP / return cashback /
+  payment method) with a real on/off switch (not a tiny checkbox), quick
+  preset chips (25/50/75/max) instead of typing an amount, the full price
+  shown struck-through next to the discounted price, and an always-visible
+  running total. No business logic changed.
+- **Customer and promoter dashboard "home" screens redesigned**: the full-
+  height decorative photo banner was replaced with a compact hero (same
+  photo, ~1/3 the height, greeting text overlaid) to make room for what's
+  actually useful without scrolling -- a new `dashboard-wallet-stats.tsx`
+  (three animated, glowing stat cards: wallet balance, cashback
+  accumulated, LialCash spent, count-up on mount/refetch via a small
+  dependency-free `useCountUp` hook) and a 6-item quick-access shortcut
+  grid (new for the customer home; the promoter home already had a
+  4-item version, extended to include Wallet and Riscatta Cashback).
+  `SectionBanner` gained optional `compact`/`children` props for this,
+  backward-compatible (every other call site is unaffected). Verified with
+  a clean frontend build; rebuilt/redeployed the dashboard image.
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption
