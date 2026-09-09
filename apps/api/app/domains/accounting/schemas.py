@@ -26,7 +26,10 @@ class FinancialMovementRead(BaseModel):
     # positive for an ORDER_PAYMENT row (a payment is never negative).
     amount_cents: int
     currency: str  # "LIALCASH" | "EUR"
+    # "What this movement is about" -- product name for an order-linked row,
+    # partner name for an invoice-redemption-linked row.
     product_name: str | None = None
     order_id: uuid.UUID | None = None
+    invoice_redemption_id: uuid.UUID | None = None
     note: str | None = None
     created_at: datetime

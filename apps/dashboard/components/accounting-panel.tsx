@@ -57,6 +57,21 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("it-IT", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function shortCode(id: string): string {
+  return id.slice(0, 8).toUpperCase();
+}
+
+/** Every movement carries order_id or invoice_redemption_id when it's tied
+    to one (a cashback credit, a purchase debit, the order's own real-money
+    payment leg, or an invoice-redemption credit) -- shown as a clickable
+    chip so a customer can always trace a LialCash movement back to
+    exactly what generated it, not just the product/partner name. */
+function referenceLink(m: FinancialMovementRead): { label: string; href: string } | null {
+  if (m.order_id) return { label: `Ordine #${shortCode(m.order_id)}`, href: "/customer?tab=orders" };
+  if (m.invoice_redemption_id) return { label: `Riscatto #${shortCode(m.invoice_redemption_id)}`, href: "/customer?tab=cashback" };
+  return null;
+}
+
 async function fetchMyMovements(): Promise<FinancialMovementRead[]> {
   const res = await fetch("/api/proxy/accounting/mine");
   if (!res.ok) throw new Error("Impossibile caricare la contabilità.");
@@ -96,11 +111,12 @@ export function AccountingPanel() {
   function handleExportCsv() {
     downloadCsv(
       `contabilita-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Data", "Movimento", "Prodotto", "Importo", "Valuta", "Metodo di pagamento", "Nota"],
+      ["Data", "Movimento", "Prodotto", "Riferimento", "Importo", "Valuta", "Metodo di pagamento", "Nota"],
       filteredList.map((m) => [
         formatDate(m.created_at),
         movementLabel(m),
         m.product_name ?? "",
+        referenceLink(m)?.label ?? "",
         (m.amount_cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         m.currency === "LIALCASH" ? "LialCash" : "EUR",
         m.payment_method ? PAYMENT_METHOD_LABELS[m.payment_method] ?? m.payment_method : "",
@@ -172,15 +188,16 @@ export function AccountingPanel() {
                 <th className="py-2 px-5">Data</th>
                 <th className="py-2 px-5">Movimento</th>
                 <th className="py-2 px-5">Prodotto</th>
+                <th className="py-2 px-5">Riferimento</th>
                 <th className="py-2 px-5">Nota</th>
                 <th className="py-2 px-5 text-right">Importo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {movements === undefined ? (
-                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
+                <tr><td colSpan={6} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
               ) : filteredList.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Nessuna transazione in questa categoria.</td></tr>
+                <tr><td colSpan={6} className="text-center py-6 text-slate-500">Nessuna transazione in questa categoria.</td></tr>
               ) : (
                 filteredList.map((m) => {
                   const isNegative = m.amount_cents < 0;
@@ -198,6 +215,24 @@ export function AccountingPanel() {
                         </span>
                       </td>
                       <td className="py-2 px-5 text-slate-400 light:text-slate-500">{m.product_name ?? "—"}</td>
+                      <td className="py-2 px-5">
+                        {(() => {
+                          const ref = referenceLink(m);
+                          return ref ? (
+                            <a
+                              href={ref.href}
+                              className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/20 transition"
+                            >
+                              {ref.label}
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </a>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          );
+                        })()}
+                      </td>
                       <td className="py-2 px-5 text-slate-500">{m.note ?? "—"}</td>
                       <td className={`py-2 px-5 text-right font-semibold ${isNegative ? "text-rose-400" : "text-emerald-400"}`}>
                         {isNegative ? "-" : "+"}

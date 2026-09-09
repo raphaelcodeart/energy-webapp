@@ -234,6 +234,43 @@ Four smaller, user-driven follow-ups in one pass:
   backward-compatible (every other call site is unaffected). Verified with
   a clean frontend build; rebuilt/redeployed the dashboard image.
 
+### Session 33 (same day, continued) — Every cashback/bonus credit now traceable to its order or redemption
+
+The backend already stored `reference_order_id`/`reference_invoice_
+redemption_id` on every wallet transaction (added when orders/invoice
+redemptions were built), but `WalletTransactionRead` in the frontend's own
+`lib/types.ts` never declared `reference_order_id` -- a stale type gap --
+and no UI actually surfaced either field, so a customer/promoter/admin
+looking at "+50,00 LialCash · Cashback ordine" had no way to trace which
+order it came from without asking support.
+
+- `wallet-panel.tsx` (customer + promoter, shared): new "Riferimento"
+  column, a clickable chip ("Ordine #XXXXXXXX" / "Riscatto #XXXXXXXX")
+  deep-linking into "I miei Ordini"/"Riscatta Cashback" on whichever
+  dashboard the panel is mounted in (checked via `window.location.pathname`).
+  Required adding a `?tab=` deep-link effect to `promoter-client-page.tsx`,
+  which didn't have one at all before (only the customer page did, for the
+  Stripe-return-banner flow).
+- `accounting-panel.tsx`: same reference chip added as its own column
+  (customer-only, so no path-detection needed) plus in the CSV export.
+  Backend gap here was real, not just a display omission:
+  `accounting/service.py::list_my_movements` resolved `order_id`/
+  `product_name` for order-linked rows but never resolved anything for
+  invoice-redemption-linked rows (`order_id` stayed NULL, no partner name)
+  -- added the same batched lookup pattern for `InvoiceRedemption`/
+  `Partner`, and a new `invoice_redemption_id` field on
+  `FinancialMovementRead` (kept separate from `order_id` rather than
+  overloading it -- different domain entirely).
+- `admin-wallets-panel.tsx`: the existing expandable-row detail (which
+  already showed `reference_contract_id` when present) gained the same
+  treatment for `reference_order_id`/`reference_invoice_redemption_id`.
+- New test `test_invoice_redemption_credit_rows_carry_the_redemption_id_and_partner_name`.
+  203/203 tests passing (202 + 1 new), ruff/mypy clean, frontend build
+  clean. Verified live against the real OpenAPI schema that both
+  `WalletTransactionRead.reference_order_id` and
+  `FinancialMovementRead.invoice_redemption_id` are actually served.
+  Rebuilt/redeployed api+celery-worker+dashboard.
+
 ## Session 32 — 2026-09-07 (same day, continued) — Email on wallet "Ricarica" top-up
 
 The Session 27 cashback email only covered the partner-invoice redemption

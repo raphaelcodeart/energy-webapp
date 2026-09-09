@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
@@ -189,10 +189,28 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   },
 ];
 
+const PROMOTER_VALID_TABS = [
+  "azienda", "network", "products", "commissions", "simulator", "support", "documentation", "wallet", "cashback",
+] as const;
+
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
   const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
+
+  // Deep-link into a specific tab, e.g. "Vedi riscatto" from a wallet
+  // transaction's reference chip (wallet-panel.tsx) -- same pattern as
+  // customer-client-page.tsx's own tab-from-URL effect, without the
+  // Stripe-return-banner logic that page also handles (promoters don't
+  // self-checkout Shop orders).
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (!tab || !(PROMOTER_VALID_TABS as readonly string[]).includes(tab)) return;
+    setActiveTab(tab as typeof activeTab);
+    router.replace("/promoter", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: referralCode } = useQuery({
     queryKey: ["promoter", "referral-mine"],

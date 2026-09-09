@@ -31,6 +31,28 @@ function transactionLabel(t: { type: string; source: string | null }): string {
   return sourceLabel ?? TYPE_LABELS[t.type] ?? t.type;
 }
 
+function shortCode(id: string): string {
+  return id.slice(0, 8).toUpperCase();
+}
+
+/** Every cashback/bonus credit carries reference_order_id or
+    reference_invoice_redemption_id (see wallets/schemas.py::
+    WalletTransactionRead) -- shown here as a clickable chip so it's never
+    just an anonymous "+X LialCash" with no way to trace where it came
+    from. Deep-links into "I miei Ordini"/"Riscatta Cashback" on whichever
+    dashboard this panel is mounted in (customer or promoter both use this
+    component). */
+function referenceLink(t: WalletTransactionRead): { label: string; href: string } | null {
+  const basePath = typeof window !== "undefined" && window.location.pathname.startsWith("/promoter") ? "/promoter" : "/customer";
+  if (t.reference_order_id) {
+    return { label: `Ordine #${shortCode(t.reference_order_id)}`, href: `${basePath}?tab=orders` };
+  }
+  if (t.reference_invoice_redemption_id) {
+    return { label: `Riscatto #${shortCode(t.reference_invoice_redemption_id)}`, href: `${basePath}?tab=cashback` };
+  }
+  return null;
+}
+
 // The wallet only ever holds LialCash, Lial Energy's internal credit -- see
 // docs/business-rules.md#internal-wallet. Never format a wallet
 // balance/transaction amount as plain EUR; real-money payments (Stripe,
@@ -163,7 +185,7 @@ export function WalletPanel() {
       {wallet && !wallet.can_transfer ? (
         <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
           <h3 className="text-sm font-semibold text-white light:text-slate-900 mb-2">Invia denaro</h3>
-          <p className="text-xs text-slate-500">L'invio di bonifici wallet non è abilitato per il tuo account.</p>
+          <p className="text-xs text-slate-500">L&apos;invio di bonifici wallet non è abilitato per il tuo account.</p>
         </div>
       ) : wallet ? (
       <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
@@ -227,6 +249,7 @@ export function WalletPanel() {
               <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold">
                 <th className="py-2 px-5">Tipo</th>
                 <th className="py-2 px-5">Controparte</th>
+                <th className="py-2 px-5">Riferimento</th>
                 <th className="py-2 px-5">Nota</th>
                 <th className="py-2 px-5 text-right">Importo</th>
                 <th className="py-2 px-5">Data</th>
@@ -234,17 +257,33 @@ export function WalletPanel() {
             </thead>
             <tbody className="divide-y divide-white/5 light:divide-slate-200">
               {transactions === undefined ? (
-                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
+                <tr><td colSpan={6} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
               ) : transactions.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-6 text-slate-500">Nessuna transazione.</td></tr>
+                <tr><td colSpan={6} className="text-center py-6 text-slate-500">Nessuna transazione.</td></tr>
               ) : (
                 transactions.map((t) => {
                   const isOutgoing = t.from_wallet_id === wallet?.id;
+                  const ref = referenceLink(t);
                   return (
                     <tr key={t.id} className="text-slate-300 light:text-slate-600">
                       <td className="py-2 px-5">{transactionLabel(t)}</td>
                       <td className="py-2 px-5">
                         {isOutgoing ? (t.to_display_name ?? "Sistema") : (t.from_display_name ?? "Sistema")}
+                      </td>
+                      <td className="py-2 px-5">
+                        {ref ? (
+                          <a
+                            href={ref.href}
+                            className="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/20 transition"
+                          >
+                            {ref.label}
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </a>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
                       </td>
                       <td className="py-2 px-5 text-slate-500">{t.note ?? "—"}</td>
                       <td className={`py-2 px-5 text-right font-semibold ${isOutgoing ? "text-rose-400" : "text-emerald-400"}`}>

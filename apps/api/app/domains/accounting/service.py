@@ -4,8 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.catalog.models import ProductVersion
+from app.domains.invoice_redemptions.models import InvoiceRedemption
 from app.domains.orders import service as orders_service
 from app.domains.orders.models import Order
+from app.domains.partners.models import Partner
 from app.domains.wallets import service as wallets_service
 
 
@@ -40,9 +42,38 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
             if version is not None:
                 product_name_by_order_id[order.id] = version.name
 
+    # Same batched-lookup treatment for INVOICE_REDEMPTION_BASE/BONUS rows --
+    # "product_name" here is really "what this LialCash movement is about",
+    # so the partner name fills the same slot on the frontend (see
+    # accounting-panel.tsx). A redemption's id is exposed as its own field
+    # (not overloaded onto order_id, a different domain entirely) so the UI
+    # can link back to the right screen ("Riscatta Cashback" vs "I miei
+    # Ordini").
+    redemption_ids = {
+        t["reference_invoice_redemption_id"] for t in wallet_txns if t["reference_invoice_redemption_id"] is not None
+    }
+    partner_name_by_redemption_id: dict[uuid.UUID, str] = {}
+    if redemption_ids:
+        redemptions = (
+            await db.execute(select(InvoiceRedemption).where(InvoiceRedemption.id.in_(redemption_ids)))
+        ).scalars().all()
+        partner_ids = {r.partner_id for r in redemptions}
+        partners = {
+            p.id: p for p in (await db.execute(select(Partner).where(Partner.id.in_(partner_ids)))).scalars()
+        }
+        for redemption in redemptions:
+            partner = partners.get(redemption.partner_id)
+            if partner is not None:
+                partner_name_by_redemption_id[redemption.id] = partner.name
+
     movements = []
     for t in wallet_txns:
         is_outgoing = t["from_wallet_id"] == wallet.id
+        product_name = None
+        if t["reference_order_id"]:
+            product_name = product_name_by_order_id.get(t["reference_order_id"])
+        elif t["reference_invoice_redemption_id"]:
+            product_name = partner_name_by_redemption_id.get(t["reference_invoice_redemption_id"])
         movements.append(
             {
                 "id": str(t["id"]),
@@ -52,8 +83,9 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
                 "payment_method": None,
                 "amount_cents": -t["amount_cents"] if is_outgoing else t["amount_cents"],
                 "currency": "LIALCASH",
-                "product_name": product_name_by_order_id.get(t["reference_order_id"]) if t["reference_order_id"] else None,
+                "product_name": product_name,
                 "order_id": t["reference_order_id"],
+                "invoice_redemption_id": t["reference_invoice_redemption_id"],
                 "note": t["note"],
                 "created_at": t["created_at"],
             }
@@ -84,6 +116,7 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
                 "currency": "EUR",
                 "product_name": row["product_name"],
                 "order_id": row["id"],
+                "invoice_redemption_id": None,
                 "note": None,
                 "created_at": row["paid_at"] or row["created_at"],
             }

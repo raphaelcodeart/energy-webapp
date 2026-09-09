@@ -446,6 +446,7 @@ export type WalletTransactionRead = {
   source: string | null;
   reference_contract_id: string | null;
   reference_invoice_redemption_id: string | null;
+  reference_order_id: string | null;
   reverses_transaction_id: string | null;
   note: string | null;
   actor_user_id: string | null;
@@ -520,6 +521,7 @@ export type FinancialMovementRead = {
   currency: "LIALCASH" | "EUR";
   product_name: string | null;
   order_id: string | null;
+  invoice_redemption_id: string | null;
   note: string | null;
   created_at: string;
 };

@@ -174,3 +174,43 @@ async def test_movements_are_sorted_newest_first_and_scoped_to_the_caller(db, or
     assert len(movements) == 2
     assert all(m["amount_cents"] in (100, 200) for m in movements)
     assert movements[0]["created_at"] >= movements[1]["created_at"]
+
+
+@pytest.mark.asyncio
+async def test_invoice_redemption_credit_rows_carry_the_redemption_id_and_partner_name(db, organization_id):
+    """Bonus/base cashback credited from a partner-invoice redemption must be
+    traceable back to that redemption -- distinct from order_id, a
+    different domain entirely -- with the partner name filling the same
+    "what is this about" slot product_name does for an order (see
+    accounting/service.py::list_my_movements)."""
+    from app.domains.invoice_redemptions import service as redemptions_service
+    from app.domains.partners import service as partners_service
+    from app.domains.partners.schemas import PartnerCreate
+
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    partner = await partners_service.create_partner(
+        db, organization_id=organization_id, payload=PartnerCreate(name=f"Partner {uuid.uuid4().hex[:6]}")
+    )
+
+    redemption = await redemptions_service.submit_redemption(
+        db, organization_id=organization_id, customer_user_id=customer.id, partner_id=partner.id,
+        declared_amount_cents=10000, file_bytes=b"%PDF-1.4", content_type="application/pdf",
+        original_filename="x.pdf",
+    )
+    redemption = await redemptions_service.verify(
+        db, organization_id=organization_id, redemption_id=redemption.id, confirmed_amount_cents=10000,
+        actor_user_id=admin.id,
+    )
+    await redemptions_service.confirm_payment(
+        db, organization_id=organization_id, redemption_id=redemption.id, actor_user_id=admin.id
+    )
+
+    movements = await accounting_service.list_my_movements(db, organization_id=organization_id, user_id=customer.id)
+
+    base_row = next(m for m in movements if m["source"] == "INVOICE_REDEMPTION_BASE")
+    bonus_row = next(m for m in movements if m["source"] == "INVOICE_REDEMPTION_BONUS")
+    for row in (base_row, bonus_row):
+        assert row["invoice_redemption_id"] == redemption.id
+        assert row["order_id"] is None
+        assert row["product_name"] == partner.name
