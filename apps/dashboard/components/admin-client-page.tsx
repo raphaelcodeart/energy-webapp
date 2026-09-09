@@ -606,7 +606,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
         {activeTab === "wallets" && (
           <div className="space-y-6">
             <SectionBanner image="wallets" alt="Wallet" />
-            <AdminWalletsPanel />
+            <AdminWalletsPanel isSuperAdmin={isSuperAdmin} />
           </div>
         )}
         {activeTab === "partners" && (
@@ -644,7 +644,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
       {/* Transition Modal / Drawer Overlay */}
       {selectedContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
+          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white light:text-slate-900">Recensisci / Transiziona Stato</h3>
               <button
@@ -660,6 +660,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
             <div className="p-3 mb-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 text-xs text-slate-400 light:text-slate-500 space-y-1">
               <p>Cliente: <span className="font-semibold text-white light:text-slate-900">{customerNameById.get(selectedContract.customer_id) ?? "Cliente sconosciuto"}</span></p>
               <p>ID Contratto: <span className="font-mono text-white light:text-slate-900 text-[10px]">{selectedContract.id}</span></p>
+              <p>Email contratto: <span className="font-semibold text-white light:text-slate-900">{selectedContract.email ?? "Non specificata"}</span></p>
               <p>Stato Attuale: <span className="font-bold text-orange-400">{STATUS_LABELS[selectedContract.status] || selectedContract.status}</span></p>
             </div>
 

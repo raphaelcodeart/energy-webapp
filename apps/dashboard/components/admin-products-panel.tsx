@@ -30,7 +30,7 @@ const CUSTOMER_TYPE_LABELS: Record<string, string> = {
 
 const CATEGORY_LABELS: Record<string, string> = {
   INTERNAL: "Interno Lial Energy",
-  DROPSHIPPING: "Dropshipping",
+  DROPSHIPPING: "Fai la spesa con Lial",
   PARTNER: "Partner / collaboratore",
 };
 

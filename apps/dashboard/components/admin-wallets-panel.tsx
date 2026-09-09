@@ -54,7 +54,16 @@ async function fetchTransactions(type?: string): Promise<WalletTransactionRead[]
   return res.json();
 }
 
-export function AdminWalletsPanel() {
+interface AdminWalletsPanelProps {
+  /** Only SUPER_ADMIN may load/credit cashback ("Ricarica") -- the button and
+      form below are hidden for a plain ADMIN. This is UX only: the real
+      enforcement is the `wallet.credit` permission on POST
+      /wallets/admin/topup (see wallets/router.py), which rejects the same
+      call with 403 even if someone bypasses this UI gate. */
+  isSuperAdmin?: boolean;
+}
+
+export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelProps = {}) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -211,15 +220,19 @@ export function AdminWalletsPanel() {
                       <td className="py-2 px-5 font-mono text-[10px]">{w.address}</td>
                       <td className="py-2 px-5 text-right font-semibold text-orange-400">{euro(w.balance_cents)}</td>
                       <td className="py-2 px-5 text-right">
-                        <button
-                          onClick={() => openTopUp(w.user_id)}
-                          className="px-2.5 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-[11px] font-semibold transition cursor-pointer"
-                        >
-                          {topUpForUserId === w.user_id ? "Annulla" : "Ricarica"}
-                        </button>
+                        {isSuperAdmin ? (
+                          <button
+                            onClick={() => openTopUp(w.user_id)}
+                            className="px-2.5 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-[11px] font-semibold transition cursor-pointer"
+                          >
+                            {topUpForUserId === w.user_id ? "Annulla" : "Ricarica"}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-slate-500" title="Solo il Super Admin può caricare cashback">—</span>
+                        )}
                       </td>
                     </tr>
-                    {topUpForUserId === w.user_id && (
+                    {isSuperAdmin && topUpForUserId === w.user_id && (
                       <tr className="bg-white/2 light:bg-slate-900/[0.02]">
                         <td colSpan={5} className="px-5 py-3">
                           <form onSubmit={(e) => handleTopUp(e, w.user_id)} className="flex items-end gap-2">

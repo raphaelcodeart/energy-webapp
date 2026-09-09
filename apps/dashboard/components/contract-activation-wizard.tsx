@@ -27,10 +27,15 @@ const ENERGY_LABELS: Record<string, string> = { ELECTRICITY: "Luce", GAS: "Gas",
     business-rules.md#contract-self-service. */
 export function ContractActivationWizard({
   product,
+  accountEmail,
   onClose,
   onActivated,
 }: {
   product: ProductCatalogRead;
+  /** Pre-fills the editable Email field below -- never forced: the customer
+      can freely change it to any address, this contract's email need not
+      match the account's login email (see contracts/models.py::Contract.email). */
+  accountEmail?: string;
   onClose: () => void;
   onActivated: () => void;
 }) {
@@ -46,6 +51,7 @@ export function ContractActivationWizard({
   const [podCode, setPodCode] = useState("");
   const [pdrCode, setPdrCode] = useState("");
   const [meterNumber, setMeterNumber] = useState("");
+  const [email, setEmail] = useState(accountEmail ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contract, setContract] = useState<ContractRead | null>(null);
@@ -60,6 +66,7 @@ export function ContractActivationWizard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_version_id: v.id,
+          email: email.trim(),
           supply_point: {
             energy_type: product.energy_type,
             pod_code: needsPod ? podCode.toUpperCase() : null,
@@ -124,6 +131,15 @@ export function ContractActivationWizard({
                 Inserisci i dati del punto di fornitura ({ENERGY_LABELS[product.energy_type ?? ""] ?? "energia"}) da attivare.
               </p>
 
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Email</label>
+                <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nome@esempio.it"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+                <p className="text-[10px] text-slate-500">
+                  Email di riferimento per questo contratto -- puoi usarne una diversa da quella del tuo account.
+                </p>
+              </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Indirizzo</label>
                 <input required value={street} onChange={(e) => setStreet(e.target.value)}

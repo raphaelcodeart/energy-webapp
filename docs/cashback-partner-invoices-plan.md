@@ -307,9 +307,16 @@ chiamate HTTP dirette sopra elencate.
 - [x] **Chi avvia un ordine**: sia admin sia il cliente stesso
       (self-checkout aggiunto Session 26, confermato con l'utente).
 - [x] **Chi può confermare riscatti/pagamenti bonifico**: `ADMIN` (non solo
-      `SUPER_ADMIN`) può già farlo -- verificato nel DB, `wallet.manage` è
-      concesso a SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN. Nessuna modifica
-      necessaria, era già così.
+      `SUPER_ADMIN`) può ancora farlo -- `wallet.manage` resta concesso a
+      SUPER_ADMIN/ORGANIZATION_ADMIN/ADMIN per tutta la coda "Riscatti
+      Fatture" (verify/reject/confirm-payment) e il resto della superficie
+      wallet admin (saldi, storico, transfer-permission, storno).
+      **Aggiornato Session successiva (richiesta esplicita dell'utente)**:
+      il solo "Ricarica" manuale (`POST /wallets/admin/topup`, il credito
+      cashback arbitrario senza bonifico reale dietro) ora richiede il nuovo
+      permesso, più stretto, `wallet.credit` -- **SOLO `SUPER_ADMIN`**,
+      stesso pattern di `organization.manage_payments`. Vedi
+      `0029_wallet_credit_permission.py`.
 - [x] **Chi può configurare Stripe**: SOLO `SUPER_ADMIN`, deliberatamente
       più stretto del bonifico -- richiesta esplicita dell'utente Session 26.
 - [x] **Pagamento del residuo nel checkout**: bonifico (confermato da un

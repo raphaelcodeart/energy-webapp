@@ -76,6 +76,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "status": c.status,
             "notes": c.notes,
             "iban": c.iban,
+            "email": c.email,
             "created_at": c.created_at,
             "activated_at": c.activated_at,
             "expires_at": c.expires_at,
@@ -151,6 +152,7 @@ async def create_contract(
     correlation_id: str,
     notes: str | None = None,
     iban: str | None = None,
+    email: str | None = None,
 ) -> Contract:
     """Creates a DRAFT contract. Deliberately does NOT touch commissions -- creating
     or submitting a contract never generates a commission (business-rules.md)."""
@@ -182,6 +184,7 @@ async def create_contract(
         status="DRAFT",
         notes=notes,
         iban=iban,
+        email=email,
     )
     db.add(contract)
     await db.flush()
@@ -244,6 +247,7 @@ async def create_contract_self_service(
     customer_user_id: uuid.UUID,
     product_version_id: uuid.UUID,
     supply_point_payload: "SupplyPointCreate",
+    email: str,
 ) -> Contract:
     """'Attiva Contratto': a customer activates a Lial Energy (INTERNAL)
     product themselves, no promoter/admin action needed to get it started.
@@ -297,7 +301,7 @@ async def create_contract_self_service(
         db, organization_id=organization_id, customer_id=customer.id,
         supply_point_id=supply_point.id, product_version_id=product_version_id,
         producer_agent_id=producer_agent_id, actor_user_id=customer_user_id,
-        correlation_id=str(uuid.uuid4()),
+        correlation_id=str(uuid.uuid4()), email=email,
     )
     contract = await transition_contract(
         db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",

@@ -15,6 +15,7 @@ export type ContractRead = {
   product_name: string | null;
   supply_point_label: string | null;
   iban: string | null;
+  email: string | null;
 };
 
 export type ContractStatusHistoryRead = {

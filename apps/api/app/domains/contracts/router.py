@@ -64,6 +64,7 @@ async def create_contract(
             correlation_id=str(uuid.uuid4()),
             notes=payload.notes,
             iban=payload.iban,
+            email=payload.email,
         )
     except InvalidProducerAgentError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -89,6 +90,7 @@ async def create_my_contract(
             customer_user_id=current_user.user_id,
             product_version_id=payload.product_version_id,
             supply_point_payload=payload.supply_point,
+            email=payload.email,
         )
     except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

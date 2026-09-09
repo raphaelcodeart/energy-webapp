@@ -123,6 +123,15 @@ const STEPS = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"];
 
 const NAV_ITEMS: NavItem[] = [
   {
+    key: "lial-contracts",
+    label: "Contratti Lial Energy",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
+  {
     key: "products",
     label: "Shop",
     icon: (
@@ -200,8 +209,10 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function CustomerClientPage({ contracts: initialContracts, email }: CustomerClientPageProps) {
-  // "products" (lo shop) is the customer's home -- see NAV_ITEMS ordering below.
-  const [activeTab, setActiveTab] = useState<"contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("products");
+  // "lial-contracts" is the customer's home -- matches the Shop's old default
+  // landing tab, back when Lial Energy contracts were its first category
+  // (see NAV_ITEMS ordering below).
+  const [activeTab, setActiveTab] = useState<"lial-contracts" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback">("lial-contracts");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -430,11 +441,18 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
         </div>
       )}
 
+      {activeTab === "lial-contracts" && (
+        <div className="space-y-6">
+          <SectionBanner image="energy" alt="Contratti Lial Energy" />
+          <CustomerPromoterApplicationCard hideWhenActive />
+          <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
+        </div>
+      )}
+
       {activeTab === "products" && (
         <div className="space-y-6">
           <SectionBanner image="products" alt="Shop" />
-          <CustomerPromoterApplicationCard hideWhenActive />
-          <CustomerProductsPanel />
+          <CustomerProductsPanel visibleCategories={["PARTNER", "DROPSHIPPING"]} />
         </div>
       )}
 

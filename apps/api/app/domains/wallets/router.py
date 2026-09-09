@@ -163,11 +163,13 @@ async def get_transactions_for_user(
 @router.post("/admin/topup", response_model=WalletTransactionRead, status_code=status.HTTP_201_CREATED)
 async def top_up(
     payload: WalletTopUpRequest,
-    current_user: CurrentUser = Depends(require_permission("wallet.manage")),
+    current_user: CurrentUser = Depends(require_permission("wallet.credit")),
     db: AsyncSession = Depends(get_db),
 ) -> WalletTransactionRead:
     """Admin credits cashback or a plain recharge to a user's wallet --
-    creates the wallet lazily if this is its first credit."""
+    creates the wallet lazily if this is its first credit. Gated by
+    `wallet.credit` (SUPER_ADMIN only), narrower than the `wallet.manage`
+    used by the rest of this router -- see 0029_wallet_credit_permission.py."""
     wallet = await wallet_service.get_or_create_wallet(
         db, organization_id=current_user.organization_id, user_id=payload.user_id
     )

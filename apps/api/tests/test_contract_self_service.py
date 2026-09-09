@@ -88,11 +88,19 @@ async def test_create_contract_self_service_submits_and_attributes_to_referring_
     contract = await contracts_service.create_contract_self_service(
         db, organization_id=organization_id, customer_user_id=user.id,
         product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+        email="contatto@example.demo",
     )
 
     assert contract.status == "DOCUMENTS_PENDING"
+    assert contract.email == "contatto@example.demo"
     customer = (await db.execute(select(Customer).where(Customer.user_id == user.id))).scalar_one()
     assert contract.customer_id == customer.id
+
+    # Persists through the read path too (to_read_dicts), not just on the ORM
+    # object still in the session -- catches a to_read_dicts row missing the
+    # key, which the ORM-only assertion above would not.
+    rows = await contracts_service.to_read_dicts(db, [contract])
+    assert rows[0]["email"] == "contatto@example.demo"
 
     attribution = await db.get(contracts_service.ContractAttribution, contract.contract_attribution_id)
     # The producer is whichever agent the customer's own referral code
@@ -121,6 +129,7 @@ async def test_create_contract_self_service_rejects_non_internal_product(db, org
         await contracts_service.create_contract_self_service(
             db, organization_id=organization_id, customer_user_id=user.id,
             product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+            email="contatto@example.demo",
         )
 
 
@@ -136,6 +145,7 @@ async def test_create_contract_self_service_requires_a_customer_record(db, organ
         await contracts_service.create_contract_self_service(
             db, organization_id=organization_id, customer_user_id=user.id,
             product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+            email="contatto@example.demo",
         )
 
 
@@ -158,6 +168,7 @@ async def test_create_contract_self_service_requires_a_referring_promoter(db, or
         await contracts_service.create_contract_self_service(
             db, organization_id=organization_id, customer_user_id=customer_user.id,
             product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+            email="contatto@example.demo",
         )
 
 
@@ -168,6 +179,7 @@ async def test_transition_approved_cascades_into_payment_pending(db, organizatio
     contract = await contracts_service.create_contract_self_service(
         db, organization_id=organization_id, customer_user_id=user.id,
         product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+        email="contatto@example.demo",
     )
     contract = await contracts_service.transition_contract(
         db, organization_id=organization_id, contract=contract, to_status="UNDER_REVIEW",
@@ -189,6 +201,7 @@ async def test_transition_paid_cascades_all_the_way_to_active(db, organization_i
     contract = await contracts_service.create_contract_self_service(
         db, organization_id=organization_id, customer_user_id=user.id,
         product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+        email="contatto@example.demo",
     )
     for to_status in ["UNDER_REVIEW", "APPROVED"]:
         contract = await contracts_service.transition_contract(
@@ -214,6 +227,7 @@ async def test_uploading_all_required_documents_auto_advances_to_under_review(db
     contract = await contracts_service.create_contract_self_service(
         db, organization_id=organization_id, customer_user_id=user.id,
         product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+        email="contatto@example.demo",
     )
     assert contract.status == "DOCUMENTS_PENDING"
 
@@ -236,6 +250,7 @@ async def test_uploading_some_but_not_all_documents_does_not_advance(db, organiz
     contract = await contracts_service.create_contract_self_service(
         db, organization_id=organization_id, customer_user_id=user.id,
         product_version_id=version.id, supply_point_payload=_supply_point_payload(),
+        email="contatto@example.demo",
     )
 
     required_types = documents_service.required_document_types_for("PRIVATE")

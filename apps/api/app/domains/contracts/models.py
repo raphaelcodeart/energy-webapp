@@ -37,6 +37,12 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     # contracts. Nullable: an admin creating a contract on the customer's
     # behalf may not have it on hand yet.
     iban: Mapped[str | None] = mapped_column(String(34), nullable=True)
+    # Contact email for this specific contract/pratica -- deliberately independent
+    # of the customer's account login email (a customer may want a contract
+    # followed at a different address, e.g. a family member's or the
+    # supply point's own). Nullable for compatibility with contracts created
+    # before this field existed.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     # Set (and reset, on every renewal) by transition_contract() whenever the
     # contract enters ACTIVE or RENEWED. expires_at is computed from the
     # product version's contract_duration_months at that same moment -- never

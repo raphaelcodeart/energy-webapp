@@ -26,11 +26,18 @@ const BILLING_LABELS: Record<string, string> = {
   ANNUAL: "/anno",
 };
 
-const CATEGORY_TABS: { key: "INTERNAL" | "DROPSHIPPING" | "PARTNER"; label: string }[] = [
+type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
+
+const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
   { key: "PARTNER", label: "Prodotti Partner" },
-  { key: "DROPSHIPPING", label: "Dropshipping" },
+  // "Fai la spesa con Lial" is a UI label only -- the DROPSHIPPING category
+  // key is unchanged in the DB/API (see catalog/models.py::Product.category),
+  // same "rename the label, not the value" treatment as admin-products-panel.tsx.
+  { key: "DROPSHIPPING", label: "Fai la spesa con Lial" },
 ];
+
+const ALL_CATEGORIES: ProductCategory[] = ["INTERNAL", "PARTNER", "DROPSHIPPING"];
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
@@ -47,19 +54,35 @@ interface CustomerProductsPanelProps {
       pointing directly at that product -- promoter-only use case. */
   referralCode?: string;
   organizationId?: string;
+  /** Which category tabs this instance shows -- lets the same component back
+      both "Contratti Lial Energy" (INTERNAL only) and "Shop" (PARTNER +
+      DROPSHIPPING) without duplicating the catalog grid/cards. Defaults to
+      all three, matching the original single-Shop-page behavior (used by the
+      promoter's "Condividi" view, which still shares every category). */
+  visibleCategories?: ProductCategory[];
+  /** The logged-in account's own email, used only to pre-fill (never lock)
+      the activation wizard's editable Email field. */
+  accountEmail?: string;
 }
 
-export function CustomerProductsPanel({ referralCode, organizationId }: CustomerProductsPanelProps = {}) {
+export function CustomerProductsPanel({
+  referralCode,
+  organizationId,
+  visibleCategories = ALL_CATEGORIES,
+  accountEmail,
+}: CustomerProductsPanelProps = {}) {
   const queryClient = useQueryClient();
   const { data: products, isLoading, error } = useQuery({
     queryKey: ["customer", "products"],
     queryFn: fetchProducts,
   });
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<"INTERNAL" | "DROPSHIPPING" | "PARTNER">("INTERNAL");
+  const [activeCategory, setActiveCategory] = useState<ProductCategory>(visibleCategories[0] ?? "INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
   const [detailTarget, setDetailTarget] = useState<ProductCatalogRead | null>(null);
   const [activationTarget, setActivationTarget] = useState<ProductCatalogRead | null>(null);
+
+  const visibleTabs = CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key));
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -108,8 +131,9 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
         </p>
       </div>
 
+      {visibleTabs.length > 1 && (
       <div className="flex flex-wrap gap-2">
-        {CATEGORY_TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const count = activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
@@ -127,6 +151,7 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
           );
         })}
       </div>
+      )}
 
       {catalog.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-12">
@@ -288,6 +313,7 @@ export function CustomerProductsPanel({ referralCode, organizationId }: Customer
       {activationTarget && (
         <ContractActivationWizard
           product={activationTarget}
+          accountEmail={accountEmail}
           onClose={() => setActivationTarget(null)}
           onActivated={() => queryClient.invalidateQueries({ queryKey: ["customer", "contracts"] })}
         />
