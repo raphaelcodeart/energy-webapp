@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { type CodeEntry, emptyEntries, SupplyPointCodeFields } from "@/components/supply-point-code-fields";
 import type {
   AgentListItemRead,
   ContractRead,
@@ -70,8 +71,14 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
   const [vatNumber, setVatNumber] = useState("");
 
   // New supply point fields (required for a new customer -- a contract always
-  // needs one; existing customers may already have one to pick instead)
+  // needs one; existing customers may already have one to pick instead).
+  // One or more POD/PDR codes per "Quanti POD/PDR hai?" (see
+  // supply-point-code-fields.tsx -- same component contract-activation-
+  // wizard.tsx uses, so admin creates one Contract per code exactly like
+  // the customer/promoter self-service flow does), sharing one address.
   const [energyType, setEnergyType] = useState("ELECTRICITY");
+  const [podEntries, setPodEntries] = useState<CodeEntry[]>(() => emptyEntries(1));
+  const [pdrEntries, setPdrEntries] = useState<CodeEntry[]>(() => emptyEntries(1));
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
@@ -88,15 +95,31 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
   const [success, setSuccess] = useState(false);
 
   const energyProducts = (products ?? []).filter((p) => p.status === "ACTIVE" && p.current_version);
+  const needsPod = energyType === "ELECTRICITY";
+  const needsPdr = energyType === "GAS";
+
+  async function createContract(customerId: string, supplyPointId: string): Promise<ContractRead> {
+    const contractRes = await fetch("/api/proxy/contracts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: customerId,
+        supply_point_id: supplyPointId,
+        product_version_id: productVersionId,
+        producer_agent_id: producerAgentId,
+        notes: notes || null,
+        iban: iban ? iban.replace(/\s/g, "").toUpperCase() : null,
+      }),
+    });
+    if (!contractRes.ok) throw new Error(await contractRes.text());
+    return contractRes.json();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
     setSubmitting(true);
     try {
-      let customerId = selectedCustomerId;
-      let supplyPointId = selectedSupplyPointId;
-
       if (customerMode === "new") {
         const customerRes = await fetch("/api/proxy/customers", {
           method: "POST",
@@ -115,44 +138,48 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
         });
         if (!customerRes.ok) throw new Error(await customerRes.text());
         const newCustomer = (await customerRes.json()) as CustomerRead;
-        customerId = newCustomer.id;
 
-        const supplyPointRes = await fetch(`/api/proxy/customers/${customerId}/supply-points`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            energy_type: energyType,
-            street,
-            city,
-            province,
-            postal_code: postalCode,
-            country: "IT",
-          }),
-        });
-        if (!supplyPointRes.ok) throw new Error(await supplyPointRes.text());
-        const newSupplyPoint = await supplyPointRes.json();
-        supplyPointId = newSupplyPoint.id;
+        // One supply point + one Contract per POD/PDR code -- "Quanti
+        // POD/PDR hai?" (see supply-point-code-fields.tsx), same mechanic
+        // as the customer/promoter self-service wizard. Sequential, not
+        // parallel, so a partial failure's error message ("2° punto: ...")
+        // stays meaningful.
+        const codeEntries: { entry: CodeEntry; podCode: string | null; pdrCode: string | null }[] = [
+          ...(needsPod ? podEntries.map((entry) => ({ entry, podCode: entry.code.toUpperCase(), pdrCode: null })) : []),
+          ...(needsPdr ? pdrEntries.map((entry) => ({ entry, podCode: null, pdrCode: entry.code.toUpperCase() })) : []),
+        ];
+        let lastContract: ContractRead | null = null;
+        for (const { entry, podCode, pdrCode } of codeEntries) {
+          const supplyPointRes = await fetch(`/api/proxy/customers/${newCustomer.id}/supply-points`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              energy_type: energyType,
+              pod_code: podCode,
+              pdr_code: pdrCode,
+              meter_number: entry.meterNumber || null,
+              street,
+              city,
+              province,
+              postal_code: postalCode,
+              country: "IT",
+            }),
+          });
+          if (!supplyPointRes.ok) throw new Error(await supplyPointRes.text());
+          const newSupplyPoint = await supplyPointRes.json();
+          lastContract = await createContract(newCustomer.id, newSupplyPoint.id);
+          onCreated(lastContract);
+        }
+        if (!lastContract) throw new Error("Nessun punto di fornitura inserito.");
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 3000);
+        return;
       }
 
-      if (!customerId || !supplyPointId) {
+      if (!selectedCustomerId || !selectedSupplyPointId) {
         throw new Error("Seleziona un cliente e un punto di fornitura.");
       }
-
-      const contractRes = await fetch("/api/proxy/contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: customerId,
-          supply_point_id: supplyPointId,
-          product_version_id: productVersionId,
-          producer_agent_id: producerAgentId,
-          notes: notes || null,
-          iban: iban ? iban.replace(/\s/g, "").toUpperCase() : null,
-        }),
-      });
-      if (!contractRes.ok) throw new Error(await contractRes.text());
-      const newContract = (await contractRes.json()) as ContractRead;
-
+      const newContract = await createContract(selectedCustomerId, selectedSupplyPointId);
       onCreated(newContract);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -325,6 +352,13 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
                     className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
                 </div>
               </div>
+
+              {needsPod && (
+                <SupplyPointCodeFields kind="POD" entries={podEntries} onChange={setPodEntries} />
+              )}
+              {needsPdr && (
+                <SupplyPointCodeFields kind="PDR" entries={pdrEntries} onChange={setPdrEntries} />
+              )}
             </div>
           </div>
         )}
@@ -375,7 +409,11 @@ export function AdminCreateContractPanel({ onCreated }: { onCreated: (contract: 
 
         <button type="submit" disabled={submitting}
           className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer mt-2">
-          {submitting ? "Creazione in corso..." : "Genera Contratto"}
+          {submitting
+            ? "Creazione in corso..."
+            : customerMode === "new" && (needsPod ? podEntries.length : 0) + (needsPdr ? pdrEntries.length : 0) > 1
+              ? `Genera ${(needsPod ? podEntries.length : 0) + (needsPdr ? pdrEntries.length : 0)} Contratti`
+              : "Genera Contratto"}
         </button>
       </form>
     </div>
