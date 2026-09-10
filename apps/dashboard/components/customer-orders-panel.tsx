@@ -575,7 +575,7 @@ export function CustomerOrdersPanel() {
                         disabled={busy}
                         className="w-full px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                       >
-                        {switchingId === o.id ? "..." : "Paga con bonifico invece"}
+                        {switchingId === o.id ? "..." : "Paga con bonifico"}
                       </button>
                     )}
                   </div>
