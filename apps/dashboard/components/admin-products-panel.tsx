@@ -610,7 +610,7 @@ export function AdminProductsPanel() {
                         {euro(p.current_version.base_price_cents)}
                       </span>
                       {p.current_version.vat_percentage != null && (
-                        <span className="block text-[10px] text-slate-500">IVA {p.current_version.vat_percentage}%</span>
+                        <span className="block text-[10px] text-slate-500">+ IVA {p.current_version.vat_percentage}%</span>
                       )}
                     </span>
                   )}

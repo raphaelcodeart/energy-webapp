@@ -16,15 +16,62 @@ const PROVINCES = [
 
 const ENERGY_LABELS: Record<string, string> = { ELECTRICITY: "Luce", GAS: "Gas", DUAL_FUEL: "Luce e Gas" };
 
+const MAX_SUPPLY_POINTS = 10;
+
+function euro(cents: number): string {
+  return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+}
+
+/** One POD or PDR code to activate, plus its own meter number -- address is
+    shared across all of them (see the "Quanti POD/PDR vuoi attivare?"
+    quantity question: the common case is several meters at the same
+    property; a customer with meters at genuinely different addresses can
+    still run this wizard again for the other address, same as before this
+    feature existed). */
+type CodeEntry = { code: string; meterNumber: string };
+
+function emptyEntries(count: number): CodeEntry[] {
+  return Array.from({ length: count }, () => ({ code: "", meterNumber: "" }));
+}
+
+/** A stepper for "Quanti POD/PDR vuoi attivare?" -- the count drives how
+    many code-entry rows render below it. */
+function QuantityStepper({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">{label}</label>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(1, value - 1))}
+          className="w-8 h-8 rounded-lg bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 text-white light:text-slate-900 font-bold hover:bg-white/10 transition cursor-pointer disabled:opacity-40"
+          disabled={value <= 1}
+        >
+          −
+        </button>
+        <span className="w-8 text-center text-sm font-bold text-white light:text-slate-900 tabular-nums">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(MAX_SUPPLY_POINTS, value + 1))}
+          className="w-8 h-8 rounded-lg bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 text-white light:text-slate-900 font-bold hover:bg-white/10 transition cursor-pointer disabled:opacity-40"
+          disabled={value >= MAX_SUPPLY_POINTS}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** "Attiva Contratto": self-service wizard for a Lial Energy (INTERNAL)
-    product -- collects the supply point (address + POD/PDR), creates the
-    contract (already submitted, already DOCUMENTS_PENDING by the time this
-    call returns -- see contracts/service.py::create_contract_self_service),
-    then hands straight into the same ContractDocumentsPanel the "I miei
-    Contratti" tab uses, so uploading here or later from that tab is the
-    exact same thing. From here on an admin needs exactly two clicks
-    (Approva, Conferma pagamento) to reach ACTIVE -- see
-    business-rules.md#contract-self-service. */
+    product -- collects the supply point(s) (address + one or more POD/PDR
+    codes, per "quanti POD/PDR vuoi attivare?"), creates one Contract per
+    code (contracts/service.py::create_contract_self_service takes exactly
+    one supply point per call -- there is no bulk endpoint, this simply
+    calls it once per code, sequentially), then hands into
+    ContractDocumentsPanel for each. From here on an admin needs exactly
+    two clicks per contract (Approva, Conferma pagamento) to reach ACTIVE --
+    see business-rules.md#contract-self-service. */
 export function ContractActivationWizard({
   product,
   accountEmail,
@@ -48,41 +95,72 @@ export function ContractActivationWizard({
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [postalCode, setPostalCode] = useState("");
-  const [podCode, setPodCode] = useState("");
-  const [pdrCode, setPdrCode] = useState("");
-  const [meterNumber, setMeterNumber] = useState("");
+  const [podEntries, setPodEntries] = useState<CodeEntry[]>(() => emptyEntries(1));
+  const [pdrEntries, setPdrEntries] = useState<CodeEntry[]>(() => emptyEntries(1));
   const [email, setEmail] = useState(accountEmail ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [contract, setContract] = useState<ContractRead | null>(null);
+  const [contracts, setContracts] = useState<ContractRead[]>([]);
+
+  // Resizes the entry list to match the quantity stepper, preserving
+  // whatever the customer already typed in the rows that still exist --
+  // called directly from the stepper's onClick, not via an effect, since
+  // this is a plain user-triggered derivation, not a sync from an external
+  // system.
+  function resizeEntries(prev: CodeEntry[], count: number): CodeEntry[] {
+    if (prev.length === count) return prev;
+    const next = [...prev];
+    while (next.length < count) next.push({ code: "", meterNumber: "" });
+    next.length = count;
+    return next;
+  }
+
+  function updatePodEntry(i: number, field: keyof CodeEntry, value: string) {
+    setPodEntries((prev) => prev.map((e, idx) => (idx === i ? { ...e, [field]: value } : e)));
+  }
+  function updatePdrEntry(i: number, field: keyof CodeEntry, value: string) {
+    setPdrEntries((prev) => prev.map((e, idx) => (idx === i ? { ...e, [field]: value } : e)));
+  }
+
+  const totalPoints = (needsPod ? podEntries.length : 0) + (needsPdr ? pdrEntries.length : 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/proxy/contracts/mine", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_version_id: v.id,
-          email: email.trim(),
-          supply_point: {
-            energy_type: product.energy_type,
-            pod_code: needsPod ? podCode.toUpperCase() : null,
-            pdr_code: needsPdr ? pdrCode.toUpperCase() : null,
-            meter_number: meterNumber || null,
-            street,
-            city,
-            province: province.toUpperCase(),
-            postal_code: postalCode,
-            country: "IT",
-          },
-        }),
-      });
-      if (!res.ok) throw new Error(await friendlyApiError(res));
-      const created: ContractRead = await res.json();
-      setContract(created);
+      const created: ContractRead[] = [];
+      const codeEntries: { entry: CodeEntry; podCode: string | null; pdrCode: string | null }[] = [
+        ...(needsPod ? podEntries.map((entry) => ({ entry, podCode: entry.code.toUpperCase(), pdrCode: null })) : []),
+        ...(needsPdr ? pdrEntries.map((entry) => ({ entry, podCode: null, pdrCode: entry.code.toUpperCase() })) : []),
+      ];
+      // Sequential, not parallel -- each call creates its own Contract +
+      // notifications; keeping them in order also keeps error messages
+      // ("2° punto: ...") meaningful if one fails partway through.
+      for (const { entry, podCode, pdrCode } of codeEntries) {
+        const res = await fetch("/api/proxy/contracts/mine", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_version_id: v.id,
+            email: email.trim(),
+            supply_point: {
+              energy_type: product.energy_type,
+              pod_code: podCode,
+              pdr_code: pdrCode,
+              meter_number: entry.meterNumber || null,
+              street,
+              city,
+              province: province.toUpperCase(),
+              postal_code: postalCode,
+              country: "IT",
+            },
+          }),
+        });
+        if (!res.ok) throw new Error(await friendlyApiError(res));
+        created.push(await res.json());
+      }
+      setContracts(created);
       setStep("documents");
       onActivated();
     } catch (err: any) {
@@ -99,6 +177,12 @@ export function ContractActivationWizard({
           <div>
             <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wide">Attiva Contratto</p>
             <h3 className="text-lg font-bold text-white light:text-slate-900">{v.name}</h3>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(v.base_price_cents)}</span>
+              {v.vat_percentage != null && (
+                <span className="text-[10px] text-slate-500">+ IVA {v.vat_percentage}%</span>
+              )}
+            </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -168,29 +252,63 @@ export function ContractActivationWizard({
                   className="w-full max-w-[140px] rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 light:border-slate-200">
-                {needsPod && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice POD</label>
-                    <input required value={podCode} onChange={(e) => setPodCode(e.target.value)}
-                      placeholder="IT001E..."
-                      className="w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500" />
+              {needsPod && (
+                <div className="space-y-3 pt-3 border-t border-white/5 light:border-slate-200">
+                  <QuantityStepper
+                    label="Quanti POD hai?"
+                    value={podEntries.length}
+                    onChange={(n) => setPodEntries((prev) => resizeEntries(prev, n))}
+                  />
+                  <div className="space-y-2">
+                    {podEntries.map((entry, i) => (
+                      <div key={i} className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
+                            Codice POD {podEntries.length > 1 ? `#${i + 1}` : ""}
+                          </label>
+                          <input required value={entry.code} onChange={(e) => updatePodEntry(i, "code", e.target.value)}
+                            placeholder="IT001E..."
+                            className="w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Contatore (opz.)</label>
+                          <input value={entry.meterNumber} onChange={(e) => updatePodEntry(i, "meterNumber", e.target.value)}
+                            className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {needsPdr && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice PDR</label>
-                    <input required value={pdrCode} onChange={(e) => setPdrCode(e.target.value)}
-                      placeholder="00000000000000"
-                      className="w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500" />
+                </div>
+              )}
+
+              {needsPdr && (
+                <div className="space-y-3 pt-3 border-t border-white/5 light:border-slate-200">
+                  <QuantityStepper
+                    label="Quanti PDR hai?"
+                    value={pdrEntries.length}
+                    onChange={(n) => setPdrEntries((prev) => resizeEntries(prev, n))}
+                  />
+                  <div className="space-y-2">
+                    {pdrEntries.map((entry, i) => (
+                      <div key={i} className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
+                            Codice PDR {pdrEntries.length > 1 ? `#${i + 1}` : ""}
+                          </label>
+                          <input required value={entry.code} onChange={(e) => updatePdrEntry(i, "code", e.target.value)}
+                            placeholder="00000000000000"
+                            className="w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Contatore (opz.)</label>
+                          <input value={entry.meterNumber} onChange={(e) => updatePdrEntry(i, "meterNumber", e.target.value)}
+                            className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Numero contatore (opzionale)</label>
-                <input value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
-              </div>
+                </div>
+              )}
 
               {error && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{error}</div>
@@ -198,23 +316,40 @@ export function ContractActivationWizard({
 
               <button type="submit" disabled={submitting}
                 className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer disabled:opacity-50">
-                {submitting ? "Attivazione in corso..." : "Continua e carica i documenti"}
+                {submitting
+                  ? "Attivazione in corso..."
+                  : totalPoints > 1
+                    ? `Attiva ${totalPoints} punti e carica i documenti`
+                    : "Continua e carica i documenti"}
               </button>
             </form>
           )}
 
-          {step === "documents" && contract && (
-            <div className="space-y-4">
+          {step === "documents" && contracts.length > 0 && (
+            <div className="space-y-5">
               <div className="flex gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
                 <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                <span>Richiesta creata! Carica i documenti richiesti per completare l&apos;attivazione.</span>
+                <span>
+                  {contracts.length > 1
+                    ? `${contracts.length} richieste create! Carica i documenti richiesti per ciascun punto per completare l'attivazione.`
+                    : "Richiesta creata! Carica i documenti richiesti per completare l'attivazione."}
+                </span>
               </div>
-              <ContractDocumentsPanel contractId={contract.id} />
+              {contracts.map((c, i) => (
+                <div key={c.id} className="space-y-2">
+                  {contracts.length > 1 && (
+                    <p className="text-xs font-semibold text-slate-300 light:text-slate-600">
+                      Punto {i + 1} di {contracts.length}
+                    </p>
+                  )}
+                  <ContractDocumentsPanel contractId={c.id} />
+                </div>
+              ))}
               <button onClick={onClose}
                 className="w-full rounded-xl bg-white/10 hover:bg-white/20 py-2.5 text-xs font-semibold text-white transition cursor-pointer">
-                Continua più tardi -- trovi la richiesta in &ldquo;I miei Contratti&rdquo;
+                Continua più tardi -- trovi {contracts.length > 1 ? "le richieste" : "la richiesta"} in &ldquo;I miei Contratti&rdquo;
               </button>
             </div>
           )}

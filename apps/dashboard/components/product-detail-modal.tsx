@@ -72,7 +72,9 @@ export function ProductDetailModal({
                 <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
               </div>
               {v.vat_percentage != null && (
-                <p className="text-[10px] text-slate-500 mt-0.5">IVA {v.vat_percentage}% esclusa</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  + IVA {v.vat_percentage}% ({euro(Math.round(v.base_price_cents * (1 + v.vat_percentage / 100)))} tot.)
+                </p>
               )}
               {v.initial_fee_cents > 0 && (
                 <p className="text-[10px] text-slate-500 mt-0.5">

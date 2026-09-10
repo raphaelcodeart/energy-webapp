@@ -339,6 +339,11 @@ export function CustomerProductsPanel({
                         <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
                         <span className="text-[11px] text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
                       </div>
+                      {v.vat_percentage != null && (
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          + IVA {v.vat_percentage}% ({euro(Math.round(v.base_price_cents * (1 + v.vat_percentage / 100)))} tot.)
+                        </p>
+                      )}
                       {v.initial_fee_cents > 0 && (
                         <p className="text-[10px] text-slate-500 mt-0.5">
                           + {euro(v.initial_fee_cents)} attivazione
