@@ -4,6 +4,40 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 35 — 2026-09-10 — Admin home quick-links, unified admin Contabilità, invoice-redemption payment leg fix
+
+- [x] Admin "Panoramica" quick-access grid: added Ordini, Riscatti Fatture,
+  Provvigioni, Ticket di Supporto, Contabilità to the existing 6 buttons
+  (`admin-overview-panel.tsx::QUICK_LINKS`).
+- [x] New admin-wide "Contabilità" screen (`GET /accounting/admin`,
+  `wallet.manage`-gated, `accounting/service.py::list_all_movements`,
+  `admin-accounting-panel.tsx`) -- every customer's LialCash + real-money
+  movements merged into one list, filterable to a single customer with
+  per-customer totals. New nav tab "Contabilità" in admin-client-page.tsx.
+- [x] **Real gap fixed**: a CREDITED invoice redemption's own EUR payment
+  (the 5% fee paid via Stripe/bonifico) never appeared in Contabilità at
+  all -- only the two resulting LialCash credit rows (base+bonus) did.
+  Added the missing `REDEMPTION_PAYMENT` movement, linked to the same
+  `invoice_redemption_id`, in both `list_my_movements` and
+  `list_all_movements`. Verified the underlying flow was otherwise
+  already correct: the customer pays exactly `CASHBACK_PERCENTAGE`% (5%)
+  of the confirmed invoice amount, and receives 100%+5% back as LialCash
+  once confirmed -- unchanged, this session only fixed accounting
+  *visibility*, not the payment math.
+- [x] Both Contabilità screens redesigned: an in/out direction badge per
+  row, a LialCash-vs-Euro currency badge (with payment method), and a
+  "Tipo" column (Ricarica/Cashback/Pagamento/Trasferimento/Storno).
+  Order/redemption payment rows now correctly show as an "uscita" (money
+  the customer spent), not a "+" as before. Shared formatting extracted
+  to `apps/dashboard/lib/accounting-format.ts` so the customer and admin
+  screens can never drift apart on labeling.
+- [x] `wallets/service.py::_to_transaction_dict` gained `from_user_id`/
+  `to_user_id` (additive, not in `WalletTransactionRead`'s schema --
+  Pydantic drops unknown kwargs) so the admin accounting view can
+  attribute a WALLET row to its customer without a second lookup.
+- [x] New tests: the redemption payment leg's amount/link, admin
+  cross-customer listing + filtering. Full suite 212/212 passing.
+
 ## Session 34 — 2026-09-10 — "Acquisti LialEnergy": parallel imported-product plugin, celery outbox fix
 
 New Shop subcategory, **"Acquisti LialEnergy"**, for products imported from
