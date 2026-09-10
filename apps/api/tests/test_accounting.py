@@ -215,6 +215,52 @@ async def test_invoice_redemption_credit_rows_carry_the_redemption_id_and_partne
         assert row["order_id"] is None
         assert row["product_name"] == partner.name
 
+    # The real-money leg -- the 5% fee actually paid (bank transfer here) to
+    # unlock the two LialCash credit rows above. Must be linked to the exact
+    # same redemption id, in EUR, never confused with the LialCash rows.
+    payment_row = next(m for m in movements if m["kind"] == "REDEMPTION_PAYMENT")
+    assert payment_row["invoice_redemption_id"] == redemption.id
+    assert payment_row["currency"] == "EUR"
+    assert payment_row["amount_cents"] == 500  # 5% of 10000
+    assert payment_row["payment_method"] == "BANK_TRANSFER"
+    assert payment_row["product_name"] == partner.name
+    assert payment_row["amount_cents"] > 0  # a payment is never negative
+
+
+@pytest.mark.asyncio
+async def test_admin_can_see_and_filter_every_customers_movements(db, organization_id):
+    """GET /accounting/admin (list_all_movements) -- the whole org's ledger
+    in one call, and scoped down to a single customer via customer_user_id."""
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer_a = await _make_user_with_role(db, organization_id)
+    customer_b = await _make_user_with_role(db, organization_id)
+
+    wallet_a = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer_a.id)
+    wallet_b = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer_b.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet_a.id, amount_cents=1000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet_b.id, amount_cents=2000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+
+    all_movements = await accounting_service.list_all_movements(db, organization_id=organization_id)
+    amounts_by_customer = {}
+    for m in all_movements:
+        if m["customer_user_id"] in (customer_a.id, customer_b.id):
+            amounts_by_customer.setdefault(m["customer_user_id"], []).append(m["amount_cents"])
+    assert amounts_by_customer[customer_a.id] == [1000]
+    assert amounts_by_customer[customer_b.id] == [2000]
+
+    filtered = await accounting_service.list_all_movements(
+        db, organization_id=organization_id, customer_user_id=customer_a.id
+    )
+    assert len(filtered) == 1
+    assert filtered[0]["amount_cents"] == 1000
+    assert filtered[0]["customer_user_id"] == customer_a.id
+
 
 @pytest.mark.asyncio
 async def test_imported_product_order_is_unified_with_regular_orders(db, organization_id):

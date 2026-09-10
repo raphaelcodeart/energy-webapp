@@ -614,9 +614,15 @@ def _to_transaction_dict(txn: WalletTransaction, wallets_by_id: dict[uuid.UUID, 
         "from_wallet_id": txn.from_wallet_id,
         "from_address": from_wallet.address if from_wallet else None,
         "from_display_name": names.get(from_wallet.user_id) if from_wallet else None,
+        # Not part of WalletTransactionRead (Pydantic silently drops unknown
+        # kwargs) -- exists purely for accounting/service.py::list_all_movements
+        # to know whose ledger a WALLET row belongs to without a second
+        # wallet-ownership lookup.
+        "from_user_id": from_wallet.user_id if from_wallet else None,
         "to_wallet_id": txn.to_wallet_id,
         "to_address": to_wallet.address if to_wallet else None,
         "to_display_name": names.get(to_wallet.user_id) if to_wallet else None,
+        "to_user_id": to_wallet.user_id if to_wallet else None,
         "amount_cents": txn.amount_cents,
         "currency": txn.currency,
         "type": txn.type,

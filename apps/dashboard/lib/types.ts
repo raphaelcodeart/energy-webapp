@@ -582,7 +582,7 @@ export type ImportedOrderQuoteRead = {
 
 export type FinancialMovementRead = {
   id: string;
-  kind: "WALLET" | "ORDER_PAYMENT";
+  kind: "WALLET" | "ORDER_PAYMENT" | "REDEMPTION_PAYMENT";
   type: string | null;
   source: string | null;
   payment_method: "BANK_TRANSFER" | "CARD" | null;
@@ -592,6 +592,8 @@ export type FinancialMovementRead = {
   order_id: string | null;
   invoice_redemption_id: string | null;
   note: string | null;
+  customer_user_id: string | null;
+  customer_display_name: string | null;
   created_at: string;
 };
 
