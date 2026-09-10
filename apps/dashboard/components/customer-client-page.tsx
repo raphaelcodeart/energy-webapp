@@ -175,10 +175,16 @@ const STEPS = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"];
 const NAV_ITEMS: NavItem[] = [
   {
     key: "lial-contracts",
-    label: "Contratti Lial Energy",
+    // Was "Contratti Lial Energy" -- accurate back when this tab was just
+    // the contract-activation list, but since Session 33's redesign it's
+    // the actual dashboard home (wallet stats, quick-access shortcuts,
+    // THEN the contracts list), so the label and icon were updated to
+    // match what a customer actually lands on -- "Home" reads clearer to
+    // a non-technical user on a mobile tab bar than "Dashboard" would.
+    label: "Home",
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10" />
       </svg>
     ),
   },
