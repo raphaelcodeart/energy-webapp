@@ -3,6 +3,8 @@ import uuid
 import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.imported_products import service as imported_products_service
+from app.domains.imported_products.models import ImportedProductOrder
 from app.domains.invoice_redemptions import service as invoice_redemptions_service
 from app.domains.invoice_redemptions.models import InvoiceRedemption
 from app.domains.orders import service as orders_service
@@ -125,6 +127,47 @@ async def create_checkout_session_for_redemption(
     return session.url
 
 
+async def create_checkout_session_for_imported_order(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    order: ImportedProductOrder,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Same shape as create_checkout_session_for_order, for the "Acquisti
+    LialEnergy" imported-products plugin's own parallel order table --
+    metadata.kind="imported_order" is the third and last value
+    handle_webhook_event() below routes on."""
+    secret_key = await organizations_service.get_stripe_secret_key(db, organization_id=organization_id)
+    if not secret_key:
+        raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
+
+    residual_cents = order.amount_cents - order.credit_applied_cents
+    session = stripe.checkout.Session.create(
+        api_key=secret_key,
+        mode="payment",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Ordine {order.id}"},
+                    "unit_amount": residual_cents,
+                },
+                "quantity": 1,
+            }
+        ],
+        client_reference_id=str(order.id),
+        metadata={"kind": "imported_order", "imported_order_id": str(order.id), "organization_id": str(organization_id)},
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    await imported_products_service.attach_stripe_checkout_session(db, order=order, session_id=session.id)
+    if not session.url:
+        raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
+    return session.url
+
+
 async def handle_webhook_event(
     db: AsyncSession, *, organization_id: uuid.UUID, payload: bytes, sig_header: str
 ) -> None:
@@ -171,6 +214,13 @@ async def handle_webhook_event(
                 # No redemption in this org matches that session id -- not
                 # this webhook call's problem to solve, and not a reason to
                 # make Stripe retry forever. Silently ignore.
+                pass
+        elif kind == "imported_order":
+            try:
+                await imported_products_service.mark_paid_via_stripe(
+                    db, organization_id=organization_id, stripe_checkout_session_id=session["id"]
+                )
+            except imported_products_service.ImportedProductsError:
                 pass
         else:
             try:

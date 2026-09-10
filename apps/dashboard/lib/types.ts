@@ -447,6 +447,7 @@ export type WalletTransactionRead = {
   reference_contract_id: string | null;
   reference_invoice_redemption_id: string | null;
   reference_order_id: string | null;
+  reference_imported_order_id: string | null;
   reverses_transaction_id: string | null;
   note: string | null;
   actor_user_id: string | null;
@@ -509,6 +510,74 @@ export type OrderQuoteRead = {
   card_available: boolean;
   cashback_available: boolean;
   cashback_percentage: number;
+};
+
+export type ImportProviderRead = {
+  id: string;
+  provider_type: string;
+  name: string;
+  base_url: string | null;
+  api_key_configured: boolean;
+  api_key_last4: string | null;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type ImportedProductAdminRead = {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  external_id: string | null;
+  external_url: string | null;
+  name: string;
+  description: string;
+  image_url: string | null;
+  price_cents: number;
+  credit_discount_percentage: number;
+  status: "ACTIVE" | "INACTIVE";
+  created_at: string;
+};
+
+export type ImportedProductRead = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  price_cents: number;
+  credit_discount_percentage: number;
+};
+
+export type ImportedOrderRead = {
+  id: string;
+  customer_user_id: string;
+  customer_display_name: string;
+  imported_product_id: string;
+  product_name: string;
+  product_image_url: string | null;
+  created_by_user_id: string;
+  amount_cents: number;
+  credit_applied_cents: number;
+  residual_amount_cents: number;
+  status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  payment_method: "BANK_TRANSFER" | "CARD";
+  stripe_checkout_session_id: string | null;
+  payment_proof_uploaded_at: string | null;
+  note: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+};
+
+export type ImportedOrderQuoteRead = {
+  imported_product_id: string;
+  product_name: string;
+  amount_cents: number;
+  credit_discount_percentage: number;
+  max_creditable_cents: number;
+  customer_wallet_balance_cents: number;
+  bank_transfer_available: boolean;
+  card_available: boolean;
 };
 
 export type FinancialMovementRead = {

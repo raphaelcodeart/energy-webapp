@@ -455,6 +455,45 @@ build frontend pulita.
       (verificato con chiavi di test), ma nessuna chiave vera Stripe è
       stata inserita -- da fare quando l'utente le avrà pronte.
 
+## Session 34: "Acquisti LialEnergy" -- catalogo importato parallelo (plugin)
+
+Nuova sottocategoria nello Shop, **"Acquisti LialEnergy"**, pensata per far
+consumare LialCash su prodotti importati da un provider esterno (AliExpress
+oggi, altri domani) senza mai toccare `catalog.products`. Per esplicita
+richiesta dell'utente è un sistema completamente parallelo, non una
+categoria in più su `Product`:
+
+- **Backend**: nuovo dominio `imported_products/` (models/schemas/service/
+  router) con tre tabelle proprie -- `import_providers` (tipo/URL/API key,
+  configurabile da admin, chiave mai restituita in chiaro), `imported_products`
+  (catalogo, aggiunto a mano per ora -- niente sync API reale ancora, stessa
+  logica "Mock prima, reale dopo" già usata per Stripe), `imported_product_orders`
+  (checkout parallelo a `orders`, stessa meccanica: sconto in LialCash con
+  cap %, OTP per spendere credito, bonifico/carta per il residuo via Stripe).
+  **Nessun campo di cashback**: questi prodotti bruciano LialCash, non lo
+  generano mai.
+- **Wallet**: `wallet_transactions` ha una nuova colonna
+  `reference_imported_order_id` (mirror di `reference_order_id`) e
+  `wallets/service.py` una nuova funzione dedicata `debit_wallet_for_imported_purchase`
+  -- `debit_wallet_for_purchase` esistente non è stata toccata.
+  Permesso nuovo: `imported_products.manage` (SUPER_ADMIN/ORGANIZATION_ADMIN/
+  ADMIN, stessa sensibilità di `settings.manage` per via della API key).
+- **Stripe**: `payments/service.py` ha un terzo `kind` ("imported_order")
+  nel webhook dispatcher, accanto a "order"/"invoice_redemption".
+- **Frontend**: `CustomerProductsPanel` accetta un prop opt-in
+  `showImportedTab` (solo lo Shop lo passa -- Home/promoter "Condividi"
+  restano invariati) che aggiunge la quarta scheda "Acquisti LialEnergy",
+  indistinguibile visivamente dalle altre; checkout dedicato
+  (`imported-product-checkout-modal.tsx`, stessa UX del checkout normale
+  meno lo step cashback); pagina admin dedicata
+  (`admin-imported-products-panel.tsx`) con provider/catalogo/ordini.
+- **Bug preesistente scoperto e corretto in questa sessione**: il worker
+  Celery (`celery_app.py`) non importava mai `app.domains.organizations.models`
+  in nessun percorso del task `process_outbox_task` (schedulato ogni
+  minuto) -- ogni esecuzione falliva con `NoReferencedTableError` al primo
+  flush, sempre, indipendentemente da questa feature. Corretto aggiungendo
+  lo stesso blocco di import "tutti i modelli" già presente in `main.py`.
+
 ## Come riprendere se una sessione futura parte da zero
 
 1. Leggi questo file per intero prima di fare qualunque altra cosa: **tutte

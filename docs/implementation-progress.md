@@ -4,6 +4,53 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 34 — 2026-09-10 — "Acquisti LialEnergy": parallel imported-product plugin, celery outbox fix
+
+New Shop subcategory, **"Acquisti LialEnergy"**, for products imported from
+an external dropshipping/affiliate API (AliExpress first, others later) that
+customers can pay for partly or fully with wallet LialCash. Built as an
+explicitly requested parallel/isolated "plugin" -- a brand new domain
+(`imported_products/`) with its own three tables (`import_providers`,
+`imported_products`, `imported_product_orders`), never touching
+`catalog.products`/`orders` or their existing behavior. Full detail in
+`docs/cashback-partner-invoices-plan.md`'s "Session 34" section.
+
+- [x] Backend domain `imported_products/` (models/schemas/service/router):
+  provider CRUD (type/base_url/api_key, key masked like Stripe's), product
+  CRUD (added by hand for now -- no live API sync yet, same "scaffold first,
+  wire the real call later" precedent as MockPaymentProvider→Stripe), and a
+  checkout flow that mirrors `orders/service.py` exactly minus every
+  cashback field (these products only ever consume LialCash, never mint it).
+- [x] `wallets`: new nullable `reference_imported_order_id` column on
+  `wallet_transactions` + a new dedicated `debit_wallet_for_imported_purchase`
+  function -- `debit_wallet_for_purchase` untouched.
+- [x] `payments/service.py`: webhook dispatcher gained a third
+  `metadata.kind` ("imported_order") alongside "order"/"invoice_redemption".
+- [x] New permission `imported_products.manage` (SUPER_ADMIN/
+  ORGANIZATION_ADMIN/ADMIN only), seeded via `alembic/versions/0033_imported_products.py`.
+- [x] Frontend: `CustomerProductsPanel` gained an opt-in `showImportedTab`
+  prop (only the Shop tab passes it) adding a fourth, visually identical
+  category tab; new `imported-product-checkout-modal.tsx` (same LialCash/
+  OTP/payment-method UX as the normal checkout, no cashback step); new
+  `admin-imported-products-panel.tsx` (providers, catalog, orders with
+  confirm/cancel).
+- [x] Backend tests: `tests/test_imported_products.py` (7 tests -- provider
+  key masking, partial/full credit, OTP enforcement, cancellation refund via
+  REVERSAL, no-cashback-fields contract). Full suite: 210/210 passing.
+- [x] **Pre-existing bug found and fixed, unrelated to this feature**:
+  `celery_app.py` never imported `organizations.models` (or most other
+  domains' models) anywhere in `process_outbox_task`'s own import chain --
+  every run of that task (scheduled every minute) crashed with
+  `NoReferencedTableError` on its first flush, meaning outbox-driven
+  commission calculation may never have actually run via the scheduler.
+  Fixed by adding the same "import every domain's models" block `main.py`
+  already had. Verified live: three consecutive scheduled ticks succeeded
+  after the fix (previously: 100% failure rate, confirmed via container logs).
+- [x] Live-verified end-to-end against production (`lial_energy` DB via the
+  running `api` container): provider+product creation, active-list
+  visibility, then cleaned up -- no shared/singleton settings touched (see
+  `[[lialenergy-live-verification-safety]]`-style discipline from Session 33).
+
 ## Session 33 — 2026-09-09 — Per-product cashback, "LialCash" branding, Contabilità, real payment channel for invoice redemptions, upload security hardening
 
 Two requests handled back to back. First, the biggest single feature added

@@ -16,6 +16,7 @@ import { AdminWalletsPanel } from "@/components/admin-wallets-panel";
 import { AdminPartnersPanel } from "@/components/admin-partners-panel";
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
+import { AdminImportedProductsPanel } from "@/components/admin-imported-products-panel";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
 import { AdminOrganizationSettingsPanel } from "@/components/admin-organization-settings-panel";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
@@ -220,6 +221,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "imported-products",
+    label: "Acquisti LialEnergy",
+    notificationTypes: ["IMPORTED_ORDER_CREATED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h1.5l1.5 9h9l1.5-6H6M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z" />
+      </svg>
+    ),
+  },
+  {
     key: "documentation",
     label: "Documentazione",
     icon: (
@@ -247,7 +258,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "documentation" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "imported-products" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -625,6 +636,12 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
           <div className="space-y-6">
             <SectionBanner image="products" alt="Ordini" />
             <AdminOrdersPanel />
+          </div>
+        )}
+        {activeTab === "imported-products" && (
+          <div className="space-y-6">
+            <SectionBanner image="products" alt="Acquisti LialEnergy" />
+            <AdminImportedProductsPanel />
           </div>
         )}
         {activeTab === "documentation" && (

@@ -16,6 +16,7 @@ from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.contracts import models as _contracts_models  # noqa: F401
 from app.domains.customers import models as _customers_models  # noqa: F401
 from app.domains.documents import models as _documents_models  # noqa: F401
+from app.domains.imported_products import models as _imported_products_models  # noqa: F401
 from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.notifications import models as _notifications_models  # noqa: F401

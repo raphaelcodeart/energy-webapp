@@ -116,6 +116,13 @@ class WalletTransaction(UUIDPKMixin, TimestampMixin, Base):
     reference_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("orders.id"), nullable=True
     )
+    # Same purpose as reference_order_id, for the parallel "Acquisti
+    # LialEnergy" imported-products plugin (Session 34) -- set on a
+    # PURCHASE_DEBIT row that paid (part of) an ImportedProductOrder instead
+    # of a regular Order. Never both set on the same row.
+    reference_imported_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("imported_product_orders.id"), nullable=True
+    )
     # Self-FK: set only on a REVERSAL row, pointing back at the
     # ADMIN_CREDIT/TRANSFER row it corrects. The original row is never
     # mutated -- mirrors CommissionReversal.original_movement_id.

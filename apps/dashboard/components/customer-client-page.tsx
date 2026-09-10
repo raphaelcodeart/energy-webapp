@@ -681,7 +681,7 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
       {activeTab === "products" && (
         <div className="space-y-6">
           <SectionBanner image="products" alt="Shop" />
-          <CustomerProductsPanel visibleCategories={["PARTNER", "DROPSHIPPING"]} />
+          <CustomerProductsPanel visibleCategories={["PARTNER", "DROPSHIPPING"]} showImportedTab />
         </div>
       )}
 

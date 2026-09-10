@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ProductCatalogRead } from "@/lib/types";
+import type { ImportedProductRead, ProductCatalogRead } from "@/lib/types";
 import { ContractActivationWizard } from "@/components/contract-activation-wizard";
+import { ImportedProductCheckoutModal } from "@/components/imported-product-checkout-modal";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { ProductThumbnail } from "@/components/product-thumbnail";
@@ -27,6 +28,14 @@ const BILLING_LABELS: Record<string, string> = {
 };
 
 type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
+// Not a real Product.category value -- the Shop's "Acquisti LialEnergy"
+// subcategory is backed by a completely separate table/domain
+// (imported_products, see its models.py docstring), shown here as one more
+// tab so a customer sees no difference, per explicit user request that this
+// stay invisible from the outside. Only ever added to the tab bar when
+// showImportedTab is passed (see CustomerProductsPanelProps below) -- every
+// other caller of this component keeps behaving exactly as before.
+type ShopTab = ProductCategory | "IMPORTED";
 
 const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
@@ -38,6 +47,12 @@ const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
 ];
 
 const ALL_CATEGORIES: ProductCategory[] = ["INTERNAL", "PARTNER", "DROPSHIPPING"];
+
+async function fetchImportedProducts(): Promise<ImportedProductRead[]> {
+  const res = await fetch("/api/proxy/imported-products/products/active");
+  if (!res.ok) throw new Error("Impossibile caricare gli Acquisti LialEnergy.");
+  return res.json();
+}
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
@@ -69,6 +84,11 @@ interface CustomerProductsPanelProps {
   /** The logged-in account's own email, used only to pre-fill (never lock)
       the activation wizard's editable Email field. */
   accountEmail?: string;
+  /** Opt-in only -- appends the "Acquisti LialEnergy" tab (imported-products
+      plugin) to the Shop's tab bar. Every existing caller (INTERNAL-only
+      Home catalog, the promoter "Condividi" view) omits this and keeps
+      behaving exactly as before. */
+  showImportedTab?: boolean;
 }
 
 export function CustomerProductsPanel({
@@ -76,19 +96,29 @@ export function CustomerProductsPanel({
   organizationId,
   visibleCategories = ALL_CATEGORIES,
   accountEmail,
+  showImportedTab = false,
 }: CustomerProductsPanelProps = {}) {
   const queryClient = useQueryClient();
   const { data: products, isLoading, error } = useQuery({
     queryKey: ["customer", "products"],
     queryFn: fetchProducts,
   });
+  const { data: importedProducts } = useQuery({
+    queryKey: ["customer", "imported-products"],
+    queryFn: fetchImportedProducts,
+    enabled: showImportedTab,
+  });
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<ProductCategory>(visibleCategories[0] ?? "INTERNAL");
+  const [activeCategory, setActiveCategory] = useState<ShopTab>(visibleCategories[0] ?? "INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
+  const [importedCheckoutTarget, setImportedCheckoutTarget] = useState<{ id: string; name: string } | null>(null);
   const [detailTarget, setDetailTarget] = useState<ProductCatalogRead | null>(null);
   const [activationTarget, setActivationTarget] = useState<ProductCatalogRead | null>(null);
 
-  const visibleTabs = CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key));
+  const visibleTabs: { key: ShopTab; label: string }[] = [
+    ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
+    ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
+  ];
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -140,7 +170,9 @@ export function CustomerProductsPanel({
       {visibleTabs.length > 1 && (
       <div className="flex flex-wrap gap-2">
         {visibleTabs.map((tab) => {
-          const count = activeProducts.filter((p) => p.category === tab.key).length;
+          const count = tab.key === "IMPORTED"
+            ? (importedProducts ?? []).length
+            : activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
               key={tab.key}
@@ -159,7 +191,82 @@ export function CustomerProductsPanel({
       </div>
       )}
 
-      {catalog.length === 0 ? (
+      {activeCategory === "IMPORTED" ? (
+        (importedProducts ?? []).length === 0 ? (
+          <p className="text-sm text-slate-500 text-center py-12">Nessun prodotto disponibile al momento.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(importedProducts ?? []).map((ip, i) => {
+              const maxCreditCents = Math.round((ip.price_cents * ip.credit_discount_percentage) / 100);
+              return (
+                <div
+                  key={ip.id}
+                  style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
+                  className="group animate-slide-up glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/40 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-orange-500/10 transition-all duration-300"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setImportedCheckoutTarget({ id: ip.id, name: ip.name })}
+                    className="relative block w-full h-48 overflow-hidden cursor-pointer"
+                  >
+                    <ProductThumbnail
+                      imageUrl={ip.image_url}
+                      alt={ip.name}
+                      className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+                      iconClassName="w-12 h-12 text-orange-400/40"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                    {ip.credit_discount_percentage > 0 && (
+                      <div className="absolute top-3 right-3">
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-emerald-500 to-emerald-400 text-white shadow-lg shadow-emerald-500/30">
+                          -{ip.credit_discount_percentage}% in LialCash
+                        </span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/0 group-hover:bg-slate-950/30 transition-colors duration-300">
+                      <span className="opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-300 px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-[11px] font-bold shadow-lg">
+                        Vedi dettagli
+                      </span>
+                    </div>
+                  </button>
+                  <div className="p-5">
+                    <h4
+                      onClick={() => setImportedCheckoutTarget({ id: ip.id, name: ip.name })}
+                      className="text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug cursor-pointer hover:text-orange-400 transition"
+                    >
+                      {ip.name}
+                    </h4>
+                    {ip.description && (
+                      <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-2">{ip.description}</p>
+                    )}
+                    <div className="flex items-end justify-between gap-3 pt-4 border-t border-white/5 light:border-slate-200">
+                      <div>
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
+                        <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(ip.price_cents)}</span>
+                      </div>
+                      {maxCreditCents > 0 && (
+                        <div className="text-right">
+                          <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">LialCash usabili</p>
+                          <p className="text-lg font-extrabold text-emerald-400 tabular-nums">{lialCash(maxCreditCents)}</p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setImportedCheckoutTarget({ id: ip.id, name: ip.name })}
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z" />
+                      </svg>
+                      Vedi dettagli e acquista
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : catalog.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-12">
           {activeCategory === "INTERNAL"
             ? "Nessun prodotto disponibile al momento. Contatta il tuo promoter di riferimento per maggiori informazioni."
@@ -313,6 +420,14 @@ export function CustomerProductsPanel({
           productVersionId={checkoutTarget.versionId}
           productName={checkoutTarget.name}
           onClose={() => setCheckoutTarget(null)}
+        />
+      )}
+
+      {importedCheckoutTarget && (
+        <ImportedProductCheckoutModal
+          importedProductId={importedCheckoutTarget.id}
+          productName={importedCheckoutTarget.name}
+          onClose={() => setImportedCheckoutTarget(null)}
         />
       )}
 
