@@ -214,3 +214,51 @@ async def test_invoice_redemption_credit_rows_carry_the_redemption_id_and_partne
         assert row["invoice_redemption_id"] == redemption.id
         assert row["order_id"] is None
         assert row["product_name"] == partner.name
+
+
+@pytest.mark.asyncio
+async def test_imported_product_order_is_unified_with_regular_orders(db, organization_id):
+    """A PURCHASE_DEBIT/ORDER_PAYMENT pair for the parallel "Acquisti
+    LialEnergy" imported-products plugin (Session 34) must show up
+    identically to a regular order -- same order_id field (populated from
+    reference_imported_order_id, not a separate one), same kinds -- since
+    the two tables are meant to be indistinguishable everywhere except the
+    product-catalog admin screen (see imported_products/models.py)."""
+    from app.domains.imported_products import service as imported_products_service
+
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    provider = await imported_products_service.create_provider(
+        db, organization_id=organization_id, actor_user_id=admin.id,
+        provider_type="ALIEXPRESS", name="Test Provider", base_url=None, api_key=None, enabled=True,
+    )
+    product = await imported_products_service.create_imported_product(
+        db, organization_id=organization_id, actor_user_id=admin.id, provider_id=provider.id,
+        external_id=None, external_url=None, name="Gadget Importato", description="",
+        image_url=None, price_cents=5000, credit_discount_percentage=20, status="ACTIVE",
+    )
+
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=1000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    order = await imported_products_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, imported_product_id=product.id,
+        credit_applied_cents=1000, actor_user_id=admin.id, require_otp_for_credit_spend=False,
+    )
+    await imported_products_service.confirm_payment(
+        db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id
+    )
+
+    movements = await accounting_service.list_my_movements(db, organization_id=organization_id, user_id=customer.id)
+
+    debit_row = next(m for m in movements if m["kind"] == "WALLET" and m["amount_cents"] < 0)
+    assert debit_row["order_id"] == order.id
+    assert debit_row["product_name"] == product.name
+
+    payment_row = next(m for m in movements if m["kind"] == "ORDER_PAYMENT")
+    assert payment_row["order_id"] == order.id
+    assert payment_row["amount_cents"] == 4000
+    assert payment_row["product_name"] == product.name

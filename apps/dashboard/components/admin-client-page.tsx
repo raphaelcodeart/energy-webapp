@@ -214,6 +214,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "orders",
     label: "Ordini",
+    notificationTypes: ["IMPORTED_ORDER_CREATED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 7.5h-9v9h9v-9zM3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
@@ -223,7 +224,6 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "imported-products",
     label: "Acquisti LialEnergy",
-    notificationTypes: ["IMPORTED_ORDER_CREATED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h1.5l1.5 9h9l1.5-6H6M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z" />

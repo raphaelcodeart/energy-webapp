@@ -3,27 +3,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { friendlyApiError } from "@/lib/api-error";
-import type { ImportedOrderRead, ImportedProductAdminRead, ImportProviderRead } from "@/lib/types";
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  AWAITING_PAYMENT: "In attesa di pagamento",
-  PAID: "Pagato",
-  CANCELLED: "Annullato",
-};
-const ORDER_STATUS_COLORS: Record<string, string> = {
-  AWAITING_PAYMENT: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  PAID: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  CANCELLED: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-};
+import type { ImportedProductAdminRead, ImportProviderRead } from "@/lib/types";
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
-}
-
-async function fetchOrders(): Promise<ImportedOrderRead[]> {
-  const res = await fetch("/api/proxy/imported-products/orders");
-  if (!res.ok) throw new Error("Impossibile caricare gli ordini.");
-  return res.json();
 }
 
 async function fetchProviders(): Promise<ImportProviderRead[]> {
@@ -66,13 +49,6 @@ export function AdminImportedProductsPanel() {
     queryKey: ["admin", "imported-products"],
     queryFn: fetchProducts,
   });
-  const { data: orders, error: ordersError } = useQuery({
-    queryKey: ["admin", "imported-orders"],
-    queryFn: fetchOrders,
-  });
-  const [orderActionId, setOrderActionId] = useState<string | null>(null);
-  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
 
   // Provider form
   const [providerType, setProviderType] = useState("ALIEXPRESS");
@@ -178,35 +154,6 @@ export function AdminImportedProductsPanel() {
     }
   }
 
-  async function handleConfirmOrderPayment(id: string) {
-    setOrderActionId(id);
-    try {
-      const res = await fetch(`/api/proxy/imported-products/orders/${id}/confirm-payment`, { method: "POST" });
-      if (!res.ok) throw new Error(await friendlyApiError(res));
-      await queryClient.invalidateQueries({ queryKey: ["admin", "imported-orders"] });
-    } finally {
-      setOrderActionId(null);
-    }
-  }
-
-  async function handleCancelOrder(id: string) {
-    if (!cancelReason.trim()) return;
-    setOrderActionId(id);
-    try {
-      const res = await fetch(`/api/proxy/imported-products/orders/${id}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: cancelReason.trim() }),
-      });
-      if (!res.ok) throw new Error(await friendlyApiError(res));
-      setCancellingOrderId(null);
-      setCancelReason("");
-      await queryClient.invalidateQueries({ queryKey: ["admin", "imported-orders"] });
-    } finally {
-      setOrderActionId(null);
-    }
-  }
-
   const enabledProviders = (providers ?? []).filter((p) => p.enabled);
 
   return (
@@ -217,6 +164,7 @@ export function AdminImportedProductsPanel() {
           Prodotti importati da un provider esterno (AliExpress e, in futuro, altri) -- compaiono nello Shop del cliente
           come una normale sottocategoria &ldquo;Acquisti LialEnergy&rdquo;, senza mai rivelare la fonte esterna. Il cliente può
           pagarli in parte o interamente con i suoi LialCash, ma questi prodotti non generano mai cashback in cambio.
+          Gli ordini su questi prodotti si gestiscono insieme a tutti gli altri nella scheda &ldquo;Ordini&rdquo;.
         </p>
       </div>
 
@@ -464,92 +412,6 @@ export function AdminImportedProductsPanel() {
                     </td>
                   </tr>
                 ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Orders */}
-      <h4 className="text-sm font-semibold text-white light:text-slate-900">Ordini Acquisti LialEnergy</h4>
-      <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
-        {ordersError && <p className="px-5 pt-5 text-sm text-rose-400">Impossibile caricare gli ordini.</p>}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold">
-                <th className="py-2 px-5">Cliente</th>
-                <th className="py-2 px-5">Prodotto</th>
-                <th className="py-2 px-5 text-right">Totale</th>
-                <th className="py-2 px-5 text-right">Residuo</th>
-                <th className="py-2 px-5">Metodo</th>
-                <th className="py-2 px-5">Stato</th>
-                <th className="py-2 px-5 text-right">Azioni</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 light:divide-slate-200">
-              {orders === undefined ? (
-                <tr><td colSpan={7} className="text-center py-6 text-slate-500">Caricamento...</td></tr>
-              ) : orders.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-6 text-slate-500">Nessun ordine ancora.</td></tr>
-              ) : (
-                orders.map((o) => {
-                  const awaiting = o.status === "AWAITING_PAYMENT";
-                  const busy = orderActionId === o.id;
-                  return (
-                    <tr key={o.id} className="text-slate-300 light:text-slate-600 align-top">
-                      <td className="py-2 px-5">{o.customer_display_name}</td>
-                      <td className="py-2 px-5">{o.product_name}</td>
-                      <td className="py-2 px-5 text-right font-semibold text-white light:text-slate-900">{euro(o.amount_cents)}</td>
-                      <td className="py-2 px-5 text-right">{euro(o.residual_amount_cents)}</td>
-                      <td className="py-2 px-5">{o.payment_method === "CARD" ? "Carta" : "Bonifico"}</td>
-                      <td className="py-2 px-5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ORDER_STATUS_COLORS[o.status]}`}>
-                          {ORDER_STATUS_LABELS[o.status]}
-                        </span>
-                      </td>
-                      <td className="py-2 px-5 text-right">
-                        {awaiting && (
-                          <div className="flex flex-col items-end gap-1.5">
-                            {o.payment_method === "BANK_TRANSFER" && (
-                              <button
-                                onClick={() => handleConfirmOrderPayment(o.id)}
-                                disabled={busy}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50"
-                              >
-                                {busy ? "..." : "Conferma bonifico"}
-                              </button>
-                            )}
-                            {cancellingOrderId === o.id ? (
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  value={cancelReason}
-                                  onChange={(e) => setCancelReason(e.target.value)}
-                                  placeholder="Motivo"
-                                  className="w-28 rounded-lg glass-input px-2 py-1 text-[11px] focus:border-orange-500"
-                                />
-                                <button
-                                  onClick={() => handleCancelOrder(o.id)}
-                                  disabled={busy || !cancelReason.trim()}
-                                  className="px-2 py-1 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 border border-rose-500/30 text-rose-400 text-[11px] font-semibold transition cursor-pointer disabled:opacity-50"
-                                >
-                                  OK
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setCancellingOrderId(o.id)}
-                                className="px-2.5 py-1 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-[11px] font-semibold transition cursor-pointer"
-                              >
-                                Annulla ordine
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
               )}
             </tbody>
           </table>

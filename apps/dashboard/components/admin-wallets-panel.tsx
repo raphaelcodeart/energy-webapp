@@ -363,8 +363,8 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                         {t.reference_contract_id && (
                           <p><span className="text-slate-500">Contratto collegato:</span> <span className="font-mono text-[10px] text-slate-300 light:text-slate-600">{t.reference_contract_id}</span></p>
                         )}
-                        {t.reference_order_id && (
-                          <p><span className="text-slate-500">Ordine collegato:</span> <span className="font-mono text-[10px] text-slate-300 light:text-slate-600">{t.reference_order_id}</span> <span className="text-slate-600">(vedi Ordini)</span></p>
+                        {(t.reference_order_id || t.reference_imported_order_id) && (
+                          <p><span className="text-slate-500">Ordine collegato:</span> <span className="font-mono text-[10px] text-slate-300 light:text-slate-600">{t.reference_order_id ?? t.reference_imported_order_id}</span> <span className="text-slate-600">(vedi Ordini)</span></p>
                         )}
                         {t.reference_invoice_redemption_id && (
                           <p><span className="text-slate-500">Riscatto collegato:</span> <span className="font-mono text-[10px] text-slate-300 light:text-slate-600">{t.reference_invoice_redemption_id}</span> <span className="text-slate-600">(vedi Riscatti Fatture)</span></p>

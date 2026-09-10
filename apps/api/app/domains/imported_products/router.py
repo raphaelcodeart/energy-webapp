@@ -11,6 +11,7 @@ from app.domains.imported_products.models import IMPORT_PROVIDER_TYPES
 from app.domains.imported_products.schemas import (
     CheckoutSessionRead,
     ImportedOrderCancelRequest,
+    ImportedOrderCreateRequest,
     ImportedOrderCreditOtpRequest,
     ImportedOrderPaymentMethodUpdate,
     ImportedOrderQuoteRead,
@@ -159,6 +160,28 @@ async def list_products_active(
         )
         for p in products
     ]
+
+
+# --- Orders: admin quote (for the unified "+ Nuovo Ordine" admin form) ---
+
+@router.get("/orders/quote", response_model=ImportedOrderQuoteRead)
+async def get_quote(
+    customer_user_id: uuid.UUID,
+    imported_product_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("wallet.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ImportedOrderQuoteRead:
+    """Admin equivalent of GET /orders/quote -- same purpose (show the
+    credit cap and the customer's balance before placing an order on their
+    behalf) for an imported-catalog product."""
+    try:
+        quote = await imported_products_service.get_quote(
+            db, organization_id=current_user.organization_id, customer_user_id=customer_user_id,
+            imported_product_id=imported_product_id,
+        )
+    except imported_products_service.ProductNotEligibleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return ImportedOrderQuoteRead(**quote)
 
 
 # --- Orders: self-checkout ---
@@ -334,6 +357,33 @@ async def get_my_payment_proof_url(
 
 
 # --- Orders: admin ---
+
+@router.post("/orders", response_model=ImportedOrderRead, status_code=status.HTTP_201_CREATED)
+async def create_order(
+    payload: ImportedOrderCreateRequest,
+    current_user: CurrentUser = Depends(require_permission("wallet.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> ImportedOrderRead:
+    """Admin equivalent of POST /orders -- lets staff place an imported-
+    product order on a customer's behalf, exactly like a manually-catalogued
+    one, since the whole point of this table split is to stay invisible to
+    everyone except the catalog-management screen (see
+    imported_products/models.py). No OTP (same reasoning as orders/router.py
+    ::create_order: an admin applying a customer's own credit on their
+    behalf is already a permissioned, audited action)."""
+    try:
+        order = await imported_products_service.create_order(
+            db, organization_id=current_user.organization_id, customer_user_id=payload.customer_user_id,
+            imported_product_id=payload.imported_product_id, credit_applied_cents=payload.credit_applied_cents,
+            actor_user_id=current_user.user_id, payment_method=payload.payment_method, note=payload.note,
+            require_otp_for_credit_spend=False,
+        )
+    except imported_products_service.ImportedProductsError as exc:
+        raise _error_to_http(exc) from exc
+    except wallets_service.InsufficientBalanceError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return ImportedOrderRead(**(await imported_products_service.to_read_dict(db, order)))
+
 
 @router.get("/orders", response_model=list[ImportedOrderRead])
 async def list_orders(

@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
-import type { CustomerRead, OrderQuoteRead, OrderRead, ProductCatalogRead } from "@/lib/types";
+import type {
+  CustomerRead,
+  ImportedOrderRead,
+  ImportedProductAdminRead,
+  OrderRead,
+  ProductCatalogRead,
+} from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   AWAITING_PAYMENT: "Attesa pagamento residuo",
@@ -20,6 +26,44 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: "Bonifico",
   CARD: "Carta (Stripe)",
 };
+
+/** Same unification as customer-orders-panel.tsx::UnifiedOrder -- an order
+    placed for a manually-catalogued product (orders.id) and one placed for
+    an imported-catalog product (imported_product_orders.id) are two
+    different tables internally, kept apart only so the product CATALOG
+    import mechanism stays isolated (see imported_products/models.py).
+    Everywhere else, including this admin screen, they are merged into one
+    continuous list and managed identically -- `source` only ever decides
+    which backend endpoint an action call goes to. */
+type UnifiedOrder = {
+  id: string;
+  source: "standard" | "imported";
+  customer_display_name: string;
+  product_name: string;
+  product_image_url: string | null;
+  amount_cents: number;
+  credit_applied_cents: number;
+  residual_amount_cents: number;
+  status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  payment_method: "BANK_TRANSFER" | "CARD";
+  payment_proof_uploaded_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+};
+
+type UnifiedQuote = {
+  product_name: string;
+  amount_cents: number;
+  credit_discount_percentage: number;
+  max_creditable_cents: number;
+  customer_wallet_balance_cents: number;
+  bank_transfer_available: boolean;
+  card_available: boolean;
+};
+
+function ordersBasePath(source: UnifiedOrder["source"]): string {
+  return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
+}
 
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
@@ -37,7 +81,7 @@ function formatDate(iso: string): string {
 
 /** Same derivation as customer-orders-panel.tsx::orderCode -- must stay
     identical so a customer reading their own "Ordine #XXXXXXXX" and an
-    admin looking it up here see the same code. */
+    admin looking it up here see the same code, regardless of source. */
 function orderCode(id: string): string {
   return id.slice(0, 8).toUpperCase();
 }
@@ -54,29 +98,53 @@ async function fetchProducts(): Promise<ProductCatalogRead[]> {
   return res.json();
 }
 
-async function fetchOrders(statusFilter: string): Promise<OrderRead[]> {
-  const qs = statusFilter !== "ALL" ? `?status_filter=${statusFilter}` : "";
-  const res = await fetch(`/api/proxy/orders${qs}`);
-  if (!res.ok) throw new Error("Impossibile caricare gli ordini.");
+async function fetchImportedProducts(): Promise<ImportedProductAdminRead[]> {
+  const res = await fetch("/api/proxy/imported-products/products");
+  if (!res.ok) throw new Error("Impossibile caricare i prodotti importati.");
   return res.json();
 }
 
-async function fetchQuote(customerUserId: string, productVersionId: string): Promise<OrderQuoteRead> {
-  const res = await fetch(`/api/proxy/orders/quote?customer_user_id=${customerUserId}&product_version_id=${productVersionId}`);
+async function fetchOrders(statusFilter: string): Promise<UnifiedOrder[]> {
+  const qs = statusFilter !== "ALL" ? `?status_filter=${statusFilter}` : "";
+  const [standardRes, importedRes] = await Promise.all([
+    fetch(`/api/proxy/orders${qs}`),
+    fetch(`/api/proxy/imported-products/orders${qs}`),
+  ]);
+  if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare gli ordini.");
+  const standard: OrderRead[] = await standardRes.json();
+  const imported: ImportedOrderRead[] = await importedRes.json();
+  const merged: UnifiedOrder[] = [
+    ...standard.map((o) => ({ ...o, source: "standard" as const })),
+    ...imported.map((o) => ({ ...o, source: "imported" as const })),
+  ];
+  merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return merged;
+}
+
+async function fetchQuote(
+  customerUserId: string, productRef: { id: string; source: "standard" | "imported" }
+): Promise<UnifiedQuote> {
+  const url = productRef.source === "imported"
+    ? `/api/proxy/imported-products/orders/quote?customer_user_id=${customerUserId}&imported_product_id=${productRef.id}`
+    : `/api/proxy/orders/quote?customer_user_id=${customerUserId}&product_version_id=${productRef.id}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Impossibile calcolare il preventivo.");
   return res.json();
 }
 
-/** Checkout per prodotti dropshipping/partner (Fase 4 del progetto cashback,
-    vedi docs/cashback-partner-invoices-plan.md) -- MAI per prodotti Interno
-    Lial Energy, che restano contratti (vedi "Nuovo Contratto"). Solo admin
-    per ora: nessun self-checkout cliente. */
+/** Checkout per prodotti dropshipping/partner E per prodotti importati
+    ("Acquisti LialEnergy") -- vedi UnifiedOrder qui sopra: gestiti in modo
+    identico, un unico elenco, un solo form di creazione. MAI per prodotti
+    Interno Lial Energy, che restano contratti (vedi "Nuovo Contratto").
+    Solo admin per ora: nessun self-checkout cliente per il catalogo
+    principale (il catalogo importato invece ha anche il self-checkout, vedi
+    customer-products-panel.tsx). */
 export function AdminOrdersPanel() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("AWAITING_PAYMENT");
   const [showCreate, setShowCreate] = useState(false);
   const [customerUserId, setCustomerUserId] = useState("");
-  const [productVersionId, setProductVersionId] = useState("");
+  const [productRef, setProductRef] = useState<{ id: string; source: "standard" | "imported" } | null>(null);
   const [creditAmount, setCreditAmount] = useState("0.00");
   const [note, setNote] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
@@ -87,6 +155,7 @@ export function AdminOrdersPanel() {
 
   const { data: customers } = useQuery({ queryKey: ["admin", "customers"], queryFn: fetchCustomers });
   const { data: allProducts } = useQuery({ queryKey: ["admin", "products"], queryFn: fetchProducts });
+  const { data: allImportedProducts } = useQuery({ queryKey: ["admin", "imported-products"], queryFn: fetchImportedProducts });
   const { data: orders, error: loadError } = useQuery({
     queryKey: ["admin", "orders", statusFilter],
     queryFn: () => fetchOrders(statusFilter),
@@ -94,11 +163,12 @@ export function AdminOrdersPanel() {
 
   const orderableCustomers = (customers ?? []).filter((c) => !!c.user_id);
   const orderableProducts = (allProducts ?? []).filter((p) => p.category !== "INTERNAL" && p.current_version);
+  const orderableImportedProducts = (allImportedProducts ?? []).filter((p) => p.status === "ACTIVE");
 
   const { data: quote } = useQuery({
-    queryKey: ["admin", "orders", "quote", customerUserId, productVersionId],
-    queryFn: () => fetchQuote(customerUserId, productVersionId),
-    enabled: !!customerUserId && !!productVersionId,
+    queryKey: ["admin", "orders", "quote", customerUserId, productRef?.source, productRef?.id],
+    queryFn: () => fetchQuote(customerUserId, productRef!),
+    enabled: !!customerUserId && !!productRef,
   });
 
   // Default the credit field to the maximum usable amount whenever the
@@ -117,6 +187,7 @@ export function AdminOrdersPanel() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!productRef) return;
     const creditCents = Math.round(parseFloat(creditAmount.replace(",", ".")) * 100);
     if (!Number.isFinite(creditCents) || creditCents < 0) {
       setCreateError("Importo in LialCash non valido.");
@@ -125,20 +196,19 @@ export function AdminOrdersPanel() {
     setCreateLoading(true);
     setCreateError(null);
     try {
-      const res = await fetch("/api/proxy/orders", {
+      const url = productRef.source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
+      const body = productRef.source === "imported"
+        ? { customer_user_id: customerUserId, imported_product_id: productRef.id, credit_applied_cents: creditCents, note: note || null }
+        : { customer_user_id: customerUserId, product_version_id: productRef.id, credit_applied_cents: creditCents, note: note || null };
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_user_id: customerUserId,
-          product_version_id: productVersionId,
-          credit_applied_cents: creditCents,
-          note: note || null,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       setShowCreate(false);
       setCustomerUserId("");
-      setProductVersionId("");
+      setProductRef(null);
       setCreditAmount("0.00");
       setNote("");
       await invalidate();
@@ -149,10 +219,10 @@ export function AdminOrdersPanel() {
     }
   }
 
-  async function handleConfirmPayment(id: string) {
-    setActionLoadingId(id);
+  async function handleConfirmPayment(order: UnifiedOrder) {
+    setActionLoadingId(order.id);
     try {
-      const res = await fetch(`/api/proxy/orders/${id}/confirm-payment`, { method: "POST" });
+      const res = await fetch(`${ordersBasePath(order.source)}/${order.id}/confirm-payment`, { method: "POST" });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       await invalidate();
     } finally {
@@ -160,11 +230,11 @@ export function AdminOrdersPanel() {
     }
   }
 
-  async function handleCancel(id: string) {
+  async function handleCancel(order: UnifiedOrder) {
     if (!cancelReason.trim()) return;
-    setActionLoadingId(id);
+    setActionLoadingId(order.id);
     try {
-      const res = await fetch(`/api/proxy/orders/${id}/cancel`, {
+      const res = await fetch(`${ordersBasePath(order.source)}/${order.id}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: cancelReason.trim() }),
@@ -178,10 +248,10 @@ export function AdminOrdersPanel() {
     }
   }
 
-  async function handleViewPaymentProof(id: string) {
-    setActionLoadingId(id);
+  async function handleViewPaymentProof(order: UnifiedOrder) {
+    setActionLoadingId(order.id);
     try {
-      const res = await fetch(`/api/proxy/orders/${id}/payment-proof-url`);
+      const res = await fetch(`${ordersBasePath(order.source)}/${order.id}/payment-proof-url`);
       if (!res.ok) throw new Error(await friendlyApiError(res));
       const { url } = await res.json();
       window.open(url, "_blank", "noopener,noreferrer");
@@ -202,7 +272,7 @@ export function AdminOrdersPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-slate-400 light:text-slate-500">
-          Acquisti di prodotti dropshipping/partner, con sconto in LialCash opzionale.
+          Acquisti di prodotti dropshipping/partner e Acquisti LialEnergy, con sconto in LialCash opzionale -- un unico elenco.
         </p>
         <button
           onClick={() => { setShowCreate(!showCreate); setCreateError(null); }}
@@ -229,16 +299,36 @@ export function AdminOrdersPanel() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Prodotto</label>
-                <select required value={productVersionId} onChange={(e) => setProductVersionId(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500">
+                <select
+                  required
+                  value={productRef ? `${productRef.source}:${productRef.id}` : ""}
+                  onChange={(e) => {
+                    const [source, id] = e.target.value.split(":");
+                    setProductRef(id ? { id, source: source as "standard" | "imported" } : null);
+                  }}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
+                >
                   <option value="">Seleziona...</option>
-                  {orderableProducts.map((p) => (
-                    <option key={p.id} value={p.current_version!.id}>
-                      {p.current_version!.name} ({euro(p.current_version!.base_price_cents)})
-                    </option>
-                  ))}
+                  {orderableProducts.length > 0 && (
+                    <optgroup label="Catalogo prodotti">
+                      {orderableProducts.map((p) => (
+                        <option key={p.id} value={`standard:${p.current_version!.id}`}>
+                          {p.current_version!.name} ({euro(p.current_version!.base_price_cents)})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {orderableImportedProducts.length > 0 && (
+                    <optgroup label="Acquisti LialEnergy">
+                      {orderableImportedProducts.map((p) => (
+                        <option key={p.id} value={`imported:${p.id}`}>
+                          {p.name} ({euro(p.price_cents)})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
-                <p className="text-[10px] text-slate-500">Solo prodotti dropshipping/partner -- i prodotti Interno Lial si vendono come contratto.</p>
+                <p className="text-[10px] text-slate-500">Solo prodotti dropshipping/partner/importati -- i prodotti Interno Lial si vendono come contratto.</p>
               </div>
             </div>
 
@@ -270,7 +360,7 @@ export function AdminOrdersPanel() {
                 {residualPreview != null && (
                   <p className="text-xs text-slate-300 light:text-slate-600">
                     Residuo da bonifico: <strong className="text-orange-400">{euro(Math.max(residualPreview, 0))}</strong>
-                    {residualPreview <= 0 && <span className="text-emerald-400"> -- copre l'intero importo, nessun bonifico necessario</span>}
+                    {residualPreview <= 0 && <span className="text-emerald-400"> -- copre l&apos;intero importo, nessun bonifico necessario</span>}
                   </p>
                 )}
               </div>
@@ -355,7 +445,7 @@ export function AdminOrdersPanel() {
                       </span>
                     ) : (
                       <button
-                        onClick={() => handleConfirmPayment(o.id)}
+                        onClick={() => handleConfirmPayment(o)}
                         disabled={actionLoadingId === o.id}
                         className="w-full px-4 py-2 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                       >
@@ -364,7 +454,7 @@ export function AdminOrdersPanel() {
                     )}
                     {o.payment_proof_uploaded_at && (
                       <button
-                        onClick={() => handleViewPaymentProof(o.id)}
+                        onClick={() => handleViewPaymentProof(o)}
                         disabled={actionLoadingId === o.id}
                         className="w-full px-4 py-2 rounded-xl bg-sky-600/10 hover:bg-sky-600/20 border border-sky-500/20 text-sky-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                       >
@@ -388,7 +478,7 @@ export function AdminOrdersPanel() {
                       className="w-full rounded-lg glass-input px-3 py-1.5 text-sm focus:border-orange-500" />
                   </div>
                   <button
-                    onClick={() => handleCancel(o.id)}
+                    onClick={() => handleCancel(o)}
                     disabled={actionLoadingId === o.id}
                     className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
                   >

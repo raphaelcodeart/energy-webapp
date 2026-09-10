@@ -29,6 +29,14 @@ class FinancialMovementRead(BaseModel):
     # "What this movement is about" -- product name for an order-linked row,
     # partner name for an invoice-redemption-linked row.
     product_name: str | None = None
+    # Deliberately unified: an order placed for a manually-catalogued
+    # product (orders.id) and one placed for an imported-catalog product
+    # (imported_product_orders.id) are two different tables internally (see
+    # imported_products/models.py -- kept apart only to isolate the product
+    # CATALOG import mechanism), but from here on out -- order management,
+    # accounting, "I miei Ordini" -- they are presented identically. Both
+    # populate this same field; the frontend never needs to know or care
+    # which table actually backs a given order id.
     order_id: uuid.UUID | None = None
     invoice_redemption_id: uuid.UUID | None = None
     note: str | None = None

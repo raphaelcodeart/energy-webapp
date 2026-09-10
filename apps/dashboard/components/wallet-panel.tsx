@@ -44,8 +44,13 @@ function shortCode(id: string): string {
     component). */
 function referenceLink(t: WalletTransactionRead): { label: string; href: string } | null {
   const basePath = typeof window !== "undefined" && window.location.pathname.startsWith("/promoter") ? "/promoter" : "/customer";
-  if (t.reference_order_id) {
-    return { label: `Ordine #${shortCode(t.reference_order_id)}`, href: `${basePath}?tab=orders` };
+  // reference_order_id / reference_imported_order_id are two different FK
+  // columns internally (two different tables, see imported_products/models.py),
+  // but both land the customer on the exact same unified "I miei Ordini"
+  // list -- never distinguished here.
+  const orderId = t.reference_order_id ?? t.reference_imported_order_id;
+  if (orderId) {
+    return { label: `Ordine #${shortCode(orderId)}`, href: `${basePath}?tab=orders` };
   }
   if (t.reference_invoice_redemption_id) {
     return { label: `Riscatto #${shortCode(t.reference_invoice_redemption_id)}`, href: `${basePath}?tab=cashback` };

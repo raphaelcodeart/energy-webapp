@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
-import type { OrderRead } from "@/lib/types";
+import type { ImportedOrderRead, OrderRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   AWAITING_PAYMENT: "In attesa di pagamento",
@@ -32,6 +32,46 @@ const FILTER_TABS: { key: OrderFilter; label: string }[] = [
   { key: "CARD", label: "Carta" },
 ];
 
+/** A purchase, whichever of the two order tables actually backs it --
+    orders.id for a manually-catalogued product, imported_product_orders.id
+    for one from the "Acquisti LialEnergy" plugin (see
+    imported_products/models.py). The split exists ONLY to keep the two
+    product catalogs apart; everywhere else (this screen, admin-orders-
+    panel.tsx, Contabilità) the two are merged into one continuous history
+    and behave identically -- `source` is purely an internal routing detail
+    (which backend endpoint an action call goes to), never surfaced in the
+    UI. Cashback fields don't exist on an imported order at all (see
+    ImportedOrderRead), normalized to their "not applicable" values here so
+    the rest of this component never has to branch on `source` beyond
+    picking the right API path. */
+type UnifiedOrder = {
+  id: string;
+  source: "standard" | "imported";
+  product_name: string;
+  product_image_url: string | null;
+  amount_cents: number;
+  credit_applied_cents: number;
+  residual_amount_cents: number;
+  cashback_requested: boolean;
+  cashback_surcharge_cents: number;
+  cashback_credited_at: string | null;
+  status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  payment_method: "BANK_TRANSFER" | "CARD";
+  stripe_checkout_session_id: string | null;
+  payment_proof_uploaded_at: string | null;
+  note: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+};
+
+/** Which backend this order's actions (pay, switch method, upload proof,
+    cancel...) route to -- the one and only place `source` matters. */
+function ordersBasePath(source: UnifiedOrder["source"]): string {
+  return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
+}
+
 function euro(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
@@ -54,15 +94,34 @@ function formatDateTime(iso: string): string {
     sequential order number in the schema, so (like the bank-transfer
     causale already did) this is derived consistently from the UUID
     everywhere an order needs to be identified at a glance: here, in
-    admin-orders-panel.tsx, and in the "Pagamento confermato" email. */
+    admin-orders-panel.tsx, and in the "Pagamento confermato" email. Same
+    derivation regardless of source, so a customer reading their order
+    history never sees the two tables behind it as anything other than one
+    continuous list. */
 function orderCode(id: string): string {
   return id.slice(0, 8).toUpperCase();
 }
 
-async function fetchMyOrders(): Promise<OrderRead[]> {
-  const res = await fetch("/api/proxy/orders/mine");
-  if (!res.ok) throw new Error("Impossibile caricare i tuoi ordini.");
-  return res.json();
+async function fetchMyOrders(): Promise<UnifiedOrder[]> {
+  const [standardRes, importedRes] = await Promise.all([
+    fetch("/api/proxy/orders/mine"),
+    fetch("/api/proxy/imported-products/orders/mine"),
+  ]);
+  if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare i tuoi ordini.");
+  const standard: OrderRead[] = await standardRes.json();
+  const imported: ImportedOrderRead[] = await importedRes.json();
+  const merged: UnifiedOrder[] = [
+    ...standard.map((o) => ({ ...o, source: "standard" as const })),
+    ...imported.map((o) => ({
+      ...o,
+      source: "imported" as const,
+      cashback_requested: false,
+      cashback_surcharge_cents: 0,
+      cashback_credited_at: null,
+    })),
+  ];
+  merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return merged;
 }
 
 async function fetchPaymentInfo(): Promise<{ iban: string | null; holder: string; instructions: string | null }> {
@@ -72,7 +131,7 @@ async function fetchPaymentInfo(): Promise<{ iban: string | null; holder: string
 }
 
 function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
-  order: OrderRead;
+  order: UnifiedOrder;
   onClose: () => void;
   onViewProof: () => void;
   viewProofLoading: boolean;
@@ -173,10 +232,10 @@ function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
   );
 }
 
-/** "I miei ordini": every DROPSHIPPING/PARTNER product purchase the customer
-    has made, like an e-commerce order-history page -- a professional shop
-    always lets the buyer see what they bought and its status, and pay an
-    unpaid order without having to remember to go back to the product page.
+/** "I miei ordini": every product purchase the customer has made -- both a
+    manually-catalogued DROPSHIPPING/PARTNER product AND one from the
+    "Acquisti LialEnergy" imported-products plugin, merged into one
+    continuous, indistinguishable list (see UnifiedOrder's docstring).
     Never shows Lial Energy contracts (see business-rules.md -- those are
     Contract rows, not Order rows, tracked in "I miei Contratti" instead). */
 export function CustomerOrdersPanel() {
@@ -194,7 +253,7 @@ export function CustomerOrdersPanel() {
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [proofOrderId, setProofOrderId] = useState<string | null>(null);
+  const [proofTarget, setProofTarget] = useState<UnifiedOrder | null>(null);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [viewProofLoading, setViewProofLoading] = useState(false);
   const { data: paymentInfo } = useQuery({
@@ -207,7 +266,7 @@ export function CustomerOrdersPanel() {
     await queryClient.invalidateQueries({ queryKey: ["customer", "orders"] });
   }
 
-  async function startCardCheckout(order: OrderRead) {
+  async function startCardCheckout(order: UnifiedOrder) {
     setPayingId(order.id);
     try {
       // Opens Stripe in a NEW TAB rather than navigating away from the
@@ -224,7 +283,7 @@ export function CustomerOrdersPanel() {
       cancelUrl.searchParams.set("payment", "cancelled");
 
       const res = await fetch(
-        `/api/proxy/orders/mine/${order.id}/checkout-session?success_url=${encodeURIComponent(successUrl.toString())}&cancel_url=${encodeURIComponent(cancelUrl.toString())}`,
+        `${ordersBasePath(order.source)}/mine/${order.id}/checkout-session?success_url=${encodeURIComponent(successUrl.toString())}&cancel_url=${encodeURIComponent(cancelUrl.toString())}`,
         { method: "POST" }
       );
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -237,7 +296,7 @@ export function CustomerOrdersPanel() {
     }
   }
 
-  function handlePay(order: OrderRead) {
+  function handlePay(order: UnifiedOrder) {
     setPayError(null);
     if (order.payment_method === "BANK_TRANSFER") {
       setBankDetailsFor(bankDetailsFor === order.id ? null : order.id);
@@ -246,17 +305,17 @@ export function CustomerOrdersPanel() {
     startCardCheckout(order);
   }
 
-  async function handleSwitchMethod(order: OrderRead, newMethod: "CARD" | "BANK_TRANSFER") {
+  async function handleSwitchMethod(order: UnifiedOrder, newMethod: "CARD" | "BANK_TRANSFER") {
     setActionError(null);
     setSwitchingId(order.id);
     try {
-      const res = await fetch(`/api/proxy/orders/mine/${order.id}/payment-method`, {
+      const res = await fetch(`${ordersBasePath(order.source)}/mine/${order.id}/payment-method`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payment_method: newMethod }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
-      const updated: OrderRead = await res.json();
+      const updated = { ...(await res.json()), source: order.source } as UnifiedOrder;
       await invalidate();
       if (newMethod === "CARD") {
         // Straight into checkout -- "pagalo subito con carta" should not
@@ -272,37 +331,37 @@ export function CustomerOrdersPanel() {
     }
   }
 
-  function openProofPicker(orderId: string) {
+  function openProofPicker(order: UnifiedOrder) {
     setActionError(null);
-    setProofOrderId(orderId);
+    setProofTarget(order);
     fileInputRef.current?.click();
   }
 
   async function handleProofSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-selecting the same file later
-    if (!file || !proofOrderId) return;
-    setUploadingId(proofOrderId);
+    if (!file || !proofTarget) return;
+    setUploadingId(proofTarget.id);
     setActionError(null);
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch(`/api/proxy/orders/mine/${proofOrderId}/payment-proof`, { method: "POST", body });
+      const res = await fetch(`${ordersBasePath(proofTarget.source)}/mine/${proofTarget.id}/payment-proof`, { method: "POST", body });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       await invalidate();
     } catch (err: any) {
       setActionError(err.message || "Impossibile caricare la prova di pagamento.");
     } finally {
       setUploadingId(null);
-      setProofOrderId(null);
+      setProofTarget(null);
     }
   }
 
-  async function handleViewProof(orderId: string) {
+  async function handleViewProof(order: UnifiedOrder) {
     setViewProofLoading(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/proxy/orders/mine/${orderId}/payment-proof-url`);
+      const res = await fetch(`${ordersBasePath(order.source)}/mine/${order.id}/payment-proof-url`);
       if (!res.ok) throw new Error(await friendlyApiError(res));
       const { url } = await res.json();
       window.open(url, "_blank", "noopener,noreferrer");
@@ -494,7 +553,7 @@ export function CustomerOrdersPanel() {
                           {switchingId === o.id ? "..." : "Paga subito con carta"}
                         </button>
                         <button
-                          onClick={() => openProofPicker(o.id)}
+                          onClick={() => openProofPicker(o)}
                           disabled={busy}
                           className="w-full px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                         >
@@ -546,7 +605,7 @@ export function CustomerOrdersPanel() {
         <OrderDetailModal
           order={detailOrder}
           onClose={() => setDetailOrderId(null)}
-          onViewProof={() => handleViewProof(detailOrder.id)}
+          onViewProof={() => handleViewProof(detailOrder)}
           viewProofLoading={viewProofLoading}
         />
       )}
