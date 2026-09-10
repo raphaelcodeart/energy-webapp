@@ -4,6 +4,46 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 36 — 2026-09-11 — "Miei Clienti": promoter-run CRM (register a customer + activate a contract for them)
+
+- [x] A promoter can now register a brand-new customer themselves (no
+  self-registration/referral-link click needed) and immediately activate
+  a Lial Energy contract for them, including uploading the required
+  documents -- even though the customer has never logged in. New "Miei
+  Clienti" tab in the promoter dashboard (`network-customers-panel.tsx`).
+- [x] `network/service.py::create_recruited_customer` -- creates the
+  Customer + a real User login + the same `CustomerAttribution` row a
+  normal referral-link registration creates, so the customer lands in
+  the promoter's own network automatically, same as if they'd clicked
+  the promoter's link. `auth/service.py::send_account_invite_email` (new)
+  gives the customer a genuine "primo accesso" (click a link, set your
+  own password) instead of a temp-password handoff to the promoter.
+  `reset_password()` now also marks the account email-verified when
+  completed this way, so a promoter-recruited customer clears both
+  account gates (docs/business-rules.md#account-gates) with one email,
+  not two.
+- [x] `contracts/service.py::create_contract_for_recruited_customer` --
+  the CRM counterpart to the existing self-service activation flow:
+  producer_agent_id is always the calling promoter's own agent (never
+  client-supplied), and the target customer must actually be attributed
+  to that same promoter -- a promoter can never activate a contract for
+  someone else's customer.
+- [x] **Latent permission gap found and fixed while wiring this up**: had
+  PROMOTER simply been granted `documents.upload`/`documents.download`
+  (needed for this feature, and PROMOTER never had either before),
+  `documents/router.py::_assert_contract_document_access`'s existing
+  logic would have given them unrestricted access to every contract's
+  documents in the whole org, not just their own -- it only ever scoped
+  the CUSTOMER case. Fixed to scope PROMOTER to contracts they're the
+  producer of, same as the customer-only scoping it already had.
+  Deliberately left `GET /customers`/`GET /customers/{id}` (also
+  technically callable by PROMOTER via its existing `customers.read`
+  grant, and also unscoped) untouched -- out of scope for this session,
+  worth revisiting; this feature's own customer list uses a brand-new,
+  properly-scoped `GET /network/customers/mine` instead of that endpoint.
+- [x] Migration 0034 grants PROMOTER the two new permissions. 7 new
+  backend tests; full suite 219/219 passing.
+
 ## Session 35 — 2026-09-10 — Admin home quick-links, unified admin Contabilità, invoice-redemption payment leg fix
 
 - [x] Admin "Panoramica" quick-access grid: added Ordini, Riscatti Fatture,
