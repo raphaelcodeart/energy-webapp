@@ -10,6 +10,7 @@ from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.contracts.schemas import (
     ContractCreate,
+    ContractForCustomerCreate,
     ContractIbanUpdate,
     ContractRead,
     ContractSelfServiceCreate,
@@ -91,6 +92,31 @@ async def create_my_contract(
             product_version_id=payload.product_version_id,
             supply_point_payload=payload.supply_point,
             email=payload.email,
+        )
+    except SelfServiceContractError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])
+
+
+@router.post("/for-customer", response_model=ContractRead, status_code=status.HTTP_201_CREATED)
+async def create_contract_for_my_customer(
+    payload: ContractForCustomerCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRead:
+    """The CRM-style counterpart to POST /contracts/mine: a promoter
+    activates a contract for one of THEIR OWN customers (who may never have
+    logged in) instead of a customer activating their own. No permission
+    beyond authentication -- any user with an ACTIVE AgentProfile can call
+    this, exactly like /contracts/mine works for any authenticated customer;
+    ownership of the target customer is enforced inside the service, not
+    here (see create_contract_for_recruited_customer's own docstring)."""
+    try:
+        contract = await contract_service.create_contract_for_recruited_customer(
+            db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id,
+            customer_id=payload.customer_id, product_version_id=payload.product_version_id,
+            supply_point_payload=payload.supply_point, email=payload.email,
         )
     except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

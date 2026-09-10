@@ -375,10 +375,63 @@ async def resend_verification_email(db: AsyncSession, *, user: User) -> None:
 
 
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
+# A promoter-created customer (network/service.py::create_recruited_customer)
+# may not check their email for days -- much more generous than a genuine
+# "forgot password" moment, which is why this is a separate constant rather
+# than reusing PASSWORD_RESET_TOKEN_EXPIRE_MINUTES.
+ACCOUNT_INVITE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 
 class PasswordResetError(Exception):
     pass
+
+
+async def send_account_invite_email(db: AsyncSession, *, user: User, invited_by_display_name: str) -> None:
+    """The very first email a promoter-created customer ever receives (see
+    network/service.py::create_recruited_customer) -- their account already
+    exists (random, never-revealed password) but they've never set one
+    themselves, so this doubles as their "primo accesso": reuses the exact
+    same PasswordResetToken mechanism/page as a genuine "dimenticata
+    password" request (see request_password_reset above), just different
+    copy and a much longer expiry (ACCOUNT_INVITE_TOKEN_EXPIRE_MINUTES, not
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES) since there's no urgency here.
+    Completing it also marks the account email-verified -- see
+    reset_password()'s own comment for why that's equally valid proof."""
+    settings = get_settings()
+    token = generate_password_reset_token()
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_password_reset_token(token),
+            expires_at=datetime.now(UTC) + timedelta(minutes=ACCOUNT_INVITE_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+
+    set_password_link = f"{settings.public_app_base_url}/reset-password?token={token}"
+    html = render_email(
+        preheader="Il tuo account Lial Energy è pronto",
+        heading="Il tuo account Lial Energy è pronto",
+        body_html=(
+            f"<p>{invited_by_display_name} ha creato per te un account su Lial Energy e attivato "
+            "quanto concordato -- trovi già tutto configurato non appena accedi.</p>"
+            "<p>Per accedere per la prima volta, scegli subito la tua password personale.</p>"
+        ),
+        cta_label="Imposta la tua password",
+        cta_url=set_password_link,
+    )
+    try:
+        send_html_email(
+            to=user.email,
+            subject="Il tuo account Lial Energy è pronto",
+            html_body=html,
+            text_body=(
+                f"{invited_by_display_name} ha creato per te un account su Lial Energy.\n\n"
+                f"Imposta la tua password qui: {set_password_link}"
+            ),
+        )
+    except EmailNotConfiguredError:
+        logger.warning("Account-invite email for %s not sent (SMTP not configured), user=%s", user.email, user.id)
 
 
 async def request_password_reset(
@@ -477,6 +530,14 @@ async def reset_password(db: AsyncSession, *, token: str, new_password: str) -> 
     user.failed_login_attempts = 0
     user.locked_until = None
     reset_token.used_at = datetime.now(UTC)
+    # Successfully completing a token-based emailed link is equally strong
+    # proof of inbox control as clicking the dedicated verify-email link --
+    # matters most for send_account_invite_email() below, whose recipient
+    # has no password yet and would otherwise need to click TWO separate
+    # emailed links (invite, then verify) before ever getting past the
+    # account gates (docs/business-rules.md#account-gates).
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
 
     # A password reset is exactly the moment to kill every existing session --
     # if the reset was needed because the old password leaked, whoever has it

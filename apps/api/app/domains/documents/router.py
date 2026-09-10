@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
 from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError
-from app.domains.contracts.models import Contract
+from app.domains.contracts.models import Contract, ContractAttribution
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.documents import service as documents_service
@@ -39,20 +39,40 @@ async def _get_org_scoped_contract(db: AsyncSession, *, organization_id: uuid.UU
     return contract
 
 
+async def _resolve_own_agent_id(db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID) -> uuid.UUID | None:
+    from app.domains.network.models import AgentProfile
+
+    stmt = select(AgentProfile.id).where(AgentProfile.organization_id == organization_id, AgentProfile.user_id == user_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def _assert_contract_document_access(
     db: AsyncSession, *, current_user: CurrentUser, contract: Contract, actor_role: str
 ) -> None:
-    """A customer may only touch documents on THEIR OWN contract; staff
-    (anyone whose actor_role resolves to ADMIN -- see support/service.py's
-    same classification used for tickets) may touch any contract's documents
-    in the organization."""
-    if actor_role != "CUSTOMER":
+    """A customer may only touch documents on THEIR OWN contract. A promoter
+    (Session 36's "Miei Clienti" CRM -- network/service.py::
+    create_contract_for_recruited_customer) may only touch documents on a
+    contract THEY are the producer of -- never any contract in the org,
+    unlike staff (anyone whose actor_role resolves to ADMIN -- see
+    support/service.py's same classification used for tickets), who may
+    touch any contract's documents in the organization."""
+    if actor_role == "CUSTOMER":
+        own_customer_id = await _resolve_own_customer_id(
+            db, organization_id=current_user.organization_id, user_id=current_user.user_id
+        )
+        if own_customer_id is None or contract.customer_id != own_customer_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
         return
-    own_customer_id = await _resolve_own_customer_id(
-        db, organization_id=current_user.organization_id, user_id=current_user.user_id
-    )
-    if own_customer_id is None or contract.customer_id != own_customer_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
+    if actor_role == "PROMOTER":
+        own_agent_id = await _resolve_own_agent_id(
+            db, organization_id=current_user.organization_id, user_id=current_user.user_id
+        )
+        attribution = (
+            await db.get(ContractAttribution, contract.contract_attribution_id)
+            if contract.contract_attribution_id is not None else None
+        )
+        if own_agent_id is None or attribution is None or attribution.producer_agent_id != own_agent_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
 
 
 async def _document_read(db: AsyncSession, document: Document) -> dict:

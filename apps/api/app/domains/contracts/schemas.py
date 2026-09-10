@@ -95,6 +95,28 @@ class ContractSelfServiceCreate(BaseModel):
         return validated
 
 
+class ContractForCustomerCreate(BaseModel):
+    """POST /contracts/for-customer -- the CRM-style counterpart to
+    ContractSelfServiceCreate: a promoter activates a contract for one of
+    THEIR OWN customers (see contracts/service.py::
+    create_contract_for_recruited_customer). Like ContractSelfServiceCreate,
+    no producer_agent_id -- the calling promoter's own agent is resolved
+    server-side, never client-supplied."""
+
+    customer_id: uuid.UUID
+    product_version_id: uuid.UUID
+    supply_point: SupplyPointCreate
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        validated = _validate_email(v)
+        if validated is None:
+            raise ValueError("email is required")
+        return validated
+
+
 class ContractIbanUpdate(BaseModel):
     iban: str
 

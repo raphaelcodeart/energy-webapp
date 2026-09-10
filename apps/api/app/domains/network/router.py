@@ -8,6 +8,7 @@ from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError, upload_media
+from app.domains.customers.schemas import CustomerCreate, CustomerRead
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
 from app.domains.network.schemas import (
@@ -607,3 +608,42 @@ async def move_agent(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except network_service.NetworkError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+
+@router.post("/customers", response_model=CustomerRead, status_code=status.HTTP_201_CREATED)
+async def create_recruited_customer(
+    payload: CustomerCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    """"Miei Clienti" CRM: a promoter registers a new customer themselves --
+    no permission beyond authentication (any user with an ACTIVE
+    AgentProfile can call this, checked inside the service), same trust
+    model as /contracts/mine. The customer lands in the caller's own
+    network exactly as if they'd clicked their referral link -- see
+    network/service.py::create_recruited_customer."""
+    try:
+        customer = await network_service.create_recruited_customer(
+            db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id,
+            payload=payload, actor_user_id=current_user.user_id,
+        )
+    except network_service.RecruitedCustomerError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    from app.domains.customers import service as customers_service
+
+    row = await customers_service.get_customer_detail(
+        db, organization_id=current_user.organization_id, customer_id=customer.id
+    )
+    return CustomerRead(**row)
+
+
+@router.get("/customers/mine", response_model=list[CustomerRead])
+async def list_my_recruited_customers(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[CustomerRead]:
+    rows = await network_service.list_recruited_customers(
+        db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id
+    )
+    return [CustomerRead(**row) for row in rows]

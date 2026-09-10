@@ -77,6 +77,7 @@ export function ContractActivationWizard({
   accountEmail,
   onClose,
   onActivated,
+  customerId,
 }: {
   product: ProductCatalogRead;
   /** Pre-fills the editable Email field below -- never forced: the customer
@@ -85,6 +86,13 @@ export function ContractActivationWizard({
   accountEmail?: string;
   onClose: () => void;
   onActivated: () => void;
+  /** "Miei Clienti" CRM mode (Session 36): when set, this is a promoter
+      activating a contract on behalf of one of THEIR OWN customers, not a
+      customer activating their own -- posts to /contracts/for-customer
+      instead of /contracts/mine (see network-customers-panel.tsx). Every
+      other step of the wizard (quantity questions, documents) is
+      identical either way. */
+  customerId?: string;
 }) {
   const v = product.current_version!;
   const needsPod = product.energy_type === "ELECTRICITY" || product.energy_type === "DUAL_FUEL";
@@ -138,10 +146,11 @@ export function ContractActivationWizard({
       // notifications; keeping them in order also keeps error messages
       // ("2° punto: ...") meaningful if one fails partway through.
       for (const { entry, podCode, pdrCode } of codeEntries) {
-        const res = await fetch("/api/proxy/contracts/mine", {
+        const res = await fetch(customerId ? "/api/proxy/contracts/for-customer" : "/api/proxy/contracts/mine", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...(customerId ? { customer_id: customerId } : {}),
             product_version_id: v.id,
             email: email.trim(),
             supply_point: {
@@ -349,7 +358,9 @@ export function ContractActivationWizard({
               ))}
               <button onClick={onClose}
                 className="w-full rounded-xl bg-white/10 hover:bg-white/20 py-2.5 text-xs font-semibold text-white transition cursor-pointer">
-                Continua più tardi -- trovi {contracts.length > 1 ? "le richieste" : "la richiesta"} in &ldquo;I miei Contratti&rdquo;
+                {customerId
+                  ? "Chiudi -- puoi riprendere il caricamento documenti in qualsiasi momento da qui"
+                  : `Continua più tardi -- trovi ${contracts.length > 1 ? "le richieste" : "la richiesta"} in “I miei Contratti”`}
               </button>
             </div>
           )}

@@ -10,6 +10,7 @@ import { BranchVisualizer } from "@/components/branch-visualizer";
 import { MyCommissions } from "@/components/my-commissions";
 import { CommissionSimulator } from "@/components/commission-simulator";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
+import { NetworkCustomersPanel } from "@/components/network-customers-panel";
 import { DocumentationFeed } from "@/components/documentation-feed";
 import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
@@ -55,6 +56,15 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: "customers",
+    label: "Miei Clienti",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
       </svg>
     ),
   },
@@ -128,6 +138,16 @@ const NAV_ITEMS: NavItem[] = [
 
 const QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
   {
+    key: "customers",
+    label: "Miei Clienti",
+    description: "Registra un cliente e attivagli un contratto",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    ),
+  },
+  {
     key: "network",
     label: "Rete Commerciale",
     description: "Vedi il tuo albero, fino a 12 livelli",
@@ -190,11 +210,11 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
 ];
 
 const PROMOTER_VALID_TABS = [
-  "azienda", "network", "products", "commissions", "simulator", "support", "documentation", "wallet", "cashback",
+  "azienda", "network", "customers", "products", "commissions", "simulator", "support", "documentation", "wallet", "cashback",
 ] as const;
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "customers" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
   const router = useRouter();
   const searchParams = useSearchParams();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
@@ -331,6 +351,13 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
               </div>
 
               <PromoterAziendaPanel agentId={me.id} />
+            </div>
+          )}
+
+          {activeTab === "customers" && (
+            <div className="space-y-6">
+              <SectionBanner image="customers" alt="Miei Clienti" />
+              <NetworkCustomersPanel />
             </div>
           )}
 

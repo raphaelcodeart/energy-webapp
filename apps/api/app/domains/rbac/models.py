@@ -85,6 +85,12 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         # Read-only preview of their own potential earnings -- never writes to
         # the ledger (see commissions/simulations/simulate.py), so safe to grant.
         "commissions.simulate", "products.read", "tickets.create",
+        # "Miei Clienti" CRM (Session 36): upload/view documents for a
+        # contract they're the producer of -- never any contract in the
+        # org, enforced inside documents/router.py::
+        # _assert_contract_document_access, not by this permission alone.
+        # Deliberately NOT documents.review (staff-only approve/reject).
+        "documents.upload", "documents.download",
     ],
     "CUSTOMER": [
         "contracts.read", "documents.download", "documents.upload", "products.read", "tickets.create",

@@ -29,10 +29,18 @@ def display_name_for(kind: str, profile: CustomerProfile | None, company: Compan
     return "—"
 
 
-async def list_customers(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:
+async def list_customers(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_ids: set[uuid.UUID] | None = None
+) -> list[dict]:
+    """customer_ids narrows the result to exactly that set (used by
+    network/service.py::list_recruited_customers, a promoter's own scoped
+    CRM list) -- omitted (None), every customer in the org, unchanged from
+    before this parameter existed."""
     from app.domains.users.models import User
 
     stmt = select(Customer).where(Customer.organization_id == organization_id).order_by(Customer.created_at.desc())
+    if customer_ids is not None:
+        stmt = stmt.where(Customer.id.in_(customer_ids))
     customers = (await db.execute(stmt)).scalars().all()
     if not customers:
         return []

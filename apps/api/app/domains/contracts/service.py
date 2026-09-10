@@ -316,6 +316,84 @@ async def create_contract_self_service(
     return contract
 
 
+async def create_contract_for_recruited_customer(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    promoter_user_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    product_version_id: uuid.UUID,
+    supply_point_payload: "SupplyPointCreate",
+    email: str,
+) -> Contract:
+    """The CRM-style counterpart to create_contract_self_service: a promoter
+    activates a contract on behalf of one of THEIR OWN customers (who may
+    have never logged in -- there is no customer_user_id requirement at
+    all here, unlike the self-service path). producer_agent_id is always
+    the calling promoter's own agent (promoter_user_id, never client-
+    supplied -- see the router), and customer_id must actually be
+    attributed to that same promoter (checked via
+    _resolve_referring_agent_id_for_customer, the exact same lookup the
+    self-service path uses to find ITS OWN producer) -- a promoter can
+    never activate a contract for someone else's customer this way, even
+    though POST /contracts (contracts.create-gated, staff-only in
+    practice) technically lets an admin attribute to any agent."""
+    from app.domains.customers import service as customers_service
+    from app.domains.customers.models import Customer
+
+    promoter_agent = await network_service.get_own_agent_profile(
+        db, organization_id=organization_id, user_id=promoter_user_id
+    )
+    if promoter_agent is None or promoter_agent.status != "ACTIVE":
+        raise SelfServiceContractError("Solo un promoter attivo può attivare contratti per i propri clienti.")
+
+    customer = await db.get(Customer, customer_id)
+    if customer is None or customer.organization_id != organization_id:
+        raise SelfServiceContractError("Customer not found")
+
+    resolved_agent_id = await _resolve_referring_agent_id_for_customer(
+        db, organization_id=organization_id, customer_id=customer_id
+    )
+    if resolved_agent_id != promoter_agent.id:
+        raise SelfServiceContractError("Questo cliente non è nella tua rete.")
+
+    version = await db.get(ProductVersion, product_version_id)
+    if version is None:
+        raise SelfServiceContractError("Product version not found")
+    product = await db.get(Product, version.product_id)
+    if product is None or product.organization_id != organization_id:
+        raise SelfServiceContractError("Product version not found")
+    if product.category != "INTERNAL":
+        raise SelfServiceContractError(
+            "Solo i prodotti Lial Energy si attivano come contratto -- gli altri prodotti si acquistano come ordine."
+        )
+
+    supply_point = await customers_service.add_supply_point(
+        db, organization_id=organization_id, customer_id=customer.id,
+        payload=supply_point_payload, actor_user_id=promoter_user_id,
+    )
+    if supply_point is None:
+        raise SelfServiceContractError("Unable to create supply point")
+
+    contract = await create_contract(
+        db, organization_id=organization_id, customer_id=customer.id,
+        supply_point_id=supply_point.id, product_version_id=product_version_id,
+        producer_agent_id=promoter_agent.id, actor_user_id=promoter_user_id,
+        correlation_id=str(uuid.uuid4()), email=email,
+    )
+    contract = await transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
+        actor_user_id=promoter_user_id, reason="Attivazione da promoter per proprio cliente", notes=None,
+        correlation_id=str(uuid.uuid4()),
+    )
+    contract = await transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="DOCUMENTS_PENDING",
+        actor_user_id=promoter_user_id, reason=None, notes=None,
+        correlation_id=str(uuid.uuid4()),
+    )
+    return contract
+
+
 async def set_contract_iban(
     db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, iban: str, actor_user_id: uuid.UUID
 ) -> Contract:

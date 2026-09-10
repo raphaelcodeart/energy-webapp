@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     # Annotation-only -- the real imports stay function-local at their call
     # sites below to avoid module-level coupling with referral/users, same
     # convention as the rest of this file.
+    from app.domains.customers.models import Customer
+    from app.domains.customers.schemas import CustomerCreate
     from app.domains.referral.models import PromoterCode
     from app.domains.users.models import User
 from app.domains.network.models import (
@@ -42,6 +44,10 @@ class RootPromoterConflictError(NetworkError):
 
 
 class ContractNotAcceptedError(NetworkError):
+    pass
+
+
+class RecruitedCustomerError(NetworkError):
     pass
 
 
@@ -494,6 +500,139 @@ async def create_root_promoter_with_login(
     await db.refresh(agent)
     await db.refresh(promoter_code_row)
     return agent, user, promoter_code_row, temporary_password
+
+
+async def create_recruited_customer(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    promoter_user_id: uuid.UUID,
+    payload: "CustomerCreate",
+    actor_user_id: uuid.UUID,
+) -> "Customer":
+    """CRM-style customer creation: a promoter registers a brand-new
+    customer themselves -- no self-registration, no referral-link click
+    needed -- and the customer lands in the promoter's OWN network exactly
+    as if they'd registered through that promoter's link (same
+    CustomerAttribution row auth/service.py::register_with_referral
+    creates, just triggered by the promoter instead of the customer
+    clicking a link). promoter_user_id is always the caller's own id
+    (never client-supplied, see the router), so a promoter can only ever
+    recruit customers under themselves, never fabricate attribution to
+    someone else.
+
+    The customer gets a real login immediately (random, never-revealed
+    password) so contracts/documents can be created/uploaded for them
+    right away even though they have never logged in (see
+    contracts/service.py::create_contract_for_recruited_customer) -- their
+    "primo accesso" is a normal click-a-link-to-set-your-password flow
+    (auth/service.py::send_account_invite_email), not a temp-password
+    handoff through the promoter."""
+    from app.core.security import hash_password
+    from app.domains.auth import service as auth_service
+    from app.domains.customers import service as customers_service
+    from app.domains.rbac import service as rbac_service
+    from app.domains.referral import service as referral_service
+    from app.domains.referral.models import CustomerAttribution
+    from app.domains.users.models import User
+
+    promoter_agent = await get_own_agent_profile(db, organization_id=organization_id, user_id=promoter_user_id)
+    if promoter_agent is None or promoter_agent.status != "ACTIVE":
+        raise RecruitedCustomerError("Solo un promoter attivo può registrare nuovi clienti.")
+
+    existing_user = (
+        await db.execute(
+            select(User).where(
+                User.organization_id == organization_id, func.lower(User.email) == payload.email.lower()
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_user is not None:
+        raise RecruitedCustomerError(f"Esiste già un account con l'email '{payload.email}'.")
+
+    promoter_code = await referral_service.get_or_create_promoter_code(
+        db, organization_id=organization_id, agent_id=promoter_agent.id
+    )
+
+    try:
+        customer = await customers_service.create_customer(
+            db, organization_id=organization_id, payload=payload, actor_user_id=actor_user_id
+        )
+    except customers_service.CustomerValidationError as exc:
+        raise RecruitedCustomerError(str(exc)) from exc
+
+    user = User(
+        organization_id=organization_id, email=payload.email,
+        password_hash=hash_password(_generate_temp_password()), status="ACTIVE",
+    )
+    db.add(user)
+    await db.flush()
+    await rbac_service.assign_role(db, user_id=user.id, organization_id=organization_id, role_code="CUSTOMER")
+    customer.user_id = user.id
+
+    db.add(
+        CustomerAttribution(
+            organization_id=organization_id, customer_id=customer.id,
+            promoter_code_id=promoter_code.id, referral_session_id=None, attributed_at=utcnow(),
+        )
+    )
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="customer.recruited_by_promoter", entity_type="customer", entity_id=str(customer.id),
+        new_value={"promoter_agent_id": str(promoter_agent.id), "email": payload.email},
+    )
+    await db.commit()
+    await db.refresh(customer)
+    await db.refresh(user)
+
+    await auth_service.send_account_invite_email(
+        db, user=user, invited_by_display_name=promoter_agent.display_name
+    )
+    return customer
+
+
+async def list_recruited_customers(
+    db: AsyncSession, *, organization_id: uuid.UUID, promoter_user_id: uuid.UUID
+) -> list[dict]:
+    """A promoter's own "Miei Clienti" CRM list -- every customer CURRENTLY
+    attributed to them (see referral/service.py::get_current_attribution;
+    a customer created_recruited_customer() attributed here may since have
+    been reassigned elsewhere by an admin via reassign_customer_promoter(),
+    in which case they no longer belong in this list). Distinct from
+    GET /network/mine's multi-level branch view (network.read_branch) --
+    this is the flat, one-level "customers I personally registered or was
+    attributed" list a CRM needs."""
+    from app.domains.customers import service as customers_service
+    from app.domains.referral import service as referral_service
+    from app.domains.referral.models import CustomerAttribution, PromoterCode
+
+    promoter_agent = await get_own_agent_profile(db, organization_id=organization_id, user_id=promoter_user_id)
+    if promoter_agent is None:
+        return []
+
+    stmt = (
+        select(CustomerAttribution.customer_id)
+        .join(PromoterCode, PromoterCode.id == CustomerAttribution.promoter_code_id)
+        .where(CustomerAttribution.organization_id == organization_id, PromoterCode.agent_id == promoter_agent.id)
+        .distinct()
+    )
+    candidate_ids = {row[0] for row in (await db.execute(stmt)).all()}
+    if not candidate_ids:
+        return []
+
+    current_ids = set()
+    for customer_id in candidate_ids:
+        attribution = await referral_service.get_current_attribution(
+            db, organization_id=organization_id, customer_id=customer_id
+        )
+        if attribution is not None:
+            promoter_code = await db.get(PromoterCode, attribution.promoter_code_id)
+            if promoter_code is not None and promoter_code.agent_id == promoter_agent.id:
+                current_ids.add(customer_id)
+
+    if not current_ids:
+        return []
+    return await customers_service.list_customers(db, organization_id=organization_id, customer_ids=current_ids)
 
 
 def _generate_temp_password() -> str:
