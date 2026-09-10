@@ -189,6 +189,15 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "activate-contract",
+    label: "Attiva Contratto",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
+  {
     key: "products",
     label: "Shop",
     icon: (
@@ -345,7 +354,7 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
   // "lial-contracts" is the customer's home -- matches the Shop's old default
   // landing tab, back when Lial Energy contracts were its first category
   // (see NAV_ITEMS ordering below).
-  const [activeTab, setActiveTab] = useState<"lial-contracts" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
+  const [activeTab, setActiveTab] = useState<"lial-contracts" | "activate-contract" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -363,7 +372,7 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
   // query params are stripped right after reading them so a page refresh
   // doesn't re-trigger the banner.
   const VALID_TABS = [
-    "lial-contracts", "contracts", "products", "orders", "support",
+    "lial-contracts", "activate-contract", "contracts", "products", "orders", "support",
     "promoter-application", "documentation", "wallet", "cashback", "accounting",
   ] as const;
 
@@ -460,7 +469,7 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
                 Non abbiamo trovato nessun contratto di fornitura associato a questa utenza.
               </p>
               <button
-                onClick={() => setActiveTab("lial-contracts")}
+                onClick={() => setActiveTab("activate-contract")}
                 className="mt-5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer"
               >
                 Attiva un contratto
@@ -656,6 +665,14 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
             </div>
           </div>
 
+          <CustomerPromoterApplicationCard hideWhenActive />
+          <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
+        </div>
+      )}
+
+      {activeTab === "activate-contract" && (
+        <div className="space-y-6">
+          <SectionBanner image="energy" alt="Attiva Contratto" />
           <CustomerPromoterApplicationCard hideWhenActive />
           <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
         </div>
