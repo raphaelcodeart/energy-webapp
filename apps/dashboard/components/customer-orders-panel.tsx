@@ -186,6 +186,7 @@ export function CustomerOrdersPanel() {
     queryFn: fetchMyOrders,
   });
   const [filter, setFilter] = useState<OrderFilter>("ALL");
+  const [search, setSearch] = useState("");
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -340,16 +341,51 @@ export function CustomerOrdersPanel() {
     );
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
   const filteredList = list.filter((o) => {
-    if (filter === "ALL") return true;
-    if (filter === "BANK_TRANSFER" || filter === "CARD") return o.payment_method === filter;
-    return o.status === filter;
+    if (filter !== "ALL") {
+      if (filter === "BANK_TRANSFER" || filter === "CARD") {
+        if (o.payment_method !== filter) return false;
+      } else if (o.status !== filter) {
+        return false;
+      }
+    }
+    if (!normalizedSearch) return true;
+    return (
+      o.product_name.toLowerCase().includes(normalizedSearch) ||
+      orderCode(o.id).toLowerCase().includes(normalizedSearch)
+    );
   });
   const detailOrder = detailOrderId ? list.find((o) => o.id === detailOrderId) ?? null : null;
 
   return (
     <div className="space-y-4">
       <input ref={fileInputRef} type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={handleProofSelected} />
+
+      <div className="relative">
+        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca per ID ordine o nome prodotto..."
+          className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 text-sm text-white light:text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-orange-500/50 transition"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-slate-500 hover:text-white hover:bg-white/10 transition cursor-pointer"
+            title="Cancella ricerca"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {FILTER_TABS.map((tab) => {
