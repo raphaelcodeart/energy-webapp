@@ -486,13 +486,42 @@ categoria in più su `Product`:
   indistinguibile visivamente dalle altre; checkout dedicato
   (`imported-product-checkout-modal.tsx`, stessa UX del checkout normale
   meno lo step cashback); pagina admin dedicata
-  (`admin-imported-products-panel.tsx`) con provider/catalogo/ordini.
+  (`admin-imported-products-panel.tsx`) con provider e catalogo (gli ordini
+  vivono nella scheda "Ordini" unificata, vedi sotto).
 - **Bug preesistente scoperto e corretto in questa sessione**: il worker
   Celery (`celery_app.py`) non importava mai `app.domains.organizations.models`
   in nessun percorso del task `process_outbox_task` (schedulato ogni
   minuto) -- ogni esecuzione falliva con `NoReferencedTableError` al primo
   flush, sempre, indipendentemente da questa feature. Corretto aggiungendo
   lo stesso blocco di import "tutti i modelli" già presente in `main.py`.
+
+### Unificazione ordini (stessa sessione, richiesta successiva)
+
+L'utente ha chiarito subito dopo: la separazione tra `orders` e
+`imported_product_orders` deve restare **solo** un dettaglio di come è
+salvato il catalogo prodotti (per non mescolare prodotti importati via API
+con quelli inseriti a mano) -- a livello di gestione ordini, contabilità e
+esperienza d'acquisto, per cliente e admin, deve essere **un unico sistema**.
+Corretto:
+
+- `customer-orders-panel.tsx` ("I miei Ordini") e `admin-orders-panel.tsx`
+  ("Ordini") ora interrogano ENTRAMBE le tabelle e le uniscono in un'unica
+  lista ordinata per data -- filtri, ricerca, dettaglio, tutte le azioni
+  (paga, cambia metodo, carica prova, conferma, annulla) funzionano
+  indistintamente, instradate al backend giusto da un tag `source` interno
+  mai mostrato in UI.
+- Il form admin "+ Nuovo Ordine" ora propone entrambi i cataloghi nello
+  stesso menu a tendina. Aggiunti due endpoint admin mancanti per la
+  parità: `POST /imported-products/orders` e `GET /imported-products/orders/quote`
+  (mirror esatto dei corrispondenti endpoint di `orders`, nessun OTP --
+  un admin che agisce per conto del cliente è già un'azione audited).
+- `accounting/service.py` ora unisce anche i debiti wallet e i pagamenti
+  reali degli ordini importati nello stesso `order_id` di output (mai un
+  campo separato) -- la Contabilità del cliente tratta i due cataloghi
+  come uno solo, esattamente come richiesto.
+- Rimossa la tabella ordini duplicata dalla pagina admin "Acquisti
+  LialEnergy" (ora solo provider + catalogo) -- un solo posto dove
+  gestire gli ordini, non due.
 
 ## Come riprendere se una sessione futura parte da zero
 
