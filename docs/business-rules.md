@@ -577,6 +577,26 @@ money, by design.
   `BACK_OFFICE_OPERATOR` -- same sensitivity tier as
   `commissions.evaluate_ranks`). The wallet is created lazily on first
   credit if the recipient never had one.
+- **Omaggio di benvenuto (Session 37)**: every account can claim a one-off
+  **20 LialCash** welcome bonus (`wallets/service.py::WELCOME_BONUS_CENTS`,
+  `source = "WELCOME_BONUS"`), via a card on the dashboard home that
+  disappears for good once claimed. Self-service, authentication-only, and
+  always credited to the caller's **own** wallet -- the user id comes from
+  the session, never the request.
+  - **"Exactly once, forever" is enforced by the ledger itself**, not a
+    separate flag: the transaction's `idempotency_key` is derived from the
+    user id (`welcome-bonus:{user_id}`) and `wallet_transactions` has a
+    UNIQUE constraint on it. A double-click, a retry, or two concurrent
+    requests can only ever produce one row -- and a repeat claim is a
+    harmless no-op returning the original row, not an error. There is
+    deliberately no second "claimed" column that could drift out of sync.
+  - Like the admin top-up, this **mints credit from nothing**, a conscious
+    exception to the anti-loop rule below. It is a fixed code constant
+    rather than an admin-editable setting precisely because of that:
+    changing the amount takes a deploy and leaves a git trail.
+  - Eligibility was an explicit business decision: it applies to **every**
+    account, including the ones that already existed when it shipped, not
+    only new signups.
 - **Peer-to-peer transfer**: any wallet holder can send money to any other
   wallet in the same organization by address, no relationship required
   (like a real crypto wallet) -- self-transfer and cross-organization

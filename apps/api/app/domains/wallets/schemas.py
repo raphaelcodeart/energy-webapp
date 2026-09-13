@@ -57,6 +57,16 @@ class WalletTransactionRead(BaseModel):
     created_at: datetime
 
 
+class WelcomeBonusStatusRead(BaseModel):
+    """Drives the "Riscatta il tuo omaggio" card on the dashboard home:
+    `available` is false both before it exists and forever after it's been
+    claimed, so the frontend just hides the card when it's false and never
+    has to reason about which of the two it is."""
+
+    available: bool
+    amount_cents: int
+
+
 class WalletTopUpRequest(BaseModel):
     """Admin credits a user's wallet -- 'bonifica'/cashback. Identifies the
     target by user_id (resolved by the admin UI from the customer/promoter

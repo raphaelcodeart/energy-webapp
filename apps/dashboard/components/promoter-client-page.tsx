@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
+import { WelcomeBonusCard } from "@/components/welcome-bonus-card";
 import { BranchVisualizer } from "@/components/branch-visualizer";
 import { MyCommissions } from "@/components/my-commissions";
 import { CommissionSimulator } from "@/components/commission-simulator";
@@ -323,6 +324,9 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
                   <h2 className="text-lg sm:text-xl font-bold text-white truncate max-w-[70vw] sm:max-w-none">{me.display_name}</h2>
                 </div>
               </SectionBanner>
+
+              <WelcomeBonusCard />
+
 
               <DashboardWalletStats />
 

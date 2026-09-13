@@ -47,6 +47,53 @@ def _generate_address() -> str:
     return f"0x{secrets.token_hex(20)}"
 
 
+# One-off "omaggio di benvenuto": 20 LialCash any account can claim exactly
+# once, ever. Deliberately a code constant rather than an admin-editable
+# setting -- it mints credit from nothing (see the anti-loop principle in
+# docs/business-rules.md#internal-wallet: credit is normally only minted
+# against real confirmed money), so changing the amount should take a
+# deploy and leave a git trail, not be a field anyone with settings access
+# can quietly raise.
+WELCOME_BONUS_CENTS = 20_00
+WELCOME_BONUS_SOURCE = "WELCOME_BONUS"
+
+
+def _welcome_bonus_idempotency_key(user_id: uuid.UUID) -> str:
+    """Derived from the user id alone, never client-supplied -- this single
+    key IS the "already claimed" guarantee. wallet_transactions has a UNIQUE
+    constraint on idempotency_key, so a double-click, a retried request, or
+    two concurrent requests can only ever produce ONE bonus row; there is
+    deliberately no second "claimed" flag that could drift out of sync with
+    the ledger."""
+    return f"welcome-bonus:{user_id}"
+
+
+async def has_claimed_welcome_bonus(db: AsyncSession, *, user_id: uuid.UUID) -> bool:
+    existing = await _get_by_idempotency_key(
+        db, idempotency_key=_welcome_bonus_idempotency_key(user_id)
+    )
+    return existing is not None
+
+
+async def claim_welcome_bonus(
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID
+) -> tuple[WalletTransaction, bool]:
+    """(transaction, newly_claimed). Claiming twice is a no-op that returns
+    the original row with newly_claimed=False rather than raising -- the
+    caller can't tell a double-click apart from a genuine retry, and neither
+    deserves an error. actor_user_id is the claimer themselves: this is a
+    self-service action, not something an admin did to them."""
+    already = await has_claimed_welcome_bonus(db, user_id=user_id)
+    wallet = await get_or_create_wallet(db, organization_id=organization_id, user_id=user_id)
+    txn = await credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=WELCOME_BONUS_CENTS,
+        type_="ADMIN_CREDIT", actor_user_id=user_id, source=WELCOME_BONUS_SOURCE,
+        note="Omaggio di benvenuto Lial Energy",
+        idempotency_key=_welcome_bonus_idempotency_key(user_id),
+    )
+    return txn, not already
+
+
 async def get_or_create_wallet(db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID) -> Wallet:
     """Every User (customer or promoter) gets exactly one wallet, created on
     first access rather than at signup -- avoids a wallet row for every
@@ -183,36 +230,54 @@ async def credit_wallet(
     # (see orders/service.py::_send_order_paid_email), so this generic one
     # would just be a second, redundant email for the same single event.
     if reference_invoice_redemption_id is None and reference_order_id is None:
-        await _send_wallet_credited_email(db, user_id=wallet.user_id, amount_cents=amount_cents, note=note)
+        await _send_wallet_credited_email(
+            db, user_id=wallet.user_id, amount_cents=amount_cents, note=note, source=source
+        )
     return txn
 
 
 async def _send_wallet_credited_email(
-    db: AsyncSession, *, user_id: uuid.UUID, amount_cents: int, note: str | None
+    db: AsyncSession, *, user_id: uuid.UUID, amount_cents: int, note: str | None, source: str | None = None
 ) -> None:
     """Best-effort, fires after the credit is already committed -- an SMTP
     hiccup here must never undo money that has already landed in the
     wallet. Covers every credit_wallet() caller except the invoice-
     redemption cashback flow (see the caller above, which already sends its
-    own): today that's the admin "Ricarica" top-up (POST /wallets/admin/topup)."""
+    own): the admin "Ricarica" top-up (POST /wallets/admin/topup) and the
+    self-claimed welcome bonus.
+
+    The copy varies by `source` because the default wording ("un
+    amministratore ha accreditato manualmente...") is simply untrue for a
+    bonus the user just claimed themselves with a button."""
     from app.core.config import get_settings
 
     user = await db.get(User, user_id)
     if user is None:
         return
 
+    if source == WELCOME_BONUS_SOURCE:
+        heading = "Benvenuto in Lial Energy!"
+        preheader = "Il tuo omaggio di benvenuto è sul wallet"
+        subject = "Il tuo omaggio di benvenuto - Lial Energy"
+        intro = "<p>Grazie per esserti registrato: ecco il tuo omaggio di benvenuto.</p>"
+    else:
+        heading = "Wallet ricaricato"
+        preheader = "Hai ricevuto un accredito sul tuo wallet"
+        subject = "Ricarica wallet - Lial Energy"
+        intro = "<p>Un amministratore ha accreditato manualmente il tuo wallet Lial Energy.</p>"
+
     body_html = (
-        "<p>Un amministratore ha accreditato manualmente il tuo wallet Lial Energy.</p>"
-        f'<p style="font-size:22px; font-weight:700; color:#f97316; margin:20px 0;">'
+        intro
+        + f'<p style="font-size:22px; font-weight:700; color:#f97316; margin:20px 0;">'
         f"+{amount_cents / 100:.2f} LialCash</p>"
     )
-    if note:
+    if note and source != WELCOME_BONUS_SOURCE:
         body_html += f"<p><strong>Nota:</strong> {note}</p>"
     body_html += "<p>L'importo è già disponibile per i tuoi acquisti sul tuo wallet Lial Energy.</p>"
 
     html = render_email(
-        preheader="Hai ricevuto un accredito sul tuo wallet",
-        heading="Wallet ricaricato",
+        preheader=preheader,
+        heading=heading,
         body_html=body_html,
         cta_label="Vai al wallet",
         cta_url=f"{get_settings().public_app_base_url}/customer?tab=wallet",
@@ -220,7 +285,7 @@ async def _send_wallet_credited_email(
     try:
         send_html_email(
             to=user.email,
-            subject="Ricarica wallet - Lial Energy",
+            subject=subject,
             html_body=html,
             text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} LialCash.",
         )

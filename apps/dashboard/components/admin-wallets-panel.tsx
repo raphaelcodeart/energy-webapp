@@ -26,6 +26,7 @@ const TYPE_COLORS: Record<string, string> = {
 // read the free-text note.
 const SOURCE_LABELS: Record<string, string> = {
   MANUAL_ADMIN: "Ricarica manuale",
+  WELCOME_BONUS: "Omaggio di benvenuto",
   INVOICE_REDEMPTION_BASE: "Riscatto fattura",
   INVOICE_REDEMPTION_BONUS: "Bonus 5% riscatto fattura",
   ORDER_CASHBACK_BASE: "Cashback ordine",

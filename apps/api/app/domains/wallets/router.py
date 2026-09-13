@@ -15,6 +15,7 @@ from app.domains.wallets.schemas import (
     WalletTransactionReverseRequest,
     WalletTransferPermissionUpdate,
     WalletTransferRequest,
+    WelcomeBonusStatusRead,
 )
 
 router = APIRouter(prefix="/wallets", tags=["wallets"])
@@ -46,6 +47,46 @@ async def get_my_transactions(
         db, organization_id=current_user.organization_id, wallet_id=wallet.id
     )
     return [WalletTransactionRead(**row) for row in rows]
+
+
+@router.get("/me/welcome-bonus", response_model=WelcomeBonusStatusRead)
+async def get_my_welcome_bonus_status(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WelcomeBonusStatusRead:
+    """Whether this account still has its one-off welcome bonus to claim.
+    Deliberately no permission beyond authentication, same as GET
+    /wallets/me -- everyone with an account is entitled to it exactly once."""
+    claimed = await wallet_service.has_claimed_welcome_bonus(db, user_id=current_user.user_id)
+    return WelcomeBonusStatusRead(
+        available=not claimed, amount_cents=wallet_service.WELCOME_BONUS_CENTS
+    )
+
+
+@router.post(
+    "/me/welcome-bonus/claim",
+    response_model=WalletTransactionRead,
+    dependencies=[Depends(rate_limit("welcome-bonus-claim", max_requests=10, window_seconds=300))],
+)
+async def claim_my_welcome_bonus(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> WalletTransactionRead:
+    """Credits the one-off welcome bonus to the caller's OWN wallet -- the
+    user id always comes from the session, never from the request, same rule
+    as POST /wallets/transfer's from_wallet_id.
+
+    Claiming again is a harmless no-op that returns the original row (the
+    idempotency key is derived from the user id, see
+    wallets/service.py::claim_welcome_bonus), so a double-click or a retry
+    can never mint a second bonus."""
+    txn, _newly_claimed = await wallet_service.claim_welcome_bonus(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
+    rows = await wallet_service.hydrate_transactions(
+        db, organization_id=current_user.organization_id, transactions=[txn]
+    )
+    return WalletTransactionRead(**rows[0])
 
 
 @router.post(

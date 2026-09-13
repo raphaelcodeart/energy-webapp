@@ -7,6 +7,7 @@ import { AccountingPanel } from "@/components/accounting-panel";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
+import { WelcomeBonusCard } from "@/components/welcome-bonus-card";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
@@ -639,6 +640,9 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
               <h2 className="text-lg sm:text-xl font-bold text-white truncate max-w-[70vw] sm:max-w-none">{email}</h2>
             </div>
           </SectionBanner>
+
+          <WelcomeBonusCard />
+
 
           <DashboardWalletStats />
 
