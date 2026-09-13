@@ -192,7 +192,28 @@ async def reassign_customer_promoter(
     unattributed. AttributionCorrection is a pre-existing, previously-unused
     schema (referral/models.py) built for exactly this -- the audit trail of
     who moved a customer from which promoter to which, requested by whom,
-    and why."""
+    and why.
+
+    **Dual-role people move in the network tree too (Session 37).** A person
+    can hold both CUSTOMER and PROMOTER roles (see business-rules.md
+    #customer-promoter-dual-role). Reassigning such a person used to move
+    only this attribution, leaving them hanging under their OLD promoter in
+    the commission tree -- "cliente di Carlo, ma downline di Alessandro",
+    which is not a state anyone asked for and looked to admins like the
+    reassignment had silently failed. Per the explicit business rule: from
+    the moment of reassignment the person belongs to the new promoter *in
+    their entirety*, as if that promoter had signed them up. So when the
+    customer also has an AgentProfile, they (and their whole downline) are
+    reparented under the new promoter as well.
+
+    Past commissions are deliberately left untouched: every activated
+    contract keeps the network snapshot frozen at its activation
+    (contracts/service.py::transition_contract -> create_snapshot_for_contract),
+    so a move only ever changes who earns on FUTURE production. That is
+    exactly the intended semantics ("del vecchio storico non ci interessa"),
+    not an oversight."""
+    from app.domains.network import service as network_service
+
     current = await get_current_attribution(db, organization_id=organization_id, customer_id=customer_id)
     if current is None:
         raise ReassignmentError("This customer has no existing promoter attribution to correct")
@@ -224,6 +245,58 @@ async def reassign_customer_promoter(
         new_value={"promoter_code_id": str(new_promoter_code.id)},
         reason=reason,
     )
-    await db.commit()
+
+    moving_agent_id = await _agent_id_to_move_with_customer(
+        db, organization_id=organization_id, customer_id=customer_id, new_agent_id=new_agent_id
+    )
+    if moving_agent_id is not None:
+        # move_agent() commits -- which lands the attribution change above in
+        # that same transaction, so the two either both happen or neither
+        # does. A CycleError here therefore leaves NOTHING committed, rather
+        # than a customer reassigned but stranded in the old tree position.
+        try:
+            await network_service.move_agent(
+                db, organization_id=organization_id, agent_id=moving_agent_id,
+                new_parent_agent_id=new_agent_id, requested_by=requested_by,
+                approved_by=requested_by,  # same admin-only gate as the reassignment itself
+                reason=f"Riassegnazione promoter: {reason}",
+            )
+        except network_service.CycleError as exc:
+            raise ReassignmentError(
+                "Impossibile riassegnare: il nuovo promoter fa già parte della rete sotto questa "
+                "persona, e spostarla creerebbe un anello nell'albero."
+            ) from exc
+    else:
+        await db.commit()
+
     await db.refresh(current)
     return current
+
+
+async def _agent_id_to_move_with_customer(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID, new_agent_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The AgentProfile that must follow this customer to the new promoter,
+    or None when there is nothing to move -- i.e. the customer has no login,
+    isn't a promoter at all (the common case: a plain customer, whose
+    reassignment behaves exactly as it did before this existed), is already
+    sitting under the new promoter, or IS the new promoter."""
+    from app.domains.customers.models import Customer
+    from app.domains.network import service as network_service
+
+    customer = await db.get(Customer, customer_id)
+    if customer is None or customer.user_id is None:
+        return None
+
+    agent = await network_service.get_own_agent_profile(
+        db, organization_id=organization_id, user_id=customer.user_id
+    )
+    if agent is None or agent.id == new_agent_id:
+        return None
+
+    node = await network_service.get_active_node(db, organization_id=organization_id, agent_id=agent.id)
+    if node is None or node.direct_parent_agent_id == new_agent_id:
+        # Never placed in the tree, or already in the right place -- moving
+        # would only add a no-op row to the assignment history.
+        return None
+    return agent.id

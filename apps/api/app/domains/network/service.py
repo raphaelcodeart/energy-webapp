@@ -643,6 +643,25 @@ def _generate_temp_password() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(16)) + "!Aa1"
 
 
+async def get_active_node(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID
+) -> NetworkNode | None:
+    """The agent's currently-open network_nodes row (effective_to IS NULL), or
+    None if they have never been placed in the tree. Public because callers
+    outside this domain need to know an agent's current parent before
+    deciding whether a move_agent() call is even necessary -- see
+    referral/service.py::reassign_customer_promoter."""
+    return (
+        await db.execute(
+            select(NetworkNode).where(
+                NetworkNode.organization_id == organization_id,
+                NetworkNode.agent_id == agent_id,
+                NetworkNode.effective_to.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def move_agent(
     db: AsyncSession,
     *,

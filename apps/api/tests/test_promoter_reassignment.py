@@ -64,7 +64,7 @@ async def _make_actor(db, organization_id):
 @pytest.mark.asyncio
 async def test_reassign_customer_promoter_moves_attribution(db, organization_id):
     await _make_customer_role(db, organization_id)
-    old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
+    _old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
     new_agent, _ = await _make_promoter_with_code(db, organization_id, name="New Promoter")
     customer = await _make_registered_customer(db, organization_id, old_code)
     actor_user_id = await _make_actor(db, organization_id)
@@ -117,3 +117,137 @@ async def test_reassign_customer_with_no_attribution_is_rejected(db, organizatio
             db, organization_id=organization_id, customer_id=customer.id, new_agent_id=new_agent.id,
             requested_by=actor_user_id, reason="test",
         )
+
+
+async def _promote_customer_to_agent(db, organization_id, customer, *, parent_agent_id, name="Dual Role"):
+    """Makes an existing registered customer ALSO a promoter, placed under
+    parent_agent_id -- the dual-role situation Session 37's tree-follow
+    behaviour exists for."""
+    first_name, last_name = name.split(" ", 1)
+    agent = await network_service.create_agent(
+        db, organization_id=organization_id, first_name=first_name, last_name=last_name,
+        promoter_code=f"DUAL-{uuid.uuid4().hex[:8]}", parent_agent_id=parent_agent_id,
+        user_id=customer.user_id, status="ACTIVE",
+    )
+    await db.commit()
+    await db.refresh(agent)
+    return agent
+
+
+async def _active_parent_of(db, organization_id, agent_id):
+    node = await network_service.get_active_node(db, organization_id=organization_id, agent_id=agent_id)
+    return node.direct_parent_agent_id if node is not None else None
+
+
+async def _attributed_agent_id(db, customer_id):
+    from app.domains.referral.models import PromoterCode
+
+    attribution = (
+        await db.execute(select(CustomerAttribution).where(CustomerAttribution.customer_id == customer_id))
+    ).scalar_one()
+    code = (
+        await db.execute(select(PromoterCode).where(PromoterCode.id == attribution.promoter_code_id))
+    ).scalar_one()
+    return code.agent_id
+
+
+@pytest.mark.asyncio
+async def test_reassigning_a_dual_role_person_also_moves_them_in_the_network_tree(db, organization_id):
+    """The bug this fixes: reassigning someone who is both customer and
+    promoter moved only their customer attribution, leaving them hanging
+    under the OLD promoter in the commission tree."""
+    await _make_customer_role(db, organization_id)
+    old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
+    new_agent, _ = await _make_promoter_with_code(db, organization_id, name="New Promoter")
+    customer = await _make_registered_customer(db, organization_id, old_code)
+    dual_agent = await _promote_customer_to_agent(db, organization_id, customer, parent_agent_id=old_agent.id)
+    actor_user_id = await _make_actor(db, organization_id)
+
+    assert await _active_parent_of(db, organization_id, dual_agent.id) == old_agent.id
+
+    await referral_service.reassign_customer_promoter(
+        db, organization_id=organization_id, customer_id=customer.id, new_agent_id=new_agent.id,
+        requested_by=actor_user_id, reason="Passa a un altro promoter",
+    )
+
+    # Both halves moved: the customer attribution AND the tree position.
+    assert await _attributed_agent_id(db, customer.id) == new_agent.id
+    assert await _active_parent_of(db, organization_id, dual_agent.id) == new_agent.id
+
+
+@pytest.mark.asyncio
+async def test_reassigning_a_dual_role_person_brings_their_downline_along(db, organization_id):
+    """"tutto e' sotto il nuovo, come se lo avesse iscritto lui" -- the whole
+    subtree follows, not just the person."""
+    await _make_customer_role(db, organization_id)
+    old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
+    new_agent, _ = await _make_promoter_with_code(db, organization_id, name="New Promoter")
+    customer = await _make_registered_customer(db, organization_id, old_code)
+    dual_agent = await _promote_customer_to_agent(db, organization_id, customer, parent_agent_id=old_agent.id)
+    downline = await network_service.create_agent(
+        db, organization_id=organization_id, first_name="Sub", last_name="Ordinate",
+        promoter_code=f"SUB-{uuid.uuid4().hex[:8]}", parent_agent_id=dual_agent.id, status="ACTIVE",
+    )
+    await db.commit()
+    actor_user_id = await _make_actor(db, organization_id)
+
+    await referral_service.reassign_customer_promoter(
+        db, organization_id=organization_id, customer_id=customer.id, new_agent_id=new_agent.id,
+        requested_by=actor_user_id, reason="Passa a un altro promoter",
+    )
+
+    # The downline stays under the moved person, who is now under the new promoter.
+    assert await _active_parent_of(db, organization_id, dual_agent.id) == new_agent.id
+    assert await _active_parent_of(db, organization_id, downline.id) == dual_agent.id
+
+
+@pytest.mark.asyncio
+async def test_reassigning_a_plain_customer_touches_no_network_tree(db, organization_id):
+    """A customer who is NOT a promoter must behave exactly as before --
+    attribution moves, nothing else happens."""
+    from app.domains.network.models import NetworkAssignmentHistory
+
+    await _make_customer_role(db, organization_id)
+    _old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
+    new_agent, _ = await _make_promoter_with_code(db, organization_id, name="New Promoter")
+    customer = await _make_registered_customer(db, organization_id, old_code)
+    actor_user_id = await _make_actor(db, organization_id)
+
+    before = len((await db.execute(select(NetworkAssignmentHistory))).scalars().all())
+
+    await referral_service.reassign_customer_promoter(
+        db, organization_id=organization_id, customer_id=customer.id, new_agent_id=new_agent.id,
+        requested_by=actor_user_id, reason="Solo cliente",
+    )
+
+    assert await _attributed_agent_id(db, customer.id) == new_agent.id
+    after = len((await db.execute(select(NetworkAssignmentHistory))).scalars().all())
+    assert after == before  # no tree move was recorded
+
+
+@pytest.mark.asyncio
+async def test_reassigning_under_your_own_downline_is_rejected_and_changes_nothing(db, organization_id):
+    """Moving someone under their own descendant would create a cycle. The
+    whole reassignment must fail atomically -- never leave the customer
+    reassigned but stranded in the old tree position."""
+    await _make_customer_role(db, organization_id)
+    old_agent, old_code = await _make_promoter_with_code(db, organization_id, name="Old Promoter")
+    customer = await _make_registered_customer(db, organization_id, old_code)
+    dual_agent = await _promote_customer_to_agent(db, organization_id, customer, parent_agent_id=old_agent.id)
+    # This agent sits UNDER the dual-role person -- reassigning the person to
+    # them would make the person their own descendant's child.
+    descendant = await network_service.create_agent(
+        db, organization_id=organization_id, first_name="Giu", last_name="Sotto",
+        promoter_code=f"DESC-{uuid.uuid4().hex[:8]}", parent_agent_id=dual_agent.id, status="ACTIVE",
+    )
+    await db.commit()
+    actor_user_id = await _make_actor(db, organization_id)
+
+    with pytest.raises(referral_service.ReassignmentError):
+        await referral_service.reassign_customer_promoter(
+            db, organization_id=organization_id, customer_id=customer.id, new_agent_id=descendant.id,
+            requested_by=actor_user_id, reason="Ciclo",
+        )
+
+    # Tree untouched.
+    assert await _active_parent_of(db, organization_id, dual_agent.id) == old_agent.id
