@@ -23,6 +23,7 @@ function buildTree(members: BranchMemberRead[]): TreeNode | null {
       promoter_code: m.promoter_code,
       status: m.status,
       rank_code: m.rank_code,
+      is_frozen: m.is_frozen,
       children: [],
     });
   }

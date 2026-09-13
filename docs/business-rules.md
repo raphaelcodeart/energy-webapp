@@ -986,6 +986,38 @@ does **not** touch any other data -- contracts, orders, wallet history,
 network position all stay exactly as they were; unfreezing is a full,
 lossless undo. An admin cannot freeze their own account.
 
+### A frozen member disappears from the network (Session 37)
+
+Freezing used to have **zero** effect on the network tree: the person kept
+showing up in their upline's "Rete Commerciale" looking completely normal,
+which is not what an admin freezing an account expects. Now
+(`network/service.py::get_branch`, `include_frozen`):
+
+- **Promoters/team leaders no longer see a frozen member at all** -- and
+  neither does anyone below them: the frozen person's **entire subtree**
+  is pruned with them. Explicit business choice ("nascondi lui e tutto il
+  suo ramo"): leaving the downline behind would orphan rows the UI builds
+  its tree from (`parent_agent_id`) and misrepresent depth, which is what
+  the 12-level commission structure is counted on.
+- **Only the admin tier still sees them** (`_FROZEN_VISIBLE_ROLES` in
+  `network/router.py`: SUPER_ADMIN / ORGANIZATION_ADMIN / ADMIN), flagged
+  `is_frozen` and rendered as a red **CONGELATO** badge. Deliberately
+  narrower than `_BRANCH_ACCESS_BYPASS_ROLES`, which also contains
+  SALES_MANAGER: seeing *every* branch and seeing *frozen people* are two
+  different privileges, and only the admin tier gets the second.
+- `get_branch_summary` passes the same flag through, so a hidden member
+  never silently inflates an upline's headcount or contract/commission
+  totals.
+- **Careful:** `BranchMemberRead.is_frozen` is the OWNER'S ACCOUNT status
+  (`users.status`), not `status`, which remains the AgentProfile's own
+  lifecycle (ACTIVE/SUSPENDED/TERMINATED/...). The two are independent and
+  easy to confuse -- freezing has never touched the agent record, and
+  still doesn't.
+- Commissions are untouched: this is a **visibility** rule only. Frozen or
+  not, past commissions stay frozen in their contract's network snapshot,
+  and the person's real tree position is unchanged (unfreezing restores
+  the previous view exactly).
+
 **"Elimina utente" (hard delete/anonymize) was explicitly deferred by the
 user** after being shown the tradeoff: a true cascading delete of
 contracts/orders/wallet transactions risks breaking other promoters'

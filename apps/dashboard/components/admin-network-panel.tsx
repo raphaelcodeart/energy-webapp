@@ -27,6 +27,9 @@ function buildForest(agents: AgentListItemRead[]): { roots: TreeNode[]; maxDepth
         promoter_code: a.promoter_code,
         status: a.status,
         rank_code: a.rank_code,
+        // Admin-only view, so frozen members are always shown here -- but
+        // flagged in red rather than blending in with everyone else.
+        is_frozen: a.user_status === "FROZEN",
         children: [],
       },
     ])

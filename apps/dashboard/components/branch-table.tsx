@@ -8,7 +8,22 @@ const columnHelper = createColumnHelper<BranchMemberRead>();
 const columns = [
   columnHelper.accessor("display_name", {
     header: "Nome",
-    cell: (info) => <span className="font-medium">{info.getValue()}</span>,
+    // A frozen row only ever reaches a viewer allowed to see it (the server
+    // prunes frozen members and their subtree for everyone else, see
+    // network/service.py::get_branch) -- so when it IS here, it must be
+    // unmistakable rather than looking like a normal member.
+    cell: (info) => (
+      <span className="flex items-center gap-2">
+        <span className={`font-medium ${info.row.original.is_frozen ? "text-rose-400" : ""}`}>
+          {info.getValue()}
+        </span>
+        {info.row.original.is_frozen && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-rose-500/10 text-rose-400 border-rose-500/30 whitespace-nowrap">
+            CONGELATO
+          </span>
+        )}
+      </span>
+    ),
   }),
   columnHelper.accessor("promoter_code", {
     header: "Codice",

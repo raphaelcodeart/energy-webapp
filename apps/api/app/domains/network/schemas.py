@@ -55,6 +55,12 @@ class BranchMemberRead(BaseModel):
     # proper descendant list, but defensive). Lets the frontend build the tree
     # from actual edges instead of assuming a fragile pre-order row sequence.
     parent_agent_id: uuid.UUID | None = None
+    # The OWNER'S ACCOUNT is frozen (users.status == FROZEN) -- distinct from
+    # `status` above, which is the AgentProfile's own lifecycle. Only ever
+    # true for an admin-tier viewer: for everyone else these rows (and their
+    # whole subtree) are filtered out server-side before reaching here, see
+    # network/service.py::get_branch.
+    is_frozen: bool = False
 
 
 class BranchAgentSummaryRead(BaseModel):
@@ -64,6 +70,7 @@ class BranchAgentSummaryRead(BaseModel):
     promoter_code: str
     status: str
     rank_code: str | None
+    is_frozen: bool = False
     contracts_total: int
     contracts_by_status: dict[str, int]
     contracts_problem: int

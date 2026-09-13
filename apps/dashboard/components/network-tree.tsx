@@ -9,6 +9,11 @@ export interface TreeNode {
   promoter_code: string;
   status: string;
   rank_code: string | null;
+  /** The person's ACCOUNT is frozen (blocked from logging in) -- distinct
+      from `status`, which is their agent lifecycle. Only ever true for an
+      admin-tier viewer: the server prunes frozen members and their whole
+      subtree for everyone else (network/service.py::get_branch). */
+  is_frozen?: boolean;
   children: TreeNode[];
 }
 
@@ -168,6 +173,14 @@ export function TreeNodeRenderer({
               {node.rank_code && (
                 <span className="px-2 py-0.5 text-[10px] font-bold rounded-md border bg-white/5 light:bg-slate-900/5 text-slate-300 light:text-slate-600 border-white/10 light:border-slate-300">
                   {node.rank_code}
+                </span>
+              )}
+              {node.is_frozen && (
+                <span
+                  className="px-2 py-0.5 text-[10px] font-bold rounded-md border bg-rose-500/15 text-rose-400 border-rose-500/40 whitespace-nowrap"
+                  title="Account congelato: non può accedere. Visibile solo agli amministratori."
+                >
+                  CONGELATO
                 </span>
               )}
             </div>

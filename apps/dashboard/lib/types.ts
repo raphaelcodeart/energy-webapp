@@ -92,6 +92,10 @@ export type BranchMemberRead = {
   status: string;
   rank_code: string | null;
   parent_agent_id: string | null;
+  /** The person's ACCOUNT is frozen -- distinct from `status` (their agent
+      lifecycle). Only ever true for admin-tier viewers: the server prunes
+      frozen members and their whole subtree for everyone else. */
+  is_frozen?: boolean;
 };
 
 export type AgentProfileRead = {

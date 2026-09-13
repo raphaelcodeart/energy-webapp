@@ -1076,12 +1076,28 @@ async def is_ancestor(
 
 
 async def get_branch(
-    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
+    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID, include_frozen: bool = True
 ) -> list[dict]:
     """Descendants of root_agent_id (including itself, depth 0) with the display
     fields the network tree UI needs -- joined here so the router doesn't do a
-    second round-trip per node."""
+    second round-trip per node.
+
+    `is_frozen` on each row is the OWNER'S ACCOUNT status (users.status ==
+    FROZEN, see users/service.py::freeze_user), NOT `status`, which is the
+    AgentProfile's own lifecycle (ACTIVE/SUSPENDED/TERMINATED/...). The two
+    are independent: freezing blocks the login, it has never touched the
+    agent record.
+
+    include_frozen=False prunes a frozen person AND their whole subtree --
+    a frozen member is "completamente sganciato" from their upline's view
+    (Session 37, explicit business rule). The subtree goes with them
+    deliberately: leaving orphans behind would both break the tree the UI
+    builds from parent_agent_id and misrepresent depth, which is what the
+    12-level commission structure is counted on. Callers pass True only for
+    roles allowed to see frozen members -- see network/router.py's
+    _FROZEN_VISIBLE_ROLES."""
     from app.domains.commissions.models import Rank
+    from app.domains.users.models import User
 
     descendants = await _get_active_descendants(
         db, organization_id=organization_id, agent_id=root_agent_id
@@ -1098,6 +1114,7 @@ async def get_branch(
             AgentProfile.status,
             Rank.code,
             NetworkNode.direct_parent_agent_id,
+            User.status,
         )
         .join(Rank, Rank.id == AgentProfile.current_rank_id, isouter=True)
         .join(
@@ -1105,10 +1122,13 @@ async def get_branch(
             (NetworkNode.agent_id == AgentProfile.id) & (NetworkNode.effective_to.is_(None)),
             isouter=True,
         )
+        # isouter: an admin-suggested agent may have no login at all, and an
+        # agent with no User is by definition not frozen.
+        .join(User, User.id == AgentProfile.user_id, isouter=True)
         .where(AgentProfile.id.in_(depth_by_agent.keys()))
     )
     rows = (await db.execute(stmt)).all()
-    return [
+    branch = [
         {
             "agent_id": row[0],
             "depth": depth_by_agent[row[0]],
@@ -1121,9 +1141,39 @@ async def get_branch(
             # this is null for the root agent specifically even though it has
             # a real parent in the full org tree.
             "parent_agent_id": row[5] if row[0] != root_agent_id else None,
+            "is_frozen": row[6] == "FROZEN",
         }
         for row in rows
     ]
+    if include_frozen:
+        return branch
+    return _without_frozen_subtrees(branch, root_agent_id=root_agent_id)
+
+
+def _without_frozen_subtrees(branch: list[dict], *, root_agent_id: uuid.UUID) -> list[dict]:
+    """Drops every frozen member and everyone hanging below them. Walks each
+    node up to the branch root: if the node itself or ANY ancestor inside
+    this branch is frozen, it goes. Iterative (not recursive) and guarded
+    against a malformed parent chain, since this runs on data the caller
+    didn't build."""
+    by_id = {row["agent_id"]: row for row in branch}
+    kept = []
+    for row in branch:
+        node: dict | None = row
+        seen: set[uuid.UUID] = set()
+        hidden = False
+        while node is not None and node["agent_id"] not in seen:
+            seen.add(node["agent_id"])
+            if node["is_frozen"]:
+                hidden = True
+                break
+            if node["agent_id"] == root_agent_id:
+                break
+            parent_id = node["parent_agent_id"]
+            node = by_id.get(parent_id) if parent_id is not None else None
+        if not hidden:
+            kept.append(row)
+    return kept
 
 
 # A contract in one of these statuses needs a human to unblock it (usually
@@ -1137,16 +1187,22 @@ PROCESSED_CONTRACT_STATUSES = {"PAID", "ACTIVE", "RENEWED"}
 
 
 async def get_branch_summary(
-    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID
+    db: AsyncSession, *, organization_id: uuid.UUID, root_agent_id: uuid.UUID, include_frozen: bool = True
 ) -> dict:
     """Per-agent and per-level rollup for a promoter's own "azienda" view: how many
     contracts (by status bucket) each person in the branch has produced, and how
     much commission each has earned -- the data a promoter needs to run their
-    downline like a real sales network, not just see names in a tree."""
+    downline like a real sales network, not just see names in a tree.
+
+    include_frozen is passed straight through to get_branch(), so the totals
+    below are computed over exactly the members the caller is allowed to
+    see -- a hidden member must not silently inflate anyone's counts."""
     from app.domains.commissions.models import CommissionMovement
     from app.domains.contracts.models import Contract, ContractAttribution
 
-    branch = await get_branch(db, organization_id=organization_id, root_agent_id=root_agent_id)
+    branch = await get_branch(
+        db, organization_id=organization_id, root_agent_id=root_agent_id, include_frozen=include_frozen
+    )
     if not branch:
         return {
             "agents": [],

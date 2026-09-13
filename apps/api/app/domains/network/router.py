@@ -56,6 +56,20 @@ async def _resolve_own_agent_id(
 # organization's network via GET /network/agents and /organization/levels.
 _BRANCH_ACCESS_BYPASS_ROLES = {"SUPER_ADMIN", "ORGANIZATION_ADMIN", "ADMIN", "SALES_MANAGER"}
 
+# Who still sees a FROZEN member (and their subtree) in a network branch.
+# Everyone else -- promoters, team leaders, and deliberately SALES_MANAGER
+# too, despite it bypassing the branch-ownership check above -- gets them
+# pruned out entirely: a frozen member is "completamente sganciato" from
+# the network as far as the field is concerned, and only the admin tier
+# keeps the full picture (Session 37, explicit business rule). Narrower
+# than _BRANCH_ACCESS_BYPASS_ROLES on purpose: seeing every branch and
+# seeing frozen people are two different privileges.
+_FROZEN_VISIBLE_ROLES = {"SUPER_ADMIN", "ORGANIZATION_ADMIN", "ADMIN"}
+
+
+def _may_see_frozen(current_user: CurrentUser) -> bool:
+    return bool(_FROZEN_VISIBLE_ROLES & set(current_user.roles))
+
 
 async def _assert_branch_access(
     db: AsyncSession, *, current_user: CurrentUser, agent_id: uuid.UUID
@@ -234,7 +248,8 @@ async def get_branch(
 ) -> list[BranchMemberRead]:
     await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
     branch = await network_service.get_branch(
-        db, organization_id=current_user.organization_id, root_agent_id=agent_id
+        db, organization_id=current_user.organization_id, root_agent_id=agent_id,
+        include_frozen=_may_see_frozen(current_user),
     )
     return [BranchMemberRead(**row) for row in branch]
 
@@ -268,7 +283,8 @@ async def get_branch_summary(
     earnings), same branch-ownership rule as /branch."""
     await _assert_branch_access(db, current_user=current_user, agent_id=agent_id)
     summary = await network_service.get_branch_summary(
-        db, organization_id=current_user.organization_id, root_agent_id=agent_id
+        db, organization_id=current_user.organization_id, root_agent_id=agent_id,
+        include_frozen=_may_see_frozen(current_user),
     )
     return BranchSummaryRead(**summary)
 
