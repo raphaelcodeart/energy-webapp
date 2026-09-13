@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
 import { PhotoUpload } from "@/components/photo-upload";
@@ -138,6 +138,13 @@ export function AdminCustomersPanel({
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
   const [topUpSuccess, setTopUpSuccess] = useState(false);
+  // Stable across retries of the SAME top-up, rotated only once one actually
+  // succeeds. A fresh key per click (what this used to send) meant that
+  // clicking "Ricarica" again after an error could credit the wallet twice --
+  // and an error was reachable on a top-up that had in fact already gone
+  // through, because the credit is committed before the confirmation email is
+  // attempted. See also core/email.py::send_html_email_best_effort.
+  const topUpKeyRef = useRef<string>("");
 
   async function handleTopUp(e: React.FormEvent) {
     e.preventDefault();
@@ -157,13 +164,16 @@ export function AdminCustomersPanel({
           user_id: viewingDetail.user_id,
           amount_cents: amountCents,
           note: topUpNote || null,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: topUpKeyRef.current,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       setTopUpSuccess(true);
       setTopUpAmount("");
       setTopUpNote("");
+      // This form stays open after a successful top-up, so the next one is a
+      // genuinely different operation and needs its own key.
+      topUpKeyRef.current = crypto.randomUUID();
       await queryClient.invalidateQueries({ queryKey: ["admin", "wallets", "by-user", viewingDetail.user_id] });
       setTimeout(() => setTopUpSuccess(false), 3000);
     } catch (err: any) {
@@ -251,6 +261,7 @@ export function AdminCustomersPanel({
     setTopUpNote("");
     setTopUpError(null);
     setTopUpSuccess(false);
+    topUpKeyRef.current = crypto.randomUUID();
     setViewingId(id);
   }
 

@@ -16,6 +16,36 @@ export type ContractRead = {
   supply_point_label: string | null;
   iban: string | null;
   email: string | null;
+
+  // --- Chi lo ha costruito (Session 38) ---
+  /** CUSTOMER / PROMOTER / ADMIN. Null on contracts created before this
+      existed -- the creator is still in the status history. */
+  created_by_role: string | null;
+  /** Set ONLY when a promoter completed the contract in place of the
+      customer. Null means the customer signed up themselves -- which is why
+      the admin screen can say which of the two happened instead of guessing
+      from whoever earns the commission. */
+  activated_by_promoter_id: string | null;
+  activated_by_promoter_name: string | null;
+  /** The promoter who originally brought this customer in -- a different
+      person whenever somebody else assisted them. */
+  first_referrer_agent_id: string | null;
+  first_referrer_name: string | null;
+
+  // --- Economia congelata alla creazione ---
+  customer_kind: string | null;
+  net_amount_cents: number | null;
+  /** Percentage points (22.0), not a fraction. 0 for a private customer. */
+  vat_rate: number | null;
+  vat_amount_cents: number | null;
+  gross_amount_cents: number | null;
+
+  // --- Pagamento ---
+  payment_plan: string | null;
+  payment_method: string | null;
+  paid_at: string | null;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
 };
 
 export type ContractStatusHistoryRead = {
@@ -241,6 +271,17 @@ export type ProductVersionRead = {
   commission_tokens: Record<string, number>;
   credit_discount_percentage: number;
   cashback_enabled: boolean;
+  /** 0-100: share of a paid CONTRACT's gross (VAT included) credited back as
+      LialCash, automatically and with no surcharge. INTERNAL products only;
+      0 means a contract generates no LialCash at all. */
+  contract_cashback_percentage: number;
+  /** One-off bonus to the promoter who originally brought the customer in.
+      Configured here rather than keyed off a price in code. */
+  first_referrer_bonus_enabled: boolean;
+  first_referrer_bonus_cents: number;
+  /** NO_CASHBACK / STANDARD / AUTOMATIC_INTERNAL_SERVICE -- derived server-side
+      from the fields above plus the product's category, never stored. */
+  cashback_mode: string;
   valid_from: string;
   valid_to: string | null;
   status: string;

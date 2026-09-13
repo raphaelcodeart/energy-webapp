@@ -4,6 +4,87 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 38 — 2026-09-13 — Contract economics: VAT engine, product audience, contract cashback, first-referrer bonus, wallet top-up bug
+
+Phase A of the contract-activation rework. Backend foundations first, on
+purpose: every rule below is enforced server-side, and the UI only reflects it.
+
+- [x] **`catalog/pricing.py` (new) -- the single place VAT is decided.**
+  Private customer: no VAT. Business/P.IVA: net + VAT. Snapshotted onto the
+  contract (`net_amount_cents / vat_rate / vat_amount_cents /
+  gross_amount_cents / customer_kind`) so a later product edit can never
+  restate a signed contract. `Decimal`, half-up on the cent. See
+  business-rules.md#vat -- including the one function to change if "il totale
+  del contratto" is meant to include the initial/recurring fees.
+- [x] **`products.customer_type` finally means something**: PRIVATE /
+  BUSINESS / BOTH, enforced server-side in both customer-facing creation paths
+  and used to filter the catalog. Existing rows migrated to BOTH -- the only
+  behaviour-preserving value, since nothing filtered on this column before.
+  Also newly editable after creation (it was set-once, and unread).
+- [x] **Contract cashback, automatic and with NO +5%** (`contract_cashback_
+  percentage`, 0 by default so no existing product changes). Explicitly a
+  different mechanism from the partner-invoice 5% and the order 5%, both left
+  untouched; `cashback_mode_for` classifies every product into exactly one of
+  the three and the product API exposes it.
+- [x] **Bonus primo segnalatore** (`first_referrer_bonus_enabled/_cents`,
+  `movement_type = FIRST_REFERRER_BONUS`): additive to the existing
+  commission, only to the original referrer (never the promoter who merely
+  filled the contract in), once per contract ever -- the idempotency key omits
+  the trigger event so the UNIQUE constraint enforces that even on renewal.
+- [x] **Who built the contract**: `created_by_user_id/_role`,
+  `activated_by_promoter_id` (set only when a promoter did it for the
+  customer), `first_referrer_agent_id`. Surfaced as an "Origine" column in the
+  admin contract list alongside the frozen netto/IVA/totale.
+- [x] **`GET /customers/me`** (new, authentication-only): the caller's own
+  customer record, so the catalog knows whether it is talking to a privato or
+  an azienda.
+- [x] Migration `0035_contract_economics_and_attribution.py`
+  (`b4e2f81c05a9`) -- every contract column nullable, every product column
+  defaulted off.
+
+### Bug: "Ricarica wallet -- si è verificato un errore" (root cause + fix)
+
+Investigated from the nginx access logs: the single failed
+`POST /wallets/admin/topup` in the entire history (13/09 19:50:58) was a BFF
+blip during a redeploy -- two unrelated `GET /notifications/mine` calls from
+two different browsers 500'd in the same 3 seconds, nothing was written to the
+DB, and the retry 48s later succeeded. Not a code bug.
+
+But the investigation surfaced a **real and much worse latent one**, now fixed:
+
+- `credit_wallet()` commits the money, then sends a courtesy email. That call
+  caught only `EmailNotConfiguredError` -- one of the many ways a real mail
+  server fails. `send_html_email()` opens a blocking 10-second smtplib
+  connection to an external host, so a refused login, a timeout, a DNS blip or
+  a TLS error escaped and became a **500 on a top-up that had already
+  succeeded**. The admin saw "Si è verificato un errore imprevisto", clicked
+  again, and -- because the dashboard minted a fresh idempotency key per click
+  -- **credited the wallet a second time**.
+- Fix, both halves: `core/email.py::send_html_email_best_effort` (never
+  raises; now used at every post-commit notification site -- orders, imported
+  orders, redemptions, tickets, account invites, wallet credits -- but
+  deliberately NOT for password-reset links or OTP codes, where the email *is*
+  the deliverable), and a stable per-top-up idempotency key in both dashboard
+  panels, rotated only after a successful credit.
+- `tests/test_wallet_topup_resilience.py` breaks SMTP at the real boundary
+  (`smtplib.SMTP`), not at a module-level helper name -- verified to fail 6/6
+  against the pre-fix code and pass 6/6 after. A first attempt patched the
+  wrong name and passed against the buggy code, which is exactly the trap this
+  test now documents.
+- Also fixed while in there: `db.flush()` sat outside the
+  `IntegrityError` recovery in all four wallet write paths (only `commit()`
+  was covered), and `wallet.credit` was missing from the dashboard's
+  permission labels, so a non-super-admin got a generic refusal message.
+
+### Altro
+
+- [x] **Condivisione nativa** (`lib/share-link.ts`): the promoter link and the
+  product-share button now open the phone's own share sheet via
+  `navigator.share()` (WhatsApp, Telegram, SMS, mail -- whatever is installed),
+  falling back to a clipboard copy on desktop, and the button says which of
+  the two actually happened.
+- Test suite 237 -> 256. mypy 34 -> 28 errors, ruff 43 -> 38 (no new ones).
+
 ## Session 37 — 2026-09-13 — Pagination across every long list (admin, customer, promoter)
 
 - [x] `apps/dashboard/components/pagination.tsx` (new) — one reusable

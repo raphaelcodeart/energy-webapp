@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.domains.catalog import pricing
+
 PRODUCT_TYPES = {"ENERGY_CONTRACT", "DIGITAL", "PHYSICAL", "SUBSCRIPTION"}
 # INTERNAL is the safe default: never discountable in wallet credits, bank
 # transfer only. DROPSHIPPING/PARTNER may accept a configurable credit
@@ -31,12 +33,20 @@ class ProductVersionRead(BaseModel):
     commission_tokens: dict[str, int]
     credit_discount_percentage: int
     cashback_enabled: bool
+    contract_cashback_percentage: int
+    first_referrer_bonus_enabled: bool
+    first_referrer_bonus_cents: int
+    #: NO_CASHBACK / STANDARD / AUTOMATIC_INTERNAL_SERVICE -- derived from the
+    #: two toggles above plus the parent product's category, never stored, so
+    #: it can never disagree with the fields that actually drive behaviour.
+    #: See catalog/pricing.py::cashback_mode_for.
+    cashback_mode: str = pricing.CASHBACK_MODE_NONE
     valid_from: datetime
     valid_to: datetime | None
     status: str
 
     @classmethod
-    def from_version(cls, version) -> "ProductVersionRead":
+    def from_version(cls, version, *, category: str | None = None) -> "ProductVersionRead":
         """ProductVersion has no vat_percentage column -- it lives inside the
         tax_configuration JSONB blob (already present on the model, previously
         unused). from_attributes=True can't compute that, so every call site
@@ -57,6 +67,10 @@ class ProductVersionRead(BaseModel):
             commission_tokens=version.commission_tokens or {},
             credit_discount_percentage=version.credit_discount_percentage,
             cashback_enabled=version.cashback_enabled,
+            contract_cashback_percentage=version.contract_cashback_percentage,
+            first_referrer_bonus_enabled=version.first_referrer_bonus_enabled,
+            first_referrer_bonus_cents=version.first_referrer_bonus_cents,
+            cashback_mode=pricing.cashback_mode_for(category=category, version=version),
             valid_from=version.valid_from,
             valid_to=version.valid_to,
             status=version.status,
@@ -92,7 +106,10 @@ class ProductCreate(BaseModel):
     code: str
     product_type: str = "ENERGY_CONTRACT"  # ENERGY_CONTRACT / DIGITAL / PHYSICAL / SUBSCRIPTION
     energy_type: str | None = None  # ELECTRICITY / GAS / DUAL_FUEL -- only for ENERGY_CONTRACT
-    customer_type: str  # PRIVATE / SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE
+    # PRIVATE / BUSINESS / BOTH -- who this product may be sold to. Legacy
+    # values (SOLE_PROPRIETOR, PMI, CONDOMINIUM, ENERGY_INTENSIVE) still parse
+    # and collapse onto BUSINESS; see catalog/pricing.py.
+    customer_type: str = pricing.BOTH_PRODUCT_CUSTOMER_TYPES
     category: str = "INTERNAL"  # INTERNAL / DROPSHIPPING / PARTNER -- see PRODUCT_CATEGORIES
     # Initial version, created together with the product -- a product with zero
     # versions can't be sold, so the marketplace form always creates both at once.
@@ -112,6 +129,16 @@ class ProductCreate(BaseModel):
     credit_discount_percentage: int = Field(default=0, ge=0, le=100)
     # Same INTERNAL-forced-False rule -- catalog/service.py enforces it.
     cashback_enabled: bool = False
+    # The INTERNAL-only counterparts, forced to 0/False for every other
+    # category by catalog/service.py -- see the clamps there.
+    contract_cashback_percentage: int = Field(default=0, ge=0, le=100)
+    first_referrer_bonus_enabled: bool = False
+    first_referrer_bonus_cents: int = Field(default=0, ge=0)
+
+    @field_validator("customer_type")
+    @classmethod
+    def validate_customer_type(cls, v: str) -> str:
+        return pricing.normalize_product_customer_type(v)
 
     @field_validator("product_type")
     @classmethod
@@ -142,6 +169,9 @@ class ProductVersionCreate(BaseModel):
     commission_tokens: dict[str, int] = {}
     credit_discount_percentage: int = Field(default=0, ge=0, le=100)
     cashback_enabled: bool = False
+    contract_cashback_percentage: int = Field(default=0, ge=0, le=100)
+    first_referrer_bonus_enabled: bool = False
+    first_referrer_bonus_cents: int = Field(default=0, ge=0)
 
 
 class ProductVersionUpdate(BaseModel):
@@ -156,6 +186,9 @@ class ProductVersionUpdate(BaseModel):
     commission_tokens: dict[str, int] | None = None
     credit_discount_percentage: int | None = Field(default=None, ge=0, le=100)
     cashback_enabled: bool | None = None
+    contract_cashback_percentage: int | None = Field(default=None, ge=0, le=100)
+    first_referrer_bonus_enabled: bool | None = None
+    first_referrer_bonus_cents: int | None = Field(default=None, ge=0)
     status: str | None = None
 
 
@@ -164,6 +197,14 @@ class ProductUpdate(BaseModel):
     product_type: str | None = None
     energy_type: str | None = None
     category: str | None = None
+    # Previously missing entirely, which meant a product's audience could be
+    # set at creation and never corrected again.
+    customer_type: str | None = None
+
+    @field_validator("customer_type")
+    @classmethod
+    def validate_customer_type(cls, v: str | None) -> str | None:
+        return None if v is None else pricing.normalize_product_customer_type(v)
 
     @field_validator("category")
     @classmethod

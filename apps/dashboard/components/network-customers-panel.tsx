@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
 import { ContractActivationWizard } from "@/components/contract-activation-wizard";
+import { productAllowsCustomerKind } from "@/lib/product-audience";
 import { friendlyApiError } from "@/lib/api-error";
 import type { CustomerRead, ProductCatalogRead } from "@/lib/types";
 
@@ -242,7 +243,9 @@ export function NetworkCustomersPanel() {
               <p className="text-sm text-slate-500 py-6 text-center">Nessun contratto Lial Energy disponibile al momento.</p>
             ) : (
               <div className="space-y-2">
-                {products.map((p) => (
+                {products
+                  .filter((p) => productAllowsCustomerKind(p.customer_type, pickingProductFor.kind))
+                  .map((p) => (
                   <button
                     key={p.id}
                     onClick={() => { setActivationTarget({ customer: pickingProductFor, product: p }); setPickingProductFor(null); }}
@@ -265,6 +268,7 @@ export function NetworkCustomersPanel() {
           product={activationTarget.product}
           accountEmail={activationTarget.customer.email}
           customerId={activationTarget.customer.id}
+          customerKind={activationTarget.customer.kind}
           onClose={() => setActivationTarget(null)}
           onActivated={() => queryClient.invalidateQueries({ queryKey: ["network", "customers", "mine"] })}
         />

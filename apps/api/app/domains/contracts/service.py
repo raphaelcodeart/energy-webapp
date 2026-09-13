@@ -1,4 +1,5 @@
 import calendar
+import logging
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
 from app.domains.audit import service as audit_service
+from app.domains.catalog import pricing
 from app.domains.catalog.models import Product, ProductVersion
 from app.domains.contracts.models import Contract, ContractAttribution, ContractStatusHistory
 from app.domains.contracts.state_machine import assert_transition_allowed, event_name_for
@@ -28,6 +30,14 @@ if TYPE_CHECKING:
 # these (re)starts the clock on activated_at/expires_at. Renewing a lapsed
 # (EXPIRED) contract restarts it too, same as the first activation.
 TERM_START_STATUSES = {"ACTIVE", "RENEWED"}
+
+logger = logging.getLogger(__name__)
+
+#: wallet_transactions.source for the automatic credit a paid Lial Energy
+#: contract generates. A distinct value from ORDER_CASHBACK_BASE and
+#: INVOICE_REDEMPTION_BASE precisely so accounting can tell the three apart
+#: at a glance -- they are three different business rules, not one.
+CONTRACT_CASHBACK_SOURCE = "CONTRACT_CASHBACK"
 
 
 def _add_months(dt: datetime, months: int) -> datetime:
@@ -50,21 +60,47 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
 
     product_version_ids = {c.product_version_id for c in contracts}
     supply_point_ids = {c.supply_point_id for c in contracts}
+    # Both "who filled it in for the customer" and "who originally brought
+    # the customer in" are shown by name, never as a bare UUID -- same
+    # "name prominent" rule the product/supply-point joins above follow.
+    agent_ids = {c.activated_by_promoter_id for c in contracts if c.activated_by_promoter_id} | {
+        c.first_referrer_agent_id for c in contracts if c.first_referrer_agent_id
+    }
+    # Dict comprehensions rather than dict(rows): a SQLAlchemy Row is not a
+    # plain tuple as far as the type checker is concerned, so dict(rows) is
+    # untypeable and needs an annotation that then contradicts itself.
+    agent_names: dict[uuid.UUID, str] = (
+        {
+            row.id: row.display_name
+            for row in (
+                await db.execute(
+                    select(AgentProfile.id, AgentProfile.display_name).where(AgentProfile.id.in_(agent_ids))
+                )
+            ).all()
+        }
+        if agent_ids
+        else {}
+    )
 
-    product_names = dict(
-        (
+    product_names: dict[uuid.UUID, str] = {
+        row.id: row.name
+        for row in (
             await db.execute(
                 select(ProductVersion.id, ProductVersion.name).where(ProductVersion.id.in_(product_version_ids))
             )
         ).all()
-    )
-    supply_point_labels = dict(
-        (
+    }
+    supply_point_labels: dict[uuid.UUID, str | None] = {
+        row.id: row.label
+        for row in (
             await db.execute(
                 select(SupplyPoint.id, SupplyPoint.label).where(SupplyPoint.id.in_(supply_point_ids))
             )
         ).all()
-    )
+    }
+
+    def _agent_name(agent_id: uuid.UUID | None) -> str | None:
+        return agent_names.get(agent_id) if agent_id is not None else None
 
     result = []
     for c in contracts:
@@ -82,6 +118,24 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "expires_at": c.expires_at,
             "product_name": product_names.get(c.product_version_id),
             "supply_point_label": supply_point_labels.get(c.supply_point_id),
+            "created_by_role": c.created_by_role,
+            "activated_by_promoter_id": c.activated_by_promoter_id,
+            "activated_by_promoter_name": _agent_name(c.activated_by_promoter_id),
+            "first_referrer_agent_id": c.first_referrer_agent_id,
+            "first_referrer_name": _agent_name(c.first_referrer_agent_id),
+            "customer_kind": c.customer_kind,
+            "net_amount_cents": c.net_amount_cents,
+            # Decimal -> float at the edge: JSON has no decimal type and this
+            # is a display value, not an amount anything is computed from
+            # (every cent figure is already an integer above).
+            "vat_rate": float(c.vat_rate) if c.vat_rate is not None else None,
+            "vat_amount_cents": c.vat_amount_cents,
+            "gross_amount_cents": c.gross_amount_cents,
+            "payment_plan": c.payment_plan,
+            "payment_method": c.payment_method,
+            "paid_at": c.paid_at,
+            "terms_accepted_at": c.terms_accepted_at,
+            "terms_version": c.terms_version,
         }
         result.append(row)
     return result
@@ -153,9 +207,23 @@ async def create_contract(
     notes: str | None = None,
     iban: str | None = None,
     email: str | None = None,
+    created_by_role: str | None = None,
+    activated_by_promoter_id: uuid.UUID | None = None,
 ) -> Contract:
     """Creates a DRAFT contract. Deliberately does NOT touch commissions -- creating
-    or submitting a contract never generates a commission (business-rules.md)."""
+    or submitting a contract never generates a commission (business-rules.md).
+
+    `created_by_role` is the role the creator was acting as (CUSTOMER /
+    PROMOTER / ADMIN), snapshotted rather than looked up later because a
+    person's roles change. `activated_by_promoter_id` is set ONLY when a
+    promoter filled the contract in on the customer's behalf -- it is what
+    makes "Contratto attivato dal promoter X" true exactly when it is true,
+    instead of being inferred from who happens to earn the commission
+    (which is also the promoter in the ordinary self-service case).
+
+    The price breakdown is computed here, server-side, from the product
+    version row and the customer's own kind -- never from anything a caller
+    passed in -- and frozen onto the contract. See catalog/pricing.py."""
     producer = await db.get(AgentProfile, producer_agent_id)
     if producer is None or producer.organization_id != organization_id:
         raise InvalidProducerAgentError(
@@ -167,6 +235,8 @@ async def create_contract(
             "cannot attribute a new contract to a non-active agent"
         )
 
+    from app.domains.customers.models import Customer
+
     attribution = ContractAttribution(
         organization_id=organization_id,
         producer_agent_id=producer_agent_id,
@@ -174,6 +244,25 @@ async def create_contract(
     )
     db.add(attribution)
     await db.flush()
+
+    # The customer's kind is what decides whether VAT applies at all, so it is
+    # read once here and frozen alongside the amounts it produced.
+    customer = await db.get(Customer, customer_id)
+    customer_kind = customer.kind if customer is not None else None
+    version = await db.get(ProductVersion, product_version_id)
+    price = (
+        pricing.compute_contract_price(version=version, customer_kind=customer_kind)
+        if version is not None
+        else None
+    )
+
+    # Who originally brought this customer in. Resolved now and frozen,
+    # deliberately NOT re-read at activation: an admin reassigning the
+    # customer to another promoter afterwards changes who earns future
+    # business, not who is owed the bonus on a contract already opened.
+    first_referrer_agent_id = await _resolve_referring_agent_id_for_customer(
+        db, organization_id=organization_id, customer_id=customer_id
+    )
 
     contract = Contract(
         organization_id=organization_id,
@@ -185,6 +274,15 @@ async def create_contract(
         notes=notes,
         iban=iban,
         email=email,
+        created_by_user_id=actor_user_id,
+        created_by_role=created_by_role,
+        activated_by_promoter_id=activated_by_promoter_id,
+        first_referrer_agent_id=first_referrer_agent_id,
+        customer_kind=customer_kind,
+        net_amount_cents=price.net_amount_cents if price else None,
+        vat_rate=price.vat_rate if price else None,
+        vat_amount_cents=price.vat_amount_cents if price else None,
+        gross_amount_cents=price.gross_amount_cents if price else None,
     )
     db.add(contract)
     await db.flush()
@@ -281,6 +379,12 @@ async def create_contract_self_service(
         raise SelfServiceContractError(
             "Solo i prodotti Lial Energy si attivano come contratto -- gli altri prodotti si acquistano come ordine."
         )
+    # The catalog the customer sees is already filtered by this same rule --
+    # this is the enforcement, because hiding a card is never enforcement.
+    if not pricing.product_allows_customer_kind(product.customer_type, customer.kind):
+        raise SelfServiceContractError(
+            "Questo contratto non è disponibile per la tua tipologia di cliente."
+        )
 
     producer_agent_id = await _resolve_referring_agent_id_for_customer(
         db, organization_id=organization_id, customer_id=customer.id
@@ -302,6 +406,11 @@ async def create_contract_self_service(
         supply_point_id=supply_point.id, product_version_id=product_version_id,
         producer_agent_id=producer_agent_id, actor_user_id=customer_user_id,
         correlation_id=str(uuid.uuid4()), email=email,
+        created_by_role="CUSTOMER",
+        # Nobody filled this in on the customer's behalf: they did it
+        # themselves, so activated_by_promoter_id stays null and the admin
+        # screen says "Cliente ha sottoscritto autonomamente".
+        activated_by_promoter_id=None,
     )
     contract = await transition_contract(
         db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
@@ -367,6 +476,10 @@ async def create_contract_for_recruited_customer(
         raise SelfServiceContractError(
             "Solo i prodotti Lial Energy si attivano come contratto -- gli altri prodotti si acquistano come ordine."
         )
+    if not pricing.product_allows_customer_kind(product.customer_type, customer.kind):
+        raise SelfServiceContractError(
+            "Questo contratto non è disponibile per la tipologia di questo cliente."
+        )
 
     supply_point = await customers_service.add_supply_point(
         db, organization_id=organization_id, customer_id=customer.id,
@@ -380,6 +493,11 @@ async def create_contract_for_recruited_customer(
         supply_point_id=supply_point.id, product_version_id=product_version_id,
         producer_agent_id=promoter_agent.id, actor_user_id=promoter_user_id,
         correlation_id=str(uuid.uuid4()), email=email,
+        created_by_role="PROMOTER",
+        # The whole point of the CRM path: the promoter completed this in
+        # place of the customer, which is exactly what the admin screen
+        # must be able to say.
+        activated_by_promoter_id=promoter_agent.id,
     )
     contract = await transition_contract(
         db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
@@ -462,6 +580,9 @@ async def transition_contract(
         )
         contract.network_snapshot_id = snapshot.id
 
+    if to_status == "PAID" and contract.paid_at is None:
+        contract.paid_at = utcnow()
+
     if to_status in TERM_START_STATUSES:
         now = utcnow()
         contract.activated_at = now
@@ -498,8 +619,17 @@ async def transition_contract(
         previous_value={"status": from_status}, new_value={"status": to_status},
         reason=reason, correlation_id=correlation_id,
     )
+    contract.updated_at = utcnow()
     await db.commit()
     await db.refresh(contract)
+
+    # After the commit, never before: the LialCash credit is its own
+    # committed ledger entry with its own idempotency key, and it must not be
+    # able to roll the status change back if anything about it fails.
+    if to_status == "PAID":
+        await credit_contract_cashback(
+            db, organization_id=organization_id, contract=contract, actor_user_id=actor_user_id
+        )
 
     next_status = AUTO_CASCADE_AFTER.get(contract.status)
     if next_status is not None:
@@ -509,3 +639,83 @@ async def transition_contract(
             notes=None, correlation_id=correlation_id,
         )
     return contract
+
+
+async def credit_contract_cashback(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, actor_user_id: uuid.UUID | None
+) -> None:
+    """Credits the automatic LialCash a paid Lial Energy contract earns.
+
+    This is the "servizi Lial Energy e formazione" rule, and it is
+    deliberately a DIFFERENT mechanism from the partner-invoice cashback --
+    which is exactly what was asked for:
+
+      - Partner esterni (invoice_redemptions): the customer pays Lial 5% of
+        the invoice to unlock the credit. Untouched by any of this.
+      - Prodotti DROPSHIPPING/PARTNER (orders): opt-in, the customer pays a
+        5% surcharge on the order to earn cashback. Also untouched.
+      - Servizi nostri (INTERNAL contracts): NO surcharge, nothing extra to
+        pay, nothing to opt into. Paying the contract is itself what earns
+        the credit, and the percentage of the gross (VAT included) that
+        comes back is a per-product setting -- 0 by default, so a product
+        only does this once an admin says so.
+
+    Exactly-once is enforced twice over: `contracts.cashback_credited_at` as
+    the readable guard, and a deterministic wallet idempotency key against
+    the UNIQUE constraint on wallet_transactions for the case the guard is
+    raced (a replayed Stripe webhook, say).
+
+    Never raises: by the time this runs the contract is already committed as
+    PAID, and a wallet problem must not undo that."""
+    from app.domains.customers.models import Customer
+    from app.domains.wallets import service as wallets_service
+
+    if contract.cashback_credited_at is not None:
+        return
+
+    version = await db.get(ProductVersion, contract.product_version_id)
+    if version is None:
+        return
+    gross = contract.gross_amount_cents
+    if gross is None:
+        # A contract created before the price snapshot existed. Recomputing it
+        # now from today's product version would be exactly the retroactive
+        # restatement the snapshot exists to prevent, so: no credit, loudly
+        # skipped rather than silently guessed.
+        logger.warning("Contract %s has no gross_amount_cents snapshot; skipping cashback", contract.id)
+        return
+    amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=gross)
+    if amount_cents <= 0:
+        return
+
+    customer = await db.get(Customer, contract.customer_id)
+    if customer is None or customer.user_id is None:
+        # A customer registered by a promoter who has genuinely never had a
+        # login cannot hold a wallet. Not an error -- but it must be visible,
+        # because it means somebody is owed credit they cannot yet receive.
+        logger.warning("Contract %s customer has no user account; LialCash not credited", contract.id)
+        return
+
+    wallet = await wallets_service.get_or_create_wallet(
+        db, organization_id=organization_id, user_id=customer.user_id
+    )
+    try:
+        await wallets_service.credit_wallet(
+            db,
+            organization_id=organization_id,
+            wallet_id=wallet.id,
+            amount_cents=amount_cents,
+            type_="ADMIN_CREDIT",
+            actor_user_id=actor_user_id,
+            reference_contract_id=contract.id,
+            source=CONTRACT_CASHBACK_SOURCE,
+            note=f"Cashback contratto {str(contract.id)[:8].upper()}",
+            idempotency_key=f"contract-cashback:{contract.id}",
+        )
+    except Exception:
+        logger.exception("Contract %s: LialCash credit failed", contract.id)
+        return
+
+    contract.cashback_credited_at = utcnow()
+    await db.commit()
+    await db.refresh(contract)

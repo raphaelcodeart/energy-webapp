@@ -34,6 +34,32 @@ def _clamp_cashback_enabled(category: str, requested: bool) -> bool:
     return requested if category != "INTERNAL" else False
 
 
+def _clamp_contract_cashback(category: str, requested: int) -> int:
+    """The mirror image of the two invariants above: automatic contract
+    cashback is a Lial-Energy-service concept, so it only exists on an
+    INTERNAL product. A DROPSHIPPING/PARTNER product earns cashback through
+    the order flow's opt-in 5% surcharge instead (cashback_enabled), and the
+    two must never both be live on the same product."""
+    if category != "INTERNAL":
+        return 0
+    return max(0, min(100, requested))
+
+
+def _clamp_first_referrer_bonus(category: str, enabled: bool, amount_cents: int) -> tuple[bool, int]:
+    """The first-referrer bonus is a commission movement, and commissions
+    only ever come from contracts -- so, like contract cashback, it exists
+    only on an INTERNAL product. An enabled-but-zero bonus is normalized to
+    disabled so "enabled" always means "will actually pay something"."""
+    if category != "INTERNAL":
+        return False, 0
+    amount = max(0, amount_cents)
+    # An amount configured with the toggle off is remembered, not discarded --
+    # an admin who fills the figure in first and flips the switch second
+    # shouldn't lose what they typed. "Enabled" still means "will actually
+    # pay something", so a zero amount can never leave it on.
+    return (enabled and amount > 0), amount
+
+
 async def list_products(db: AsyncSession, *, organization_id: uuid.UUID) -> list[Product]:
     stmt = (
         select(Product)
@@ -102,6 +128,9 @@ async def create_product(
     db.add(product)
     await db.flush()
 
+    _first_referrer_enabled, _first_referrer_cents = _clamp_first_referrer_bonus(
+        payload.category, payload.first_referrer_bonus_enabled, payload.first_referrer_bonus_cents
+    )
     version = ProductVersion(
         product_id=product.id,
         version_label=payload.version_label,
@@ -117,6 +146,9 @@ async def create_product(
         commission_tokens=payload.commission_tokens,
         credit_discount_percentage=_clamp_credit_discount(payload.category, payload.credit_discount_percentage),
         cashback_enabled=_clamp_cashback_enabled(payload.category, payload.cashback_enabled),
+        contract_cashback_percentage=_clamp_contract_cashback(payload.category, payload.contract_cashback_percentage),
+        first_referrer_bonus_enabled=_first_referrer_enabled,
+        first_referrer_bonus_cents=_first_referrer_cents,
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -147,6 +179,9 @@ async def add_product_version(
     if product is None or product.organization_id != organization_id:
         return None
 
+    _version_first_referrer_enabled, _version_first_referrer_cents = _clamp_first_referrer_bonus(
+        product.category, payload.first_referrer_bonus_enabled, payload.first_referrer_bonus_cents
+    )
     version = ProductVersion(
         product_id=product_id,
         version_label=payload.version_label,
@@ -162,6 +197,9 @@ async def add_product_version(
         commission_tokens=payload.commission_tokens,
         credit_discount_percentage=_clamp_credit_discount(product.category, payload.credit_discount_percentage),
         cashback_enabled=_clamp_cashback_enabled(product.category, payload.cashback_enabled),
+        contract_cashback_percentage=_clamp_contract_cashback(product.category, payload.contract_cashback_percentage),
+        first_referrer_bonus_enabled=_version_first_referrer_enabled,
+        first_referrer_bonus_cents=_version_first_referrer_cents,
         valid_from=utcnow(),
         status="ACTIVE",
     )
@@ -219,6 +257,22 @@ async def update_product_version(
         version.credit_discount_percentage = _clamp_credit_discount(product.category, payload.credit_discount_percentage)
     if payload.cashback_enabled is not None:
         version.cashback_enabled = _clamp_cashback_enabled(product.category, payload.cashback_enabled)
+    if payload.contract_cashback_percentage is not None:
+        version.contract_cashback_percentage = _clamp_contract_cashback(
+            product.category, payload.contract_cashback_percentage
+        )
+    if payload.first_referrer_bonus_enabled is not None or payload.first_referrer_bonus_cents is not None:
+        enabled, cents = _clamp_first_referrer_bonus(
+            product.category,
+            version.first_referrer_bonus_enabled
+            if payload.first_referrer_bonus_enabled is None
+            else payload.first_referrer_bonus_enabled,
+            version.first_referrer_bonus_cents
+            if payload.first_referrer_bonus_cents is None
+            else payload.first_referrer_bonus_cents,
+        )
+        version.first_referrer_bonus_enabled = enabled
+        version.first_referrer_bonus_cents = cents
     if payload.status is not None:
         version.status = payload.status
 

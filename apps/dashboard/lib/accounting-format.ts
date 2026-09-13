@@ -33,6 +33,9 @@ const SOURCE_LABELS: Record<string, string> = {
   INVOICE_REDEMPTION_BONUS: "Bonus 5% riscatto fattura",
   ORDER_CASHBACK_BASE: "Cashback ordine",
   ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
+  // Automatic, surcharge-free credit on a paid Lial Energy contract --
+  // deliberately a different rule from the two 5% ones above.
+  CONTRACT_CASHBACK: "Cashback contratto Lial Energy",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -44,6 +47,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 const CASHBACK_SOURCES = new Set([
   "ORDER_CASHBACK_BASE", "ORDER_CASHBACK_BONUS", "INVOICE_REDEMPTION_BASE", "INVOICE_REDEMPTION_BONUS",
+  "CONTRACT_CASHBACK",
 ]);
 
 /** Whether a movement put money IN the customer's pocket/wallet ("entrata")

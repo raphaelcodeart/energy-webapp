@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import utcnow
-from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email import send_html_email_best_effort
 from app.core.email_templates import render_email
 from app.domains.catalog.models import Product, ProductVersion
 from app.domains.customers.models import Company, Customer, CustomerProfile
@@ -443,15 +443,13 @@ async def _send_order_confirmation_email(
         cta_label=cta_label,
         cta_url=cta_url,
     )
-    try:
-        send_html_email(
-            to=user.email,
-            subject=f"Conferma ordine - {version.name} - Lial Energy",
-            html_body=html,
-            text_body=f"{heading}: {version.name}, totale {order.amount_cents / 100:.2f} EUR.",
-        )
-    except EmailNotConfiguredError:
-        logger.warning("Order confirmation email for %s not sent (SMTP not configured), order=%s", user.email, order.id)
+    send_html_email_best_effort(
+        context=f"Order confirmation email (order={order.id})",
+        to=user.email,
+        subject=f"Conferma ordine - {version.name} - Lial Energy",
+        html_body=html,
+        text_body=f"{heading}: {version.name}, totale {order.amount_cents / 100:.2f} EUR.",
+    )
 
 
 async def _send_order_paid_email(
@@ -499,18 +497,16 @@ async def _send_order_paid_email(
         cta_label="Vai ai miei ordini",
         cta_url=f"{get_settings().public_app_base_url}/customer?tab=orders",
     )
-    try:
-        send_html_email(
-            to=user.email,
-            subject=f"Pagamento confermato - Ordine {str(order.id)[:8]} - Lial Energy",
-            html_body=html,
-            text_body=(
-                f"Pagamento completato con successo. Ordine {order.id}, {product_name}, "
-                f"{order.amount_cents / 100:.2f} EUR, {method_label}."
-            ),
-        )
-    except EmailNotConfiguredError:
-        logger.warning("Order-paid email for %s not sent (SMTP not configured), order=%s", user.email, order.id)
+    send_html_email_best_effort(
+        context=f"Order-paid email (order={order.id})",
+        to=user.email,
+        subject=f"Pagamento confermato - Ordine {str(order.id)[:8]} - Lial Energy",
+        html_body=html,
+        text_body=(
+            f"Pagamento completato con successo. Ordine {order.id}, {product_name}, "
+            f"{order.amount_cents / 100:.2f} EUR, {method_label}."
+        ),
+    )
 
 
 async def get_org_scoped(db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID) -> Order | None:

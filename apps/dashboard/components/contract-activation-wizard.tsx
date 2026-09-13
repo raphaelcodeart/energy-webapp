@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { type CodeEntry, emptyEntries, SupplyPointCodeFields } from "@/components/supply-point-code-fields";
+import { computePrice } from "@/lib/product-audience";
 import { friendlyApiError } from "@/lib/api-error";
 import type { ContractRead, ProductCatalogRead } from "@/lib/types";
 
@@ -36,6 +37,7 @@ export function ContractActivationWizard({
   onClose,
   onActivated,
   customerId,
+  customerKind,
 }: {
   product: ProductCatalogRead;
   /** Pre-fills the editable Email field below -- never forced: the customer
@@ -51,8 +53,19 @@ export function ContractActivationWizard({
       other step of the wizard (quantity questions, documents) is
       identical either way. */
   customerId?: string;
+  /** The buyer's tipologia (PRIVATE / SOLE_PROPRIETOR / COMPANY /
+      CONDOMINIUM). Decides whether this contract carries VAT at all: a
+      privato pays the listed price, a business pays it plus VAT. The
+      backend computes and freezes the same breakdown onto the contract
+      (catalog/pricing.py) -- this is only what the buyer is shown. */
+  customerKind?: string | null;
 }) {
   const v = product.current_version!;
+  // Private customers pay no VAT on a contract; businesses pay net + VAT.
+  // Same rule the server applies and freezes onto the contract.
+  const price = computePrice(v.base_price_cents, v.vat_percentage, customerKind ?? null, {
+    assumeBusinessWhenUnknown: false,
+  });
   const needsPod = product.energy_type === "ELECTRICITY" || product.energy_type === "DUAL_FUEL";
   const needsPdr = product.energy_type === "GAS" || product.energy_type === "DUAL_FUEL";
 
@@ -125,9 +138,13 @@ export function ContractActivationWizard({
             <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wide">Attiva Contratto</p>
             <h3 className="text-lg font-bold text-white light:text-slate-900">{v.name}</h3>
             <div className="flex items-baseline gap-1.5 mt-1">
-              <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(v.base_price_cents)}</span>
-              {v.vat_percentage != null && (
-                <span className="text-[10px] text-slate-500">+ IVA {v.vat_percentage}%</span>
+              <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(price.netCents)}</span>
+              {price.vatCents > 0 ? (
+                <span className="text-[10px] text-slate-500">
+                  + IVA {price.vatRate}% = <strong className="text-slate-400">{euro(price.grossCents)}</strong>
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-500">IVA non applicata</span>
               )}
             </div>
           </div>

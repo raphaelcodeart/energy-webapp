@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email import send_html_email_best_effort
 from app.core.email_templates import render_email
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Company, Customer, CustomerProfile
@@ -194,7 +194,20 @@ async def credit_wallet(
         idempotency_key=idempotency_key,
     )
     db.add(txn)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Same recovery the commit below already had, which the flush was
+        # missing: uq_wallet_transactions_idempotency_key can just as easily
+        # be violated here (two concurrent requests carrying the same key),
+        # and so can a foreign key (a reference id that no longer exists).
+        # Unhandled, either surfaced as a 500 on an operation that is
+        # perfectly recoverable.
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
 
     wallet = await db.get(Wallet, wallet_id)
     assert wallet is not None  # just updated above by this same wallet_id
@@ -282,15 +295,20 @@ async def _send_wallet_credited_email(
         cta_label="Vai al wallet",
         cta_url=f"{get_settings().public_app_base_url}/customer?tab=wallet",
     )
-    try:
-        send_html_email(
-            to=user.email,
-            subject=subject,
-            html_body=html,
-            text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} LialCash.",
-        )
-    except EmailNotConfiguredError:
-        logger.warning("Wallet-credited email not sent for user %s (SMTP not configured)", user_id)
+    # Must never raise: by the time we get here db.commit() has already moved
+    # the money and written the audit row. Before send_html_email_best_effort
+    # existed, only EmailNotConfiguredError was caught, so a refused SMTP
+    # login or a timeout became a 500 on a top-up that had in fact succeeded
+    # -- and the admin, seeing "Si è verificato un errore imprevisto",
+    # clicked again and credited the wallet a second time (the browser mints
+    # a fresh idempotency key per click). See core/email.py.
+    send_html_email_best_effort(
+        context=f"Wallet-credited email (user={user_id})",
+        to=user.email,
+        subject=subject,
+        html_body=html,
+        text_body=f"Il tuo wallet Lial Energy è stato ricaricato di {amount_cents / 100:.2f} LialCash.",
+    )
 
 
 async def debit_and_transfer(
@@ -354,7 +372,15 @@ async def debit_and_transfer(
         idempotency_key=idempotency_key,
     )
     db.add(txn)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Same recovery the commit below already had -- see credit_wallet().
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
@@ -423,7 +449,20 @@ async def debit_wallet_for_purchase(
         idempotency_key=idempotency_key,
     )
     db.add(txn)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Same recovery the commit below already had, which the flush was
+        # missing: uq_wallet_transactions_idempotency_key can just as easily
+        # be violated here (two concurrent requests carrying the same key),
+        # and so can a foreign key (a reference id that no longer exists).
+        # Unhandled, either surfaced as a 500 on an operation that is
+        # perfectly recoverable.
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
 
     wallet = await db.get(Wallet, wallet_id)
     assert wallet is not None  # just updated above by this same wallet_id
@@ -492,7 +531,20 @@ async def debit_wallet_for_imported_purchase(
         idempotency_key=idempotency_key,
     )
     db.add(txn)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Same recovery the commit below already had, which the flush was
+        # missing: uq_wallet_transactions_idempotency_key can just as easily
+        # be violated here (two concurrent requests carrying the same key),
+        # and so can a foreign key (a reference id that no longer exists).
+        # Unhandled, either surfaced as a 500 on an operation that is
+        # perfectly recoverable.
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
 
     wallet = await db.get(Wallet, wallet_id)
     assert wallet is not None  # just updated above by this same wallet_id

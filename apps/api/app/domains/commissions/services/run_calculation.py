@@ -25,9 +25,30 @@ from app.domains.notifications import service as notifications_service
 
 RULE_VERSION = "2026.1-placeholder"  # see docs/open-questions.md #1
 
+# A one-off bonus for the promoter who ORIGINALLY brought the customer in,
+# paid alongside (never instead of) the ordinary recursive commission. It is
+# configured per product version (ProductVersion.first_referrer_bonus_enabled
+# / first_referrer_bonus_cents), never keyed off a price or a product id in
+# code -- "il contratto BAR paga 25 euro in piu al primo segnalatore" has to
+# be a value an admin can set, and a different value tomorrow, without a
+# deploy.
+FIRST_REFERRER_BONUS_MOVEMENT_TYPE = "FIRST_REFERRER_BONUS"
+
 
 def _idempotency_key(contract_id: uuid.UUID, trigger_event_id: uuid.UUID, agent_id: str, movement_type: str) -> str:
     raw = f"{contract_id}:{trigger_event_id}:{agent_id}:{movement_type}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _first_referrer_bonus_idempotency_key(contract_id: uuid.UUID, agent_id: uuid.UUID) -> str:
+    """Deliberately does NOT include the trigger event, unlike every other
+    movement key above. The recursive commission is earned again on each
+    renewal, so its key has to vary per trigger; this bonus is "once per
+    contract, ever", so leaving the trigger out makes the UNIQUE constraint
+    on commission_movements.idempotency_key itself the guarantee -- a renewal,
+    a replayed outbox event or a manual re-run simply cannot produce a second
+    one, whatever the application-level check below does."""
+    raw = f"first-referrer-bonus:{contract_id}:{agent_id}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -241,6 +262,15 @@ async def run_calculation_for_contract(
                     body=step.explanation,
                 )
 
+    await _maybe_add_first_referrer_bonus(
+        db,
+        organization_id=organization_id,
+        contract=contract,
+        calculation_id=calculation.id,
+        trigger_event_id=trigger_event_id,
+        effective_date=today,
+    )
+
     try:
         await db.commit()
     except IntegrityError:
@@ -257,3 +287,85 @@ async def run_calculation_for_contract(
         raise
     await db.refresh(calculation)
     return calculation
+
+
+async def _maybe_add_first_referrer_bonus(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    contract: Contract,
+    calculation_id: uuid.UUID,
+    trigger_event_id: uuid.UUID,
+    effective_date,
+) -> None:
+    """Adds the first-referrer bonus movement, if this product pays one.
+
+    Three things this is careful about, because all three were stated as
+    requirements and each is easy to get subtly wrong:
+
+    1. It goes to the ORIGINAL referrer (`contract.first_referrer_agent_id`,
+       frozen at contract creation), not to the whole upline and not to
+       whoever filled the contract in. Those are genuinely different people
+       whenever one promoter assists another promoter's customer, and the
+       ordinary recursive commission already pays the producer.
+    2. Once per contract, ever -- not once per activation. The idempotency
+       key omits the trigger event precisely so a renewal cannot pay it
+       again; the SELECT below is the readable check, the UNIQUE constraint
+       is the one that actually cannot be raced.
+    3. It is additive. Nothing here touches the PERSONAL_TOKEN /
+       ENTREPRENEURIAL_DIFFERENCE movements written above -- the existing
+       commission keeps being paid exactly as it is today, and this lands as
+       its own separately auditable row.
+    """
+    referrer_agent_id = contract.first_referrer_agent_id
+    if referrer_agent_id is None:
+        return
+
+    version = await db.get(ProductVersion, contract.product_version_id)
+    if version is None or not version.first_referrer_bonus_enabled:
+        return
+    amount_cents = int(version.first_referrer_bonus_cents or 0)
+    if amount_cents <= 0:
+        return
+
+    referrer = await db.get(AgentProfile, referrer_agent_id)
+    if referrer is None or referrer.organization_id != organization_id or referrer.status != "ACTIVE":
+        # A deactivated or blacklisted promoter earns nothing new, same rule
+        # contract creation already applies to a producer agent.
+        return
+
+    already = (
+        await db.execute(
+            select(CommissionMovement.id).where(
+                CommissionMovement.contract_id == contract.id,
+                CommissionMovement.movement_type == FIRST_REFERRER_BONUS_MOVEMENT_TYPE,
+            )
+        )
+    ).first()
+    if already is not None:
+        return
+
+    db.add(
+        CommissionMovement(
+            organization_id=organization_id,
+            agent_id=referrer_agent_id,
+            contract_id=contract.id,
+            origin_event_id=trigger_event_id,
+            calculation_id=calculation_id,
+            movement_type=FIRST_REFERRER_BONUS_MOVEMENT_TYPE,
+            amount_cents=amount_cents,
+            currency="EUR",
+            status="ACCRUED",
+            effective_date=effective_date,
+            rule_version_id=RULE_VERSION,
+            network_snapshot_id=contract.network_snapshot_id,
+            idempotency_key=_first_referrer_bonus_idempotency_key(contract.id, referrer_agent_id),
+        )
+    )
+    if referrer.user_id is not None:
+        await notifications_service.notify_user(
+            db, organization_id=organization_id, user_id=referrer.user_id,
+            type_="COMMISSION_EARNED", entity_type="contract", entity_id=contract.id,
+            title=f"Bonus primo segnalatore: {amount_cents / 100:.2f} EUR",
+            body="Bonus riconosciuto al promoter che ha portato questo cliente in Lial Energy.",
+        )

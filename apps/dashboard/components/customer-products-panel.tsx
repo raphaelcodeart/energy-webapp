@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ImportedProductRead, ProductCatalogRead } from "@/lib/types";
+import type { CustomerRead, ImportedProductRead, ProductCatalogRead } from "@/lib/types";
 import { ContractActivationWizard } from "@/components/contract-activation-wizard";
 import { ImportedProductCheckoutModal } from "@/components/imported-product-checkout-modal";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { ProductThumbnail } from "@/components/product-thumbnail";
+import { computePrice, productAllowsCustomerKind } from "@/lib/product-audience";
+import { type ShareResult, shareOrCopyLink } from "@/lib/share-link";
 
 const ENERGY_LABELS: Record<string, string> = {
   ELECTRICITY: "Luce",
@@ -47,6 +49,17 @@ const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
 ];
 
 const ALL_CATEGORIES: ProductCategory[] = ["INTERNAL", "PARTNER", "DROPSHIPPING"];
+
+/** The logged-in customer's own record -- needed for two things the catalog
+    could not previously get right: which contracts they are allowed to
+    activate, and whether their price carries VAT. 404 for a staff/promoter
+    account with no customer record is a normal answer, not an error. */
+async function fetchMyCustomerRecord(): Promise<CustomerRead | null> {
+  const res = await fetch("/api/proxy/customers/me");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Impossibile caricare la tua anagrafica.");
+  return res.json();
+}
 
 async function fetchImportedProducts(): Promise<ImportedProductRead[]> {
   const res = await fetch("/api/proxy/imported-products/products/active");
@@ -108,7 +121,18 @@ export function CustomerProductsPanel({
     queryFn: fetchImportedProducts,
     enabled: showImportedTab,
   });
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Only the contract catalog depends on who is looking -- the shop grid
+  // sells the same products to everyone -- so this is not fetched at all
+  // unless an INTERNAL tab is on screen.
+  const needsCustomerKind = visibleCategories.includes("INTERNAL");
+  const { data: myCustomer } = useQuery({
+    queryKey: ["customer", "me", "record"],
+    queryFn: fetchMyCustomerRecord,
+    enabled: needsCustomerKind,
+  });
+  const customerKind = myCustomer?.kind ?? null;
+
+  const [sharedId, setSharedId] = useState<{ id: string; result: ShareResult } | null>(null);
   const [activeCategory, setActiveCategory] = useState<ShopTab>(visibleCategories[0] ?? "INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
   const [importedCheckoutTarget, setImportedCheckoutTarget] = useState<{ id: string; name: string } | null>(null);
@@ -123,17 +147,30 @@ export function CustomerProductsPanel({
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
   );
-  const catalog = activeProducts.filter((p) => p.category === activeCategory);
+  const catalog = activeProducts
+    .filter((p) => p.category === activeCategory)
+    // A customer is only offered the contracts their own tipologia may
+    // activate. Enforcement is server-side too (contracts/service.py) --
+    // this is so nobody is shown a card that would then be refused. Applies
+    // only to contracts: the shop sells the same products to everyone. Fails
+    // open while the customer record is still loading.
+    .filter((p) => p.category !== "INTERNAL" || productAllowsCustomerKind(p.customer_type, customerKind));
 
-  function shareProduct(productId: string, productName: string) {
+  async function shareProduct(productId: string, productName: string) {
     if (!referralCode || typeof window === "undefined") return;
     const url = new URL(`/r/${referralCode}`, window.location.origin);
     if (organizationId) url.searchParams.set("org", organizationId);
     url.searchParams.set("product", productId);
     url.searchParams.set("product_name", productName);
-    navigator.clipboard.writeText(url.toString());
-    setCopiedId(productId);
-    setTimeout(() => setCopiedId(null), 2000);
+    // Native share sheet on a phone (WhatsApp, Telegram, SMS, ...), a
+    // clipboard copy everywhere else -- see lib/share-link.ts.
+    const result = await shareOrCopyLink({
+      url: url.toString(),
+      title: productName,
+      text: `Ti segnalo "${productName}" di Lial Energy:`,
+    });
+    setSharedId({ id: productId, result });
+    setTimeout(() => setSharedId(null), 2000);
   }
 
   if (isLoading) {
@@ -339,11 +376,28 @@ export function CustomerProductsPanel({
                         <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
                         <span className="text-[11px] text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
                       </div>
-                      {v.vat_percentage != null && (
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          + IVA {v.vat_percentage}% ({euro(Math.round(v.base_price_cents * (1 + v.vat_percentage / 100)))} tot.)
-                        </p>
-                      )}
+                      {(() => {
+                        // A contract for a private customer carries no VAT at
+                        // all -- this card used to add it unconditionally, so a
+                        // privato was quoted 22% more than they would ever be
+                        // charged. On the shop grid (no customer kind in play)
+                        // the product's own rate is shown, as before.
+                        const price = computePrice(
+                          v.base_price_cents,
+                          v.vat_percentage,
+                          p.category === "INTERNAL" ? customerKind : null
+                        );
+                        if (price.vatCents <= 0) {
+                          return p.category === "INTERNAL" && customerKind ? (
+                            <p className="text-[10px] text-slate-500 mt-0.5">IVA non applicata</p>
+                          ) : null;
+                        }
+                        return (
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            + IVA {price.vatRate}% ({euro(price.grossCents)} tot.)
+                          </p>
+                        );
+                      })()}
                       {v.initial_fee_cents > 0 && (
                         <p className="text-[10px] text-slate-500 mt-0.5">
                           + {euro(v.initial_fee_cents)} attivazione
@@ -363,12 +417,12 @@ export function CustomerProductsPanel({
                       onClick={() => shareProduct(p.id, v.name)}
                       className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
                     >
-                      {copiedId === p.id ? (
+                      {sharedId?.id === p.id && sharedId.result !== "failed" ? (
                         <>
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                           </svg>
-                          Link copiato!
+                          {sharedId.result === "shared" ? "Link condiviso!" : "Link copiato!"}
                         </>
                       ) : (
                         <>
@@ -439,6 +493,7 @@ export function CustomerProductsPanel({
       {activationTarget && (
         <ContractActivationWizard
           product={activationTarget}
+          customerKind={customerKind}
           accountEmail={accountEmail}
           onClose={() => setActivationTarget(null)}
           onActivated={() => queryClient.invalidateQueries({ queryKey: ["customer", "contracts"] })}

@@ -1,12 +1,14 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser, require_permission
+from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.core.storage import UploadValidationError, upload_media
 from app.domains.customers import service as customer_service
+from app.domains.customers.models import Customer
 from app.domains.customers.schemas import (
     CustomerCreate,
     CustomerDetailRead,
@@ -29,6 +31,44 @@ async def list_customers(
 ) -> list[CustomerRead]:
     rows = await customer_service.list_customers(db, organization_id=current_user.organization_id)
     return [CustomerRead(**row) for row in rows]
+
+
+@router.get("/me", response_model=CustomerRead)
+async def get_my_customer_record(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    """The caller's OWN customer record. Authentication only, no permission --
+    same "own account, resolved from the session, never from the request"
+    shape as GET /wallets/me.
+
+    Exists because the customer-facing catalog has to know whether the person
+    looking at it is a privato or an azienda, to show only the contracts
+    their kind may activate (catalog/pricing.py::product_allows_customer_kind).
+    404 rather than an empty body for a staff account with no customer
+    record -- that is a real "not applicable", not an empty customer.
+
+    Declared ABOVE /{customer_id} on purpose: FastAPI matches routes in
+    declaration order, and "me" would otherwise be parsed as a UUID path
+    parameter and 422 before ever reaching here.
+    """
+    own_id = (
+        await db.execute(
+            select(Customer.id).where(
+                Customer.organization_id == current_user.organization_id,
+                Customer.user_id == current_user.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if own_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nessuna anagrafica cliente collegata a questo account")
+    # Reuses list_customers rather than re-deriving the display_name/company
+    # joins here, narrowed to the single row via the same `customer_ids`
+    # parameter the promoter's own CRM list uses.
+    rows = await customer_service.list_customers(
+        db, organization_id=current_user.organization_id, customer_ids={own_id}
+    )
+    return CustomerRead(**rows[0])
 
 
 @router.get("/{customer_id}", response_model=CustomerDetailRead)

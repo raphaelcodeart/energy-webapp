@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email import EmailNotConfiguredError, send_html_email, send_html_email_best_effort
 from app.core.email_templates import render_email
 from app.core.security import (
     create_access_token,
@@ -420,18 +420,16 @@ async def send_account_invite_email(db: AsyncSession, *, user: User, invited_by_
         cta_label="Imposta la tua password",
         cta_url=set_password_link,
     )
-    try:
-        send_html_email(
-            to=user.email,
-            subject="Il tuo account Lial Energy è pronto",
-            html_body=html,
-            text_body=(
-                f"{invited_by_display_name} ha creato per te un account su Lial Energy.\n\n"
-                f"Imposta la tua password qui: {set_password_link}"
-            ),
-        )
-    except EmailNotConfiguredError:
-        logger.warning("Account-invite email for %s not sent (SMTP not configured), user=%s", user.email, user.id)
+    send_html_email_best_effort(
+        context=f"Account-invite email (user={user.id})",
+        to=user.email,
+        subject="Il tuo account Lial Energy è pronto",
+        html_body=html,
+        text_body=(
+            f"{invited_by_display_name} ha creato per te un account su Lial Energy.\n\n"
+            f"Imposta la tua password qui: {set_password_link}"
+        ),
+    )
 
 
 # Password-reset DELIVERY override for the two shared admin accounts. A

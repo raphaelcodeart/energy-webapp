@@ -103,6 +103,12 @@ const PERMISSION_LABELS: Record<string, string> = {
   "documents.review": "revisionare i documenti",
   "documentation.manage": "gestire la documentazione",
   "wallet.manage": "gestire i wallet",
+  // Deliberately narrower than wallet.manage and held by SUPER_ADMIN alone:
+  // this is the one that mints credit out of nothing. Missing here until now,
+  // so a plain ADMIN clicking "Ricarica" got a generic "non hai i permessi"
+  // instead of being told which permission they were actually missing.
+  "wallet.credit": "ricaricare un wallet",
+  "organization.manage_payments": "gestire le impostazioni di pagamento",
 };
 
 const GENERIC_FALLBACK = "Si è verificato un errore imprevisto. Riprova più tardi.";

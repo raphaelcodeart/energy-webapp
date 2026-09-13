@@ -20,13 +20,28 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   SUBSCRIPTION: "Abbonamento",
 };
 
+// Who a product may be sold to. Three values, because the business question
+// is genuinely binary-plus-both -- the old vocabulary (PMI, ENERGY_INTENSIVE,
+// SOLE_PROPRIETOR) never lined up with `customers.kind` (COMPANY, ...), so
+// nothing could compare the two and no product was ever actually filtered.
+// Legacy values still parse server-side and collapse onto BUSINESS; see
+// catalog/pricing.py.
 const CUSTOMER_TYPE_LABELS: Record<string, string> = {
-  PRIVATE: "Privati",
-  SOLE_PROPRIETOR: "Partita IVA",
-  PMI: "PMI",
-  CONDOMINIUM: "Condominio",
-  ENERGY_INTENSIVE: "Energivori",
+  BOTH: "Privati e aziende",
+  PRIVATE: "Solo privati",
+  BUSINESS: "Solo aziende / P.IVA",
 };
+
+const LEGACY_CUSTOMER_TYPE_LABELS: Record<string, string> = {
+  SOLE_PROPRIETOR: "Solo aziende / P.IVA",
+  PMI: "Solo aziende / P.IVA",
+  CONDOMINIUM: "Solo aziende / P.IVA",
+  ENERGY_INTENSIVE: "Solo aziende / P.IVA",
+};
+
+function customerTypeLabel(value: string): string {
+  return CUSTOMER_TYPE_LABELS[value] ?? LEGACY_CUSTOMER_TYPE_LABELS[value] ?? value;
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   INTERNAL: "Interno Lial Energy",
@@ -98,6 +113,14 @@ interface ProductFormState {
   // product -- same INTERNAL-forced-off rule as creditDiscountPercentage,
   // see catalog/service.py::_clamp_cashback_enabled.
   cashbackEnabled: boolean;
+  // INTERNAL-only counterparts of the two above. 0-100: how much of a paid
+  // contract's GROSS (VAT included) comes back as LialCash, automatically
+  // and with no surcharge -- see catalog/service.py::_clamp_contract_cashback.
+  contractCashbackPercentage: string;
+  // A one-off bonus for the promoter who ORIGINALLY brought the customer in.
+  // A value an admin sets per product, never a price comparison in code.
+  firstReferrerBonusEnabled: boolean;
+  firstReferrerBonusEuro: string;
 }
 
 const EMPTY_FORM: ProductFormState = {
@@ -113,6 +136,9 @@ const EMPTY_FORM: ProductFormState = {
   commissionTokens: {},
   creditDiscountPercentage: "0",
   cashbackEnabled: false,
+  contractCashbackPercentage: "0",
+  firstReferrerBonusEnabled: false,
+  firstReferrerBonusEuro: "0",
 };
 
 function ProductFormFields({
@@ -257,6 +283,63 @@ function ProductFormFields({
         )}
       </div>
 
+      {category === "INTERNAL" && (
+        <>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
+              Cashback automatico sul contratto (%)
+            </label>
+            <input
+              inputMode="numeric"
+              value={form.contractCashbackPercentage}
+              onChange={(e) => onChange({ contractCashbackPercentage: e.target.value })}
+              placeholder="0"
+              className="w-full max-w-[140px] rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
+            />
+            <p className="text-[10px] text-slate-500">
+              Percentuale dell&apos;importo totale pagato (IVA inclusa) che torna al cliente come LialCash
+              quando il contratto risulta pagato. <strong>Automatico e senza il 5% aggiuntivo</strong>: sui
+              servizi Lial Energy e sulla formazione il cliente non paga nulla in più per ottenere il credito,
+              a differenza del riscatto fatture dei partner esterni. <span className="font-mono">0</span> = nessun
+              cashback.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
+              Bonus primo segnalatore
+            </label>
+            <label className="flex items-center gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.firstReferrerBonusEnabled}
+                onChange={(e) => onChange({ firstReferrerBonusEnabled: e.target.checked })}
+                className="w-4 h-4 rounded border-white/20 accent-orange-500"
+              />
+              Riconosci un bonus extra al primo promoter che ha segnalato il cliente
+            </label>
+            {form.firstReferrerBonusEnabled && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  inputMode="decimal"
+                  value={form.firstReferrerBonusEuro}
+                  onChange={(e) => onChange({ firstReferrerBonusEuro: e.target.value })}
+                  placeholder="25.00"
+                  className="w-full max-w-[140px] rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
+                />
+                <span className="text-xs text-slate-500">EUR</span>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-500">
+              Si aggiunge alla provvigione normale, non la sostituisce, e viene pagato{" "}
+              <strong>una sola volta per contratto</strong> al promoter che ha portato il cliente in Lial
+              Energy &mdash; mai a tutta la rete e mai al promoter che si limita a compilare il contratto,
+              se è una persona diversa.
+            </p>
+          </div>
+        </>
+      )}
+
       <div className="space-y-1 pt-2 border-t border-white/5 light:border-slate-200">
         <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
           Gettone provvigionale per grado (EUR)
@@ -302,13 +385,17 @@ export function AdminProductsPanel() {
   const [code, setCode] = useState("");
   const [productType, setProductType] = useState("ENERGY_CONTRACT");
   const [energyType, setEnergyType] = useState("ELECTRICITY");
-  const [customerType, setCustomerType] = useState("PRIVATE");
+  const [customerType, setCustomerType] = useState("BOTH");
   const [category, setCategory] = useState("INTERNAL");
   const [createForm, setCreateForm] = useState<ProductFormState>(EMPTY_FORM);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [editingProduct, setEditingProduct] = useState<ProductCatalogRead | null>(null);
+  // Lives on the Product, not the ProductVersion, so it is saved by its own
+  // PATCH below. Until now it could only be set at creation and never
+  // corrected -- and nothing read it anyway.
+  const [editCustomerType, setEditCustomerType] = useState("BOTH");
   const [editForm, setEditForm] = useState<ProductFormState>(EMPTY_FORM);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -337,6 +424,9 @@ export function AdminProductsPanel() {
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
       creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
       cashbackEnabled: v?.cashback_enabled ?? false,
+      contractCashbackPercentage: v ? String(v.contract_cashback_percentage) : "0",
+      firstReferrerBonusEnabled: v?.first_referrer_bonus_enabled ?? false,
+      firstReferrerBonusEuro: v ? centsToEuroInput(v.first_referrer_bonus_cents) : "0",
     });
     setCreateError(null);
     setIsDuplicating(true);
@@ -371,6 +461,11 @@ export function AdminProductsPanel() {
           commission_tokens: commissionTokensToCents(createForm.commissionTokens),
           credit_discount_percentage: category === "INTERNAL" ? 0 : (parseInt(createForm.creditDiscountPercentage, 10) || 0),
           cashback_enabled: category === "INTERNAL" ? false : createForm.cashbackEnabled,
+          // Mirror of the clamps in catalog/service.py -- the server enforces
+          // these regardless, this just keeps the request honest.
+          contract_cashback_percentage: category === "INTERNAL" ? (parseInt(createForm.contractCashbackPercentage, 10) || 0) : 0,
+          first_referrer_bonus_enabled: category === "INTERNAL" && createForm.firstReferrerBonusEnabled,
+          first_referrer_bonus_cents: category === "INTERNAL" ? euroToCents(createForm.firstReferrerBonusEuro) : 0,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
@@ -401,7 +496,13 @@ export function AdminProductsPanel() {
       commissionTokens: v ? commissionTokensToEuro(v.commission_tokens) : {},
       creditDiscountPercentage: v ? String(v.credit_discount_percentage) : "0",
       cashbackEnabled: v?.cashback_enabled ?? false,
+      contractCashbackPercentage: v ? String(v.contract_cashback_percentage) : "0",
+      firstReferrerBonusEnabled: v?.first_referrer_bonus_enabled ?? false,
+      firstReferrerBonusEuro: v ? centsToEuroInput(v.first_referrer_bonus_cents) : "0",
     });
+    setEditCustomerType(
+      ["PRIVATE", "BUSINESS", "BOTH"].includes(product.customer_type) ? product.customer_type : "BUSINESS"
+    );
     setEditError(null);
     setEditingProduct(product);
   }
@@ -429,9 +530,25 @@ export function AdminProductsPanel() {
           commission_tokens: commissionTokensToCents(editForm.commissionTokens),
           credit_discount_percentage: editingProduct.category === "INTERNAL" ? 0 : (parseInt(editForm.creditDiscountPercentage, 10) || 0),
           cashback_enabled: editingProduct.category === "INTERNAL" ? false : editForm.cashbackEnabled,
+          contract_cashback_percentage: editingProduct.category === "INTERNAL" ? (parseInt(editForm.contractCashbackPercentage, 10) || 0) : 0,
+          first_referrer_bonus_enabled: editingProduct.category === "INTERNAL" && editForm.firstReferrerBonusEnabled,
+          first_referrer_bonus_cents: editingProduct.category === "INTERNAL" ? euroToCents(editForm.firstReferrerBonusEuro) : 0,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
+
+      // Audience is a Product field, not a ProductVersion one -- second call,
+      // and only when it actually changed, so an unrelated edit never writes
+      // to the product row.
+      if (editCustomerType !== editingProduct.customer_type) {
+        const audienceRes = await fetch(`/api/proxy/products/${editingProduct.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customer_type: editCustomerType }),
+        });
+        if (!audienceRes.ok) throw new Error(await friendlyApiError(audienceRes));
+      }
+
       setEditingProduct(null);
       await queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
     } catch (err: any) {
@@ -602,7 +719,7 @@ export function AdminProductsPanel() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-400 light:text-slate-500">
-                    Target: {CUSTOMER_TYPE_LABELS[p.customer_type] ?? p.customer_type}
+                    Target: {customerTypeLabel(p.customer_type)}
                   </span>
                   {p.current_version && (
                     <span className="text-right">
@@ -745,6 +862,25 @@ export function AdminProductsPanel() {
             )}
 
             <form onSubmit={handleEditSave} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
+                  Cliente Target
+                </label>
+                <select
+                  value={editCustomerType}
+                  onChange={(e) => setEditCustomerType(e.target.value)}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
+                >
+                  {Object.entries(CUSTOMER_TYPE_LABELS).map(([code2, label]) => (
+                    <option key={code2} value={code2}>{label}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500">
+                  Chi può attivare questo contratto. Un cliente vede in catalogo solo i contratti compatibili
+                  con la propria tipologia &mdash; e il controllo è anche lato server, non solo grafico.
+                </p>
+              </div>
+
               <ProductFormFields form={editForm} onChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))} ranks={ranks} category={editingProduct?.category ?? "INTERNAL"} />
 
               {editError && (

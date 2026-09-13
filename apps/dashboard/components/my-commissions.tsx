@@ -8,6 +8,10 @@ import type { CommissionMovementDetailRead } from "@/lib/types";
 const MOVEMENT_LABELS: Record<string, string> = {
   PERSONAL_TOKEN: "Gettone personale",
   ENTREPRENEURIAL_DIFFERENCE: "Differenza imprenditoriale",
+  // Paid once per contract to the promoter who ORIGINALLY brought the
+  // customer in -- never to the upline, never to whoever filled the
+  // contract in. Additive to the movements above, not a replacement.
+  FIRST_REFERRER_BONUS: "Bonus primo segnalatore",
   PERSONAL_BONUS: "Bonus personale",
   REVERSAL: "Storno",
 };

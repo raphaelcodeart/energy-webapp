@@ -88,3 +88,30 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     # credit_discount_percentage above, same reason: an Interno Lial Energy
     # product is a Contract, not an Order, and never generates cashback.
     cashback_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 0-100: how much of a CONTRACT's gross amount (net + VAT) is credited
+    # back as LialCash once that contract is actually paid. This is the
+    # INTERNAL/Lial Energy counterpart of cashback_enabled above and the two
+    # are deliberately different mechanisms, because the business rule is
+    # different:
+    #   - cashback_enabled (DROPSHIPPING/PARTNER orders): opt-in, the
+    #     customer pays a 5% surcharge to earn it. Untouched here.
+    #   - contract_cashback_percentage (INTERNAL contracts, and the
+    #     "formazione" services that will be catalogued the same way):
+    #     automatic, NO surcharge -- a Lial Energy service credits the
+    #     customer by construction, there is nothing extra to pay for it.
+    # 0 (the default) means a contract generates no LialCash at all, so
+    # every existing product keeps behaving exactly as it does today until
+    # an admin opts it in. See catalog/pricing.py::cashback_mode_for for the
+    # explicit three-way classification this feeds.
+    contract_cashback_percentage: Mapped[int] = mapped_column(Integer, default=0)
+    # A one-off bonus paid to the promoter who ORIGINALLY brought the
+    # customer in -- never to the whole upline, never to a different promoter
+    # who merely filled the contract in, and never more than once per
+    # contract. Configured per product version rather than keyed off a price
+    # or a product id in a controller, so "il contratto BAR paga 25 euro in
+    # piu al primo segnalatore" is a value an admin sets, not a deploy.
+    # The normal recursive commission (commission_tokens above) is unaffected
+    # and keeps being paid as it is today; this is an additional, separately
+    # auditable movement.
+    first_referrer_bonus_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    first_referrer_bonus_cents: Mapped[int] = mapped_column(BigInteger, default=0)

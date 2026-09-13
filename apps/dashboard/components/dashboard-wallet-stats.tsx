@@ -6,6 +6,7 @@ import type { WalletRead, WalletTransactionRead } from "@/lib/types";
 
 const CASHBACK_SOURCES = new Set([
   "ORDER_CASHBACK_BASE", "ORDER_CASHBACK_BONUS", "INVOICE_REDEMPTION_BASE", "INVOICE_REDEMPTION_BONUS",
+  "CONTRACT_CASHBACK",
 ]);
 
 /** Counts a number up from its previous value to `value` over `durationMs`,

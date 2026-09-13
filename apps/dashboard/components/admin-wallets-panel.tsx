@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { WalletAdminListItemRead, WalletTransactionRead } from "@/lib/types";
 import { friendlyApiError } from "@/lib/api-error";
@@ -32,6 +32,9 @@ const SOURCE_LABELS: Record<string, string> = {
   INVOICE_REDEMPTION_BONUS: "Bonus 5% riscatto fattura",
   ORDER_CASHBACK_BASE: "Cashback ordine",
   ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
+  // Automatic, surcharge-free credit on a paid Lial Energy contract --
+  // deliberately a different rule from the two 5% ones above.
+  CONTRACT_CASHBACK: "Cashback contratto Lial Energy",
 };
 
 function transactionLabel(t: { type: string; source: string | null }): string {
@@ -81,6 +84,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
   const [topUpNote, setTopUpNote] = useState("");
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpError, setTopUpError] = useState<string | null>(null);
+  const topUpKeyRef = useRef<string>("");
 
   const { data: wallets, error: walletsError } = useQuery({
     queryKey: ["admin", "wallets", "all"],
@@ -133,6 +137,16 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
     setTopUpAmount("");
     setTopUpNote("");
     setTopUpError(null);
+    // One key per top-up the admin is composing, not per click. The backend
+    // treats a repeat of the same key as the same top-up and returns the
+    // original transaction, so pressing "Ricarica" again after an error can
+    // never mint a second credit -- which a fresh crypto.randomUUID() per
+    // click could, and did: the credit is committed before the confirmation
+    // email is attempted, so an SMTP failure used to surface as an error on
+    // a top-up that had already gone through. The server side of that is
+    // fixed too (core/email.py::send_html_email_best_effort); this makes the
+    // retry safe regardless of what else ever fails after the commit.
+    topUpKeyRef.current = crypto.randomUUID();
   }
 
   async function handleTopUp(e: React.FormEvent, userId: string) {
@@ -152,7 +166,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
           user_id: userId,
           amount_cents: amountCents,
           note: topUpNote || null,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: topUpKeyRef.current,
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));

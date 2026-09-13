@@ -104,6 +104,112 @@ pending the real `Allegato_A_...Regolamento_Provvigionale.pdf`:
   MANUAL) and `audit_log`, and the affected agent gets an in-app
   notification.
 
+## Contract economics: IVA, tipo cliente, cashback, bonus (Session 38) {#contract-economics}
+
+Three rules that had **no server-side implementation at all** before this,
+plus the two configuration switches they hang off.
+
+### IVA -- one rule, one module {#vat}
+
+`apps/api/app/domains/catalog/pricing.py` is the single place VAT is decided.
+Before it, VAT existed only as a number two React components multiplied the
+displayed price by; nothing on the server ever computed it, so "the price the
+customer saw" and "the price the backend would charge" were two independent
+implementations.
+
+- **Contratto per un privato: nessuna IVA.** **Contratto per azienda / P.IVA:
+  prezzo + IVA.** The *customer's* kind decides whether VAT applies at all;
+  the product only decides *which rate* applies when it does
+  (`product_versions.tax_configuration->>'vat_percentage'`, unchanged -- there
+  is still no VAT percentage hardcoded anywhere in this codebase).
+- `VAT_LIABLE_CUSTOMER_KINDS = {SOLE_PROPRIETOR, COMPANY, CONDOMINIUM}`.
+  Deliberately **not** the same grouping as
+  `customers/service.py::PRIVATE_LIKE_KINDS`, which puts SOLE_PROPRIETOR with
+  PRIVATE: that answers a different question (first/last name vs. company
+  name). A ditta individuale has a person's name *and* a P.IVA.
+- **Snapshotted, never recomputed**: `contracts.net_amount_cents / vat_rate /
+  vat_amount_cents / gross_amount_cents` plus `contracts.customer_kind` are
+  frozen at creation, so an admin editing the product tomorrow can never
+  restate a contract somebody already signed -- the same discipline as network
+  snapshots and commission calculations.
+- Rounding is `Decimal`, half-up on the cent (249,00 x 22% is exactly 54,78;
+  in binary floating point it is 5477.999...).
+- `catalog/pricing.py::contract_net_amount_cents` defines the taxable amount as
+  `base_price_cents` -- the single figure the dashboard has always shown as the
+  product price. `initial_fee_cents` / `recurring_fee_cents` have never been
+  charged by any code path, so folding them in would start billing amounts
+  nobody agreed to. **If the business means something else by "il totale del
+  contratto", that one function is the only place that changes.**
+
+### Chi puo comprare cosa {#product-audience}
+
+`products.customer_type` existed but nothing ever read it, and its vocabulary
+(PMI, ENERGY_INTENSIVE, ...) did not line up with `customers.kind` (COMPANY,
+...), so the two could never be compared. It now holds the binary business
+answer: **PRIVATE / BUSINESS / BOTH** (legacy values still parse and collapse
+onto BUSINESS). A customer is only offered contracts their kind may activate,
+and the server rejects the rest independently -- hiding a card is never the
+enforcement. Existing rows were migrated to **BOTH**, not to their literal old
+value: nothing filtered on this column before, so BOTH is the only
+behaviour-preserving choice.
+
+### Cashback: tre regole distinte, mai confuse {#cashback-modes}
+
+`catalog/pricing.py::cashback_mode_for` classifies every product into exactly
+one of three, **derived** from the fields that actually drive behaviour rather
+than stored in a fourth column that could drift:
+
+| Modalita | Chi | Regola |
+|---|---|---|
+| `STANDARD` | Prodotti DROPSHIPPING/PARTNER (`cashback_enabled`) | Opt-in: il cliente paga il **+5%** al checkout e riceve 100% + 5% come LialCash. **Invariata.** |
+| `AUTOMATIC_INTERNAL_SERVICE` | Contratti Lial Energy e formazione (`contract_cashback_percentage > 0`) | **Automatico, senza il +5%**: pagare il contratto e' esso stesso cio' che genera il credito. |
+| `NO_CASHBACK` | Tutto il resto, incluso ogni prodotto esistente oggi | Nessun accredito. |
+
+The partner-invoice redemption (`invoice_redemptions`, the other 5% rule) is a
+separate domain entirely and is **not touched** by any of this.
+
+The contract credit is a percentage of the **gross** (VAT included), i.e. of
+what the customer actually handed over -- never a pre-discount or otherwise
+inflated base. Exactly-once is enforced twice: `contracts.cashback_credited_at`
+as the readable guard, and the deterministic wallet idempotency key
+`contract-cashback:{contract_id}` against the UNIQUE constraint on
+`wallet_transactions` for the case the guard is raced (a replayed webhook).
+`source = "CONTRACT_CASHBACK"`, distinct from `ORDER_CASHBACK_BASE` and
+`INVOICE_REDEMPTION_BASE` precisely so accounting can tell the three apart.
+
+### Bonus primo segnalatore {#first-referrer-bonus}
+
+An extra one-off amount **on top of** the recursive commission the plan
+already pays, going **exclusively** to the promoter who originally brought the
+customer into Lial Energy. Two concepts that look identical in the ordinary
+case and come apart exactly where this bonus matters:
+
+- **referrer / segnalatore**: a property of the CUSTOMER
+  (`customer_attributions`), frozen onto the contract at creation as
+  `contracts.first_referrer_agent_id`.
+- **producer / chi compila**: a property of the CONTRACT
+  (`contract_attributions.producer_agent_id`), who earns the commission.
+
+Rules: configured per product version (`first_referrer_bonus_enabled` /
+`first_referrer_bonus_cents`) -- never keyed off a price or a product id in
+code; never paid to the upline, only to that one agent; **once per contract,
+ever, not once per activation** -- the idempotency key deliberately omits the
+trigger event so the UNIQUE constraint on `commission_movements` is itself the
+guarantee, even on a renewal or a replayed event; skipped if that agent is no
+longer ACTIVE. `movement_type = "FIRST_REFERRER_BONUS"`, its own auditable row.
+Reassigning the customer afterwards does **not** move the bonus on a contract
+already opened -- reassignment changes who earns future business.
+
+### Chi ha costruito il contratto {#contract-authorship}
+
+`contracts.created_by_user_id` / `created_by_role` /
+`activated_by_promoter_id`. The last is set **only** when a promoter completed
+the contract in place of the customer, so "Contratto attivato dal promoter X"
+is shown exactly when it is true, never inferred from who happens to earn the
+commission. `contract_status_history` and `audit_log` remain the full
+technical trail; these are the denormalized answer to the one question the
+admin screen asks constantly.
+
 ## Contract state machine
 
 ```

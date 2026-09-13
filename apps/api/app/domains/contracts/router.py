@@ -20,6 +20,7 @@ from app.domains.contracts.schemas import (
 from app.domains.contracts.service import InvalidProducerAgentError, SelfServiceContractError
 from app.domains.contracts.state_machine import InvalidTransitionError
 from app.domains.customers.models import Customer
+from app.domains.network import service as network_service
 from app.domains.support.service import actor_role_for
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
@@ -53,6 +54,22 @@ async def create_contract(
     current_user: CurrentUser = Depends(require_permission("contracts.create")),
     db: AsyncSession = Depends(get_db),
 ) -> ContractRead:
+    # Snapshotted from the creator's roles rather than inferred later: the
+    # same person can gain or lose a role afterwards, but what they were
+    # acting as when they built this contract cannot change. A promoter using
+    # this staff endpoint is, by definition, filling a contract in for
+    # somebody else -- which is exactly the case the admin screen must be
+    # able to call out -- so their own agent id is recorded as the one who
+    # did it. Staff get no such marker: an admin-created contract is not
+    # "attivato dal promoter X".
+    created_by_role = actor_role_for(current_user.roles)
+    activated_by_promoter_id = None
+    if created_by_role == "PROMOTER":
+        own_agent = await network_service.get_own_agent_profile(
+            db, organization_id=current_user.organization_id, user_id=current_user.user_id
+        )
+        activated_by_promoter_id = own_agent.id if own_agent else None
+
     try:
         contract = await contract_service.create_contract(
             db,
@@ -66,6 +83,8 @@ async def create_contract(
             notes=payload.notes,
             iban=payload.iban,
             email=payload.email,
+            created_by_role=created_by_role,
+            activated_by_promoter_id=activated_by_promoter_id,
         )
     except InvalidProducerAgentError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import utcnow
-from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email import send_html_email_best_effort
 from app.core.email_templates import render_email
 from app.core.storage import UploadValidationError
 from app.core.storage import generate_presigned_document_url as storage_presign_document
@@ -305,19 +305,17 @@ async def verify(
             cta_label="Vai al riscatto cashback",
             cta_url=f"{get_settings().public_app_base_url}/customer?tab=cashback",
         )
-        try:
-            send_html_email(
-                to=customer_user.email,
-                subject="Fattura verificata: completa il riscatto - Lial Energy",
-                html_body=html,
-                text_body=(
-                    f"La tua fattura {partner_name} è stata verificata per {confirmed_amount_cents / 100:.2f} EUR. "
-                    f"Paga {due / 100:.2f} EUR (carta o bonifico, causale {redemption.payment_reference_code}) "
-                    f"per ricevere {total_after_payment / 100:.2f} LialCash sul tuo wallet."
-                ),
-            )
-        except EmailNotConfiguredError:
-            logger.warning("Invoice-redemption-verified email not sent (SMTP not configured), redemption=%s", redemption.id)
+        send_html_email_best_effort(
+            context=f"Invoice-redemption-verified email (redemption={redemption.id})",
+            to=customer_user.email,
+            subject="Fattura verificata: completa il riscatto - Lial Energy",
+            html_body=html,
+            text_body=(
+                f"La tua fattura {partner_name} è stata verificata per {confirmed_amount_cents / 100:.2f} EUR. "
+                f"Paga {due / 100:.2f} EUR (carta o bonifico, causale {redemption.payment_reference_code}) "
+                f"per ricevere {total_after_payment / 100:.2f} LialCash sul tuo wallet."
+            ),
+        )
 
     return redemption
 
@@ -360,15 +358,13 @@ async def reject(
             cta_label="Vai al riscatto cashback",
             cta_url=f"{get_settings().public_app_base_url}/customer?tab=cashback",
         )
-        try:
-            send_html_email(
-                to=customer_user.email,
-                subject="Riscatto fattura rifiutato - Lial Energy",
-                html_body=html,
-                text_body=f"La tua richiesta di riscatto della fattura {partner_name} è stata rifiutata. Motivo: {reason}",
-            )
-        except EmailNotConfiguredError:
-            logger.warning("Invoice-redemption-rejected email not sent (SMTP not configured), redemption=%s", redemption.id)
+        send_html_email_best_effort(
+            context=f"Invoice-redemption-rejected email (redemption={redemption.id})",
+            to=customer_user.email,
+            subject="Riscatto fattura rifiutato - Lial Energy",
+            html_body=html,
+            text_body=f"La tua richiesta di riscatto della fattura {partner_name} è stata rifiutata. Motivo: {reason}",
+        )
 
     return redemption
 
@@ -506,15 +502,13 @@ async def _credit_redemption(
             cta_label="Vai al wallet",
             cta_url=f"{get_settings().public_app_base_url}/customer?tab=wallet",
         )
-        try:
-            send_html_email(
-                to=customer_user.email,
-                subject="Cashback accreditato - Lial Energy",
-                html_body=html,
-                text_body=f"Cashback accreditato: +{total_credited_cents / 100:.2f} LialCash sul tuo wallet Lial Energy.",
-            )
-        except EmailNotConfiguredError:
-            logger.warning("Cashback-credited email not sent (SMTP not configured), redemption=%s", redemption.id)
+        send_html_email_best_effort(
+            context=f"Cashback-credited email (redemption={redemption.id})",
+            to=customer_user.email,
+            subject="Cashback accreditato - Lial Energy",
+            html_body=html,
+            text_body=f"Cashback accreditato: +{total_credited_cents / 100:.2f} LialCash sul tuo wallet Lial Energy.",
+        )
 
 
 async def confirm_payment(

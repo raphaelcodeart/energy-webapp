@@ -5,7 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.email import EmailNotConfiguredError, send_html_email
+from app.core.email import send_html_email_best_effort
 from app.core.email_templates import render_email
 from app.domains.audit import service as audit_service
 from app.domains.customers.models import Company, Customer, CustomerProfile
@@ -192,15 +192,13 @@ async def _send_ticket_created_admin_email(
         cta_label="Apri il ticket",
         cta_url=f"{get_settings().public_app_base_url}/admin/support/{ticket.id}",
     )
-    try:
-        send_html_email(
-            to=admin_email,
-            subject=f"[Lial Energy] Nuovo ticket: {ticket.subject}",
-            html_body=html,
-            text_body=f"Nuovo ticket: {ticket.subject}\n\n{message[:500]}",
-        )
-    except EmailNotConfiguredError:
-        logger.warning("Ticket-created admin email not sent (SMTP not configured), ticket=%s", ticket.id)
+    send_html_email_best_effort(
+        context=f"Ticket-created admin email (ticket={ticket.id})",
+        to=admin_email,
+        subject=f"[Lial Energy] Nuovo ticket: {ticket.subject}",
+        html_body=html,
+        text_body=f"Nuovo ticket: {ticket.subject}\n\n{message[:500]}",
+    )
 
 
 async def list_tickets(db: AsyncSession, *, organization_id: uuid.UUID) -> list[dict]:

@@ -26,6 +26,9 @@ const SOURCE_LABELS: Record<string, string> = {
   INVOICE_REDEMPTION_BONUS: "Bonus 5% riscatto fattura",
   ORDER_CASHBACK_BASE: "Cashback ordine",
   ORDER_CASHBACK_BONUS: "Bonus 5% cashback ordine",
+  // Automatic, surcharge-free credit on a paid Lial Energy contract --
+  // deliberately a different rule from the two 5% ones above.
+  CONTRACT_CASHBACK: "Cashback contratto Lial Energy",
 };
 
 function transactionLabel(t: { type: string; source: string | null }): string {

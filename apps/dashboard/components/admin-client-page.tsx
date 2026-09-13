@@ -26,6 +26,7 @@ import { ContractStatusHistoryModal } from "@/components/contract-status-history
 import { SectionBanner } from "@/components/section-banner";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
+import { formatEuroCents as euro } from "@/lib/product-audience";
 import type { ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
@@ -517,6 +518,8 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                     <tr className="border-b border-white/5 light:border-slate-200 text-slate-400 light:text-slate-500 font-semibold bg-white/2 light:bg-slate-900/[0.02]">
                       <th className="py-3 px-6">Cliente</th>
                       <th className="py-3 px-6">Prodotto / Punto di Fornitura</th>
+                      <th className="py-3 px-6">Origine</th>
+                      <th className="py-3 px-6 text-right">Importo</th>
                       <th className="py-3 px-6">Stato</th>
                       <th className="py-3 px-6">Scadenza / Rinnovo</th>
                       <th className="py-3 px-6 text-right">Azioni</th>
@@ -539,6 +542,54 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                             {c.supply_point_label ?? "Punto di fornitura"}
                           </div>
                           <div className="font-mono text-[10px] text-slate-500">{c.id}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          {/* The one question that used to be unanswerable at a
+                              glance: did the customer sign up themselves, or did
+                              a promoter sit down and fill it in for them?
+                              activated_by_promoter_id is set ONLY in the second
+                              case, so this is never inferred from whoever
+                              happens to earn the commission. */}
+                          {c.activated_by_promoter_id ? (
+                            <>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/10 text-sky-400 border-sky-500/20">
+                                Compilato dal promoter
+                              </span>
+                              <div className="text-[11px] text-slate-400 light:text-slate-500 mt-1">
+                                {c.activated_by_promoter_name ?? "—"}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white/5 light:bg-slate-900/5 text-slate-400 border-white/10 light:border-slate-300">
+                              {c.created_by_role === "ADMIN"
+                                ? "Creato da amministrazione"
+                                : c.created_by_role === "CUSTOMER"
+                                  ? "Sottoscritto dal cliente"
+                                  : "—"}
+                            </span>
+                          )}
+                          {c.first_referrer_name && (
+                            <div className="text-[10px] text-slate-500 mt-1">
+                              Segnalato da {c.first_referrer_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          {/* Frozen at creation, never recomputed from today's
+                              product -- see contracts/models.py. */}
+                          {c.gross_amount_cents != null ? (
+                            <>
+                              <div className="text-sm font-semibold text-white light:text-slate-900 tabular-nums">
+                                {euro(c.gross_amount_cents)}
+                              </div>
+                              <div className="text-[10px] text-slate-500 tabular-nums">
+                                {euro(c.net_amount_cents ?? 0)} netto
+                                {c.vat_amount_cents ? ` + ${euro(c.vat_amount_cents)} IVA ${c.vat_rate}%` : " · IVA n/a"}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-500">—</span>
+                          )}
                         </td>
                         <td className="py-4 px-6">
                           <button
@@ -574,7 +625,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                     ))}
                     {filteredContracts.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="text-center py-8 text-slate-500">
+                        <td colSpan={7} className="text-center py-8 text-slate-500">
                           Nessun contratto corrisponde ai filtri impostati.
                         </td>
                       </tr>
