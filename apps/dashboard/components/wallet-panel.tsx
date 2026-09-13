@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { friendlyApiError } from "@/lib/api-error";
 import type { WalletRead, WalletTransactionRead } from "@/lib/types";
 
@@ -98,6 +99,8 @@ export function WalletPanel() {
     queryKey: ["wallet", "me", "transactions"],
     queryFn: fetchMyTransactions,
   });
+
+  const pagination = usePagination(transactions ?? []);
 
   async function handleCopyAddress() {
     if (!wallet) return;
@@ -267,7 +270,7 @@ export function WalletPanel() {
               ) : transactions.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-6 text-slate-500">Nessuna transazione.</td></tr>
               ) : (
-                transactions.map((t) => {
+                pagination.pageItems.map((t) => {
                   const isOutgoing = t.from_wallet_id === wallet?.id;
                   const ref = referenceLink(t);
                   return (
@@ -302,6 +305,9 @@ export function WalletPanel() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination {...pagination} label="transazioni" />
         </div>
       </div>
     </div>

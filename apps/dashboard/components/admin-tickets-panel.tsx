@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { friendlyApiError } from "@/lib/api-error";
 import type { TicketDetailRead, TicketRead } from "@/lib/types";
 
@@ -98,6 +99,8 @@ export function AdminTicketsPanel() {
       (t.opened_by_name ?? "").toLowerCase().includes(q);
     return matchesOpener && matchesStatus && matchesCategory && matchesSearch;
   });
+
+  const pagination = usePagination(filteredTickets);
 
   const openCount = (tickets ?? []).filter((t) => t.status === "OPEN").length;
 
@@ -337,7 +340,7 @@ export function AdminTicketsPanel() {
             <p className="text-sm text-slate-500">Nessun ticket corrisponde ai filtri impostati.</p>
           </div>
         ) : (
-          filteredTickets.map((t) => (
+          pagination.pageItems.map((t) => (
             <div
               key={t.id}
               className="glass-card rounded-2xl p-4 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:bg-white/5 transition flex items-center justify-between gap-4"
@@ -373,6 +376,7 @@ export function AdminTicketsPanel() {
           ))
         )}
       </div>
+      <Pagination {...pagination} label="ticket" />
       {deleteConfirmModal}
     </div>
   );

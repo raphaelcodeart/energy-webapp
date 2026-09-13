@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { PhotoUpload } from "@/components/photo-upload";
 import { AdminPromoterNetworkModal } from "@/components/admin-promoter-network-modal";
 import { friendlyApiError } from "@/lib/api-error";
@@ -383,6 +384,10 @@ export function AdminPromotersPanel({
         a.promoter_code.toLowerCase().includes(search.toLowerCase()))
   );
 
+  // Paginates the FILTERED list. CSV export below keeps using `filtered`,
+  // not the current page -- exporting only the visible rows would be a trap.
+  const pagination = usePagination(filtered);
+
   const handleExportCsv = () => {
     downloadCsv(
       `promoter_${new Date().toISOString().slice(0, 10)}`,
@@ -523,7 +528,7 @@ export function AdminPromotersPanel({
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-8 text-slate-500">Nessun promoter trovato.</td></tr>
               ) : (
-                filtered.map((a) => (
+                pagination.pageItems.map((a) => (
                   <tr key={a.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
                     <td className="py-4 px-6"><AgentAvatar url={a.photo_url} /></td>
                     <td className="py-4 px-6">
@@ -738,6 +743,9 @@ export function AdminPromotersPanel({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-6 pb-5">
+          <Pagination {...pagination} label="promoter" />
         </div>
       </div>
 

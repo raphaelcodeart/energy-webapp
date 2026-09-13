@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { downloadCsv } from "@/lib/csv-export";
+import { Pagination, usePagination } from "@/components/pagination";
 import {
   euro, formatDate, lialCash, movementCategory, movementDirection, movementLabel,
   movementReferenceLink, movementSignedAmountCents,
@@ -103,6 +104,9 @@ export function AccountingPanel() {
     .filter((m) => m.currency === "EUR" && m.payment_method === "CARD")
     .reduce((sum, m) => sum + Math.abs(m.amount_cents), 0);
 
+  // Paginates the FILTERED movements; CSV export stays on filteredList.
+  const pagination = usePagination(filteredList);
+
   function handleExportCsv() {
     downloadCsv(
       `contabilita-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -197,7 +201,7 @@ export function AccountingPanel() {
               ) : filteredList.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-6 text-slate-500">Nessuna transazione in questa categoria.</td></tr>
               ) : (
-                filteredList.map((m) => {
+                pagination.pageItems.map((m) => {
                   const direction = movementDirection(m);
                   const category = movementCategory(m);
                   const ref = movementReferenceLink(m, "/customer");
@@ -241,6 +245,9 @@ export function AccountingPanel() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination {...pagination} label="movimenti" />
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { WalletAdminListItemRead, WalletTransactionRead } from "@/lib/types";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
+import { Pagination, usePagination } from "@/components/pagination";
 
 const TYPE_LABELS: Record<string, string> = {
   ADMIN_CREDIT: "Ricarica/Cashback",
@@ -96,6 +97,11 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
       w.owner_email.toLowerCase().includes(search.toLowerCase()) ||
       w.address.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Two independent lists on this screen, each with its own paging state.
+  // Both CSV exports keep using the full arrays, never the visible page.
+  const walletsPagination = usePagination(filteredWallets);
+  const transactionsPagination = usePagination(transactions ?? []);
 
   const totalBalance = (wallets ?? []).reduce((sum, w) => sum + w.balance_cents, 0);
   const totalCredited = (transactions ?? [])
@@ -214,7 +220,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
               ) : filteredWallets.length === 0 ? (
                 <tr><td colSpan={5} className="text-center py-6 text-slate-500">Nessun wallet trovato.</td></tr>
               ) : (
-                filteredWallets.map((w) => (
+                walletsPagination.pageItems.map((w) => (
                   <Fragment key={w.id}>
                     <tr className="text-slate-300 light:text-slate-600">
                       <td className="py-2 px-5">
@@ -279,6 +285,9 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
             </tbody>
           </table>
         </div>
+        <div className="px-5 pb-4">
+          <Pagination {...walletsPagination} label="wallet" />
+        </div>
       </div>
 
       {/* Filters + export */}
@@ -330,7 +339,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
               {!isLoading && (transactions ?? []).length === 0 && (
                 <tr><td colSpan={6} className="text-center py-8 text-slate-500">Nessuna transazione.</td></tr>
               )}
-              {(transactions ?? []).map((t) => (
+              {transactionsPagination.pageItems.map((t) => (
                 <Fragment key={t.id}>
                   <tr
                     className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors cursor-pointer"
@@ -380,6 +389,9 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination {...transactionsPagination} label="transazioni" />
         </div>
       </div>
     </div>

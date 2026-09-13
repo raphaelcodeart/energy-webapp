@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
 import type { ImportedOrderRead, OrderRead } from "@/lib/types";
@@ -372,34 +373,9 @@ export function CustomerOrdersPanel() {
     }
   }
 
-  if (isLoading) {
-    return <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 animate-pulse h-40" />;
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-        Impossibile caricare i tuoi ordini.
-      </div>
-    );
-  }
-
+  // Computed before the early returns below: usePagination is a hook, so it
+  // has to run on every render, including the loading/error/empty ones.
   const list = orders ?? [];
-
-  if (list.length === 0) {
-    return (
-      <div className="glass-card rounded-2xl p-12 text-center border-white/5 light:border-slate-200">
-        <svg className="w-12 h-12 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-        <h3 className="text-lg font-semibold text-white light:text-slate-900">Nessun ordine ancora</h3>
-        <p className="text-sm text-slate-400 light:text-slate-500 mt-1">
-          I prodotti che acquisti dallo Shop compaiono qui, con lo stato del pagamento.
-        </p>
-      </div>
-    );
-  }
-
   const normalizedSearch = search.trim().toLowerCase();
   const filteredList = list.filter((o) => {
     if (filter !== "ALL") {
@@ -415,6 +391,34 @@ export function CustomerOrdersPanel() {
       orderCode(o.id).toLowerCase().includes(normalizedSearch)
     );
   });
+  const pagination = usePagination(filteredList);
+
+  if (isLoading) {
+    return <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 animate-pulse h-40" />;
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+        Impossibile caricare i tuoi ordini.
+      </div>
+    );
+  }
+
+  if (list.length === 0) {
+    return (
+      <div className="glass-card rounded-2xl p-12 text-center border-white/5 light:border-slate-200">
+        <svg className="w-12 h-12 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+        <h3 className="text-lg font-semibold text-white light:text-slate-900">Nessun ordine ancora</h3>
+        <p className="text-sm text-slate-400 light:text-slate-500 mt-1">
+          I prodotti che acquisti dallo Shop compaiono qui, con lo stato del pagamento.
+        </p>
+      </div>
+    );
+  }
+
   const detailOrder = detailOrderId ? list.find((o) => o.id === detailOrderId) ?? null : null;
 
   return (
@@ -478,7 +482,7 @@ export function CustomerOrdersPanel() {
       {filteredList.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-10">Nessun ordine in questa categoria.</p>
       ) : (
-        filteredList.map((o) => {
+        pagination.pageItems.map((o) => {
           const awaiting = o.status === "AWAITING_PAYMENT";
           const busy = payingId === o.id || switchingId === o.id || uploadingId === o.id;
           return (
@@ -600,6 +604,8 @@ export function CustomerOrdersPanel() {
           );
         })
       )}
+
+      <Pagination {...pagination} label="ordini" />
 
       {detailOrder && (
         <OrderDetailModal

@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import type { CommissionLevelTotalsRead, CommissionMovementDetailRead } from "@/lib/types";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
@@ -68,6 +69,10 @@ export function AdminCommissionsPanel({ initialStatusFilter }: { initialStatusFi
   const filtered = (movements ?? []).filter(
     (m) => (statusFilter === "ALL" || m.status === statusFilter) && (agentFilter === "ALL" || m.agent_id === agentFilter)
   );
+
+  // Paginates the filtered ledger; the CSV export below deliberately keeps
+  // using `filtered` so it always exports the whole filtered set.
+  const pagination = usePagination(filtered);
 
   const totalAccrued = filtered.filter((m) => m.status === "ACCRUED").reduce((sum, m) => sum + m.amount_cents, 0);
   const totalPaid = filtered.filter((m) => m.status === "PAID").reduce((sum, m) => sum + m.amount_cents, 0);
@@ -214,7 +219,7 @@ export function AdminCommissionsPanel({ initialStatusFilter }: { initialStatusFi
               {!isLoading && filtered.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-8 text-slate-500">Nessun movimento corrisponde ai filtri.</td></tr>
               )}
-              {filtered.map((m) => (
+              {pagination.pageItems.map((m) => (
                 <Fragment key={m.id}>
                   <tr
                     className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors cursor-pointer"
@@ -294,6 +299,9 @@ export function AdminCommissionsPanel({ initialStatusFilter }: { initialStatusFi
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination {...pagination} label="movimenti" />
         </div>
       </div>
     </div>

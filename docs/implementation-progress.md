@@ -4,6 +4,37 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 37 — 2026-09-13 — Pagination across every long list (admin, customer, promoter)
+
+- [x] `apps/dashboard/components/pagination.tsx` (new) — one reusable
+  primitive for all of them: a `usePagination(items)` hook plus a
+  `<Pagination>` bar showing "Mostrati 1-25 di 137 clienti · pagina 1 di 6",
+  prev/next, numbered pages with an ellipsis window, and a per-page selector
+  (10/25/50/100, default 25).
+- [x] Applied to 16 list surfaces: Anagrafiche Clienti, Anagrafiche Promoter,
+  contratti di un cliente, Wallet (elenco + transazioni), Contabilità
+  (admin + cliente), Ordini (admin + cliente), Riscatti Fatture (admin +
+  cliente), Ticket (admin + cliente), Provvigioni (admin + promoter),
+  "Miei Clienti" (promoter CRM), transazioni wallet del cliente.
+- [x] **Deliberately client-side**, not SQL `LIMIT/OFFSET`. Current production
+  volumes are 28 clienti, 18 contratti, 17 transazioni, 13 ordini, 12
+  promoter — server-side paging would mean rewriting ~8 endpoint response
+  contracts and every caller on a live system for zero user-visible gain.
+  The revisit threshold ("roughly a few thousand rows in any one list") is
+  documented in `pagination.tsx` itself, next to the code that would change.
+- [x] CSV exports (Contabilità, Provvigioni) keep exporting the **whole
+  filtered set**, never the visible page — exporting only the 25 rows you
+  happen to be looking at would be a trap. Explicit comment at each export.
+- [x] The current page is clamped, never stored: shrinking the result set with
+  a filter or a search while on page 6 shows the last available page instead
+  of an empty list, and no `useEffect`/`setState` sync (which this codebase
+  bans via `react-hooks/set-state-in-effect`) is involved.
+- [x] `customer-orders-panel.tsx`, `my-commissions.tsx`,
+  `support-tickets-panel.tsx`: the filtering was moved above the
+  loading/error/empty early returns, because a hook has to run on every
+  render — a conditional `usePagination` call would have been a real
+  rules-of-hooks bug, not just a lint complaint.
+
 ## Session 36 — 2026-09-11 — "Miei Clienti": promoter-run CRM (register a customer + activate a contract for them)
 
 - [x] A promoter can now register a brand-new customer themselves (no

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
 import type {
@@ -260,6 +261,10 @@ export function AdminOrdersPanel() {
     }
   }
 
+  // The order list is already narrowed by the status tabs above; this pages
+  // whatever that leaves.
+  const pagination = usePagination(orders ?? []);
+
   const residualPreview = quote
     ? quote.amount_cents - Math.min(
         Math.round((parseFloat(creditAmount.replace(",", ".")) || 0) * 100),
@@ -407,7 +412,7 @@ export function AdminOrdersPanel() {
         ) : orders.length === 0 ? (
           <p className="text-center py-8 text-slate-500 text-sm">Nessun ordine in questo stato.</p>
         ) : (
-          orders.map((o) => (
+          pagination.pageItems.map((o) => (
             <div key={o.id} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex items-start gap-3 min-w-0">
@@ -490,6 +495,7 @@ export function AdminOrdersPanel() {
           ))
         )}
       </div>
+      <Pagination {...pagination} label="ordini" />
     </div>
   );
 }

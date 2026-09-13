@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { friendlyApiError } from "@/lib/api-error";
 import type { InvoiceRedemptionRead } from "@/lib/types";
 
@@ -101,6 +102,8 @@ export function AdminInvoiceRedemptionsPanel() {
     }
   }
 
+  const pagination = usePagination(queue ?? []);
+
   async function handleConfirmPayment(id: string) {
     setActionLoadingId(id);
     setActionError(null);
@@ -165,7 +168,7 @@ export function AdminInvoiceRedemptionsPanel() {
         ) : queue.length === 0 ? (
           <p className="text-center py-8 text-slate-500 text-sm">Nessuna richiesta in questo stato.</p>
         ) : (
-          queue.map((r) => (
+          pagination.pageItems.map((r) => (
             <div key={r.id} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -295,6 +298,7 @@ export function AdminInvoiceRedemptionsPanel() {
           ))
         )}
       </div>
+      <Pagination {...pagination} label="richieste" />
     </div>
   );
 }

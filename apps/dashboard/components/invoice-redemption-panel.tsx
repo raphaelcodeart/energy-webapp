@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { CameraCaptureModal } from "@/components/camera-capture-modal";
 import { friendlyApiError } from "@/lib/api-error";
 import type { InvoiceRedemptionRead, PartnerRead } from "@/lib/types";
@@ -80,6 +81,8 @@ export function InvoiceRedemptionPanel() {
   const noPartnersConfigured = !partnersLoading && (partners ?? []).length === 0;
   const { data: mine, error: loadError } = useQuery({ queryKey: ["invoice-redemptions", "mine"], queryFn: fetchMine });
   const { data: paymentInfo } = useQuery({ queryKey: ["invoice-redemptions", "payment-info"], queryFn: fetchPaymentInfo });
+
+  const pagination = usePagination(mine ?? []);
 
   async function invalidate() {
     await queryClient.invalidateQueries({ queryKey: ["invoice-redemptions", "mine"] });
@@ -359,7 +362,7 @@ export function InvoiceRedemptionPanel() {
         ) : mine.length === 0 ? (
           <p className="text-center py-8 text-slate-500 text-sm">Nessuna richiesta ancora.</p>
         ) : (
-          mine.map((r) => (
+          pagination.pageItems.map((r) => (
             <div key={r.id} className="p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -471,6 +474,9 @@ export function InvoiceRedemptionPanel() {
             </div>
           ))
         )}
+        <div className="px-5 pb-4">
+          <Pagination {...pagination} label="richieste" />
+        </div>
       </div>
     </div>
   );

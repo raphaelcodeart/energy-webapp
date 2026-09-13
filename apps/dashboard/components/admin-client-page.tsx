@@ -18,6 +18,7 @@ import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redempt
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
 import { AdminImportedProductsPanel } from "@/components/admin-imported-products-panel";
 import { AdminAccountingPanel } from "@/components/admin-accounting-panel";
+import { Pagination, usePagination } from "@/components/pagination";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
 import { AdminOrganizationSettingsPanel } from "@/components/admin-organization-settings-panel";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
@@ -372,6 +373,10 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
     }
   };
 
+  // Paginates the FILTERED contract list -- CSV export keeps using
+  // filteredContracts so it always exports the whole filtered set.
+  const contractsPagination = usePagination(filteredContracts);
+
   const handleContractCreated = (newContract: ContractRead) => {
     setContracts((prev) => [newContract, ...prev]);
     setTimeout(() => setActiveTab("list"), 1500);
@@ -518,7 +523,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 light:divide-slate-200">
-                    {filteredContracts.map((c) => (
+                    {contractsPagination.pageItems.map((c) => (
                       <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
                         <td className="py-4 px-6">
                           <div className="text-sm font-semibold text-white light:text-slate-900">
@@ -576,6 +581,9 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                     )}
                   </tbody>
                 </table>
+              </div>
+              <div className="px-6 pb-5">
+                <Pagination {...contractsPagination} label="contratti" />
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { ContractActivationWizard } from "@/components/contract-activation-wizard";
 import { friendlyApiError } from "@/lib/api-error";
 import type { CustomerRead, ProductCatalogRead } from "@/lib/types";
@@ -48,6 +49,8 @@ export function NetworkCustomersPanel() {
     queryKey: ["network", "internal-products"],
     queryFn: fetchInternalProducts,
   });
+
+  const pagination = usePagination(customers ?? []);
 
   const [showCreate, setShowCreate] = useState(false);
   const [kind, setKind] = useState("PRIVATE");
@@ -197,7 +200,7 @@ export function NetworkCustomersPanel() {
         ) : customers.length === 0 ? (
           <p className="text-center py-8 text-slate-500 text-sm">Non hai ancora registrato nessun cliente.</p>
         ) : (
-          customers.map((c) => (
+          pagination.pageItems.map((c) => (
             <div key={c.id} className="p-5 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -218,6 +221,7 @@ export function NetworkCustomersPanel() {
           ))
         )}
       </div>
+      <Pagination {...pagination} label="clienti" />
 
       {pickingProductFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">

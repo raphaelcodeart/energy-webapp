@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { PhotoUpload } from "@/components/photo-upload";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
@@ -365,6 +366,12 @@ export function AdminCustomersPanel({
         c.email.toLowerCase().includes(search.toLowerCase()))
   );
 
+  // Paginates the FILTERED list, so search/filters narrow the result set
+  // first and paging then walks whatever is left. CSV export below
+  // deliberately still uses `filtered`, not the current page -- exporting
+  // only the 25 rows you happen to be looking at would be a trap.
+  const pagination = usePagination(filtered);
+
   const handleExportCsv = () => {
     downloadCsv(
       `clienti_${new Date().toISOString().slice(0, 10)}`,
@@ -440,7 +447,7 @@ export function AdminCustomersPanel({
                   <td colSpan={6} className="text-center py-8 text-slate-500">Nessun cliente trovato.</td>
                 </tr>
               ) : (
-                filtered.map((c) => (
+                pagination.pageItems.map((c) => (
                   <tr key={c.id} className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors">
                     <td className="py-4 px-6"><CustomerAvatar url={c.photo_url} /></td>
                     <td className="py-4 px-6">
@@ -534,6 +541,9 @@ export function AdminCustomersPanel({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-6 pb-5">
+          <Pagination {...pagination} label="clienti" />
         </div>
       </div>
 

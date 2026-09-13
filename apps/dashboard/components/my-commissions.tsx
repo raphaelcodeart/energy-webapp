@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import type { CommissionMovementDetailRead } from "@/lib/types";
 
 const MOVEMENT_LABELS: Record<string, string> = {
@@ -54,6 +55,9 @@ export function MyCommissions() {
     queryFn: fetchMyCommissionsDetailed,
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Declared before the loading/error/empty early returns below: a hook
+  // must run on every render.
+  const pagination = usePagination(data ?? []);
 
   if (isLoading) {
     return (
@@ -100,7 +104,7 @@ export function MyCommissions() {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 light:divide-slate-200">
-            {data.map((m) => (
+            {pagination.pageItems.map((m) => (
               <Fragment key={m.id}>
                 <tr
                   className="text-slate-300 light:text-slate-600 hover:bg-white/5 transition-colors cursor-pointer"
@@ -156,6 +160,8 @@ export function MyCommissions() {
           </tbody>
         </table>
       </div>
+
+      <Pagination {...pagination} label="provvigioni" />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-sky-600/20 to-sky-500/10 border border-sky-500/30">

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { downloadCsv } from "@/lib/csv-export";
+import { Pagination, usePagination } from "@/components/pagination";
 import {
   euro, formatDate, lialCash, movementCategory, movementDirection, movementLabel, movementSignedAmountCents,
   shortCode,
@@ -126,6 +127,10 @@ export function AdminAccountingPanel() {
   const totalCardCents = scopedList
     .filter((m) => m.currency === "EUR" && m.payment_method === "CARD")
     .reduce((sum, m) => sum + Math.abs(m.amount_cents), 0);
+
+  // Paginates the FILTERED movements; the CSV export keeps using
+  // filteredList so it always exports the whole filtered set.
+  const pagination = usePagination(filteredList);
 
   function handleExportCsv() {
     downloadCsv(
@@ -261,7 +266,7 @@ export function AdminAccountingPanel() {
               ) : filteredList.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-6 text-slate-500">Nessuna transazione in questa categoria.</td></tr>
               ) : (
-                filteredList.map((m) => {
+                pagination.pageItems.map((m) => {
                   const direction = movementDirection(m);
                   const category = movementCategory(m);
                   return (
@@ -298,6 +303,9 @@ export function AdminAccountingPanel() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="px-5 pb-4">
+          <Pagination {...pagination} label="movimenti" />
         </div>
       </div>
     </div>

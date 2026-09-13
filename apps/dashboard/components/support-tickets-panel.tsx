@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pagination, usePagination } from "@/components/pagination";
 import { friendlyApiError } from "@/lib/api-error";
 import type { TicketDetailRead, TicketRead } from "@/lib/types";
 
@@ -116,6 +117,10 @@ export function SupportTicketsPanel({ title, subtitle }: { title: string; subtit
       setReplyLoading(false);
     }
   }
+
+  // Declared before the detail-view early return below: a hook must run on
+  // every render.
+  const pagination = usePagination(tickets ?? []);
 
   if (selectedId && detail) {
     return (
@@ -247,7 +252,7 @@ export function SupportTicketsPanel({ title, subtitle }: { title: string; subtit
             <p className="text-sm text-slate-500">Nessun ticket aperto. Usa &quot;+ Nuovo Ticket&quot; se hai bisogno di assistenza.</p>
           </div>
         ) : (
-          tickets.map((t) => (
+          pagination.pageItems.map((t) => (
             <button
               key={t.id}
               onClick={() => setSelectedId(t.id)}
@@ -269,6 +274,7 @@ export function SupportTicketsPanel({ title, subtitle }: { title: string; subtit
           ))
         )}
       </div>
+      <Pagination {...pagination} label="ticket" />
     </div>
   );
 }
