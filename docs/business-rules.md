@@ -523,9 +523,40 @@ See `database-model.md §7` for the table shape. Behavior:
 - `POST /auth/reset-password` (token + new password) revokes every active session
   for that user on success -- a password reset is exactly the moment to assume the
   old password may have leaked, so anyone still logged in with it is logged out.
+  It also clears `failed_login_attempts`/`locked_until`, so completing a reset is
+  the normal way out of a lockout, and marks the account email-verified if it
+  wasn't already (Session 36 -- see `#account-gates`: clicking an emailed link is
+  the same proof of inbox control the dedicated verification link gives).
 - Both endpoints are rate-limited per client IP (`core/rate_limit.py`, Redis
   fixed-window counter) -- 5 requests/5min for `forgot-password`, 10/5min for
   `reset-password` -- independent of the per-account lockout in `authenticate()`.
+
+### Delegated reset delivery for the two shared admin accounts (Session 37)
+
+`superadmin@lialenergy.it` and `admin@lialenergy.it` are shared role
+mailboxes nobody reads day to day, which made "dimenticata password" a dead
+end for exactly the two accounts that most need a recovery path. For these
+two addresses **only**, the reset email is delivered to a named delegate
+(`auth/service.py::PASSWORD_RESET_DELEGATE_EMAIL` /
+`PASSWORD_RESET_DELEGATE_FOR`) instead of the account's own inbox.
+
+- **Only the delivery address changes.** The token is still bound to the
+  admin account, the audit row still names that account, and that account
+  is the one whose password actually changes. This is not an alias, not a
+  shared login, and nothing about the delegate's own user record is touched.
+- The email **names which admin account** the link is for -- the delegate
+  receives resets for two different accounts, so without it the two would be
+  indistinguishable in their inbox.
+- `audit_log.new_value` records `delivered_to` **only** when the delivery was
+  redirected, so a redirected admin reset stands out to an auditor rather
+  than looking like every other reset. The token itself is still never
+  written there (see the bullet above).
+- **Accepted security trade-off, deliberate**: whoever controls the delegate
+  mailbox can take over both admin accounts at will. That is the point of
+  the override. It is therefore intentionally *not* editable from the admin
+  dashboard -- changing it takes a code change + deploy, which leaves a
+  reviewable git trail, rather than being a setting any admin-tier account
+  could silently repoint at themselves.
 
 ## Internal wallet (added Session 21)
 

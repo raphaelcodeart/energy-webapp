@@ -122,3 +122,77 @@ async def test_reset_password_rejects_expired_token(db, organization_id):
 async def test_reset_password_rejects_unknown_token(db, organization_id):
     with pytest.raises(auth_service.PasswordResetError):
         await auth_service.reset_password(db, token="not-a-real-token", new_password="WontBeApplied2!")
+
+
+def _capture_sent_email(monkeypatch) -> list[dict]:
+    """SMTP is never configured in tests (send_html_email would just raise
+    EmailNotConfiguredError, which request_password_reset swallows), so the
+    only way to assert on WHERE an email went is to stand in for the sender.
+    auth/service.py imports send_html_email by name, so patching the name on
+    that module is what the call site actually resolves."""
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        auth_service, "send_html_email",
+        lambda **kwargs: sent.append(kwargs),
+    )
+    return sent
+
+
+def test_password_reset_recipient_redirects_only_the_two_admin_accounts():
+    for admin_email in ("superadmin@lialenergy.it", "admin@lialenergy.it"):
+        recipient, is_delegate = auth_service.password_reset_recipient(admin_email)
+        assert recipient == auth_service.PASSWORD_RESET_DELEGATE_EMAIL
+        assert is_delegate is True
+
+    # Matching is case-insensitive, same as the account lookup itself.
+    recipient, is_delegate = auth_service.password_reset_recipient("SuperAdmin@LialEnergy.IT")
+    assert recipient == auth_service.PASSWORD_RESET_DELEGATE_EMAIL
+    assert is_delegate is True
+
+    # Everyone else is untouched -- including the delegate's own account.
+    for other in ("mario@example.com", auth_service.PASSWORD_RESET_DELEGATE_EMAIL):
+        recipient, is_delegate = auth_service.password_reset_recipient(other)
+        assert recipient == other
+        assert is_delegate is False
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_email_is_delivered_to_the_delegate_and_names_the_account(
+    db, organization_id, monkeypatch
+):
+    """The reset is still FOR the admin account (token bound to that user);
+    only the delivery address changes -- and the email must name which admin
+    account it's for, since the delegate receives resets for two of them."""
+    sent = _capture_sent_email(monkeypatch)
+    admin = await _make_user(db, organization_id, email="superadmin@lialenergy.it")
+
+    await auth_service.request_password_reset(
+        db, organization_id=organization_id, email=admin.email, ip_address=None, user_agent=None,
+    )
+
+    assert len(sent) == 1
+    assert sent[0]["to"] == auth_service.PASSWORD_RESET_DELEGATE_EMAIL
+    assert "superadmin@lialenergy.it" in sent[0]["subject"]
+    assert "superadmin@lialenergy.it" in sent[0]["html_body"]
+
+    # The token still belongs to the ADMIN account, not the delegate.
+    from sqlalchemy import select
+
+    tokens = (
+        await db.execute(select(PasswordResetToken).where(PasswordResetToken.user_id == admin.id))
+    ).scalars().all()
+    assert len(tokens) == 1
+
+
+@pytest.mark.asyncio
+async def test_ordinary_user_reset_email_still_goes_to_their_own_address(db, organization_id, monkeypatch):
+    sent = _capture_sent_email(monkeypatch)
+    user = await _make_user(db, organization_id, email="normale@example.com")
+
+    await auth_service.request_password_reset(
+        db, organization_id=organization_id, email=user.email, ip_address=None, user_agent=None,
+    )
+
+    assert len(sent) == 1
+    assert sent[0]["to"] == "normale@example.com"
+    assert auth_service.PASSWORD_RESET_DELEGATE_EMAIL not in sent[0]["html_body"]

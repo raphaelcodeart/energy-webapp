@@ -434,6 +434,35 @@ async def send_account_invite_email(db: AsyncSession, *, user: User, invited_by_
         logger.warning("Account-invite email for %s not sent (SMTP not configured), user=%s", user.email, user.id)
 
 
+# Password-reset DELIVERY override for the two shared admin accounts. A
+# reset requested for either address below is still a reset for THAT
+# account -- the token, the audit row, and the account whose password
+# actually changes are all unchanged. The ONE thing that differs is where
+# the email carrying the link is delivered: to the delegate below instead
+# of the account's own inbox.
+#
+# Why: superadmin@ / admin@ are shared role mailboxes nobody reads day to
+# day, so "dimenticata password" was effectively a dead end for them. The
+# delegate is a real person who can be reached and can perform the reset.
+#
+# Security note, deliberate and accepted: whoever controls the delegate
+# mailbox can take over BOTH admin accounts at will. That is the whole
+# point of the override, but it does mean this constant is as sensitive as
+# a credential -- changing it hands over the keys to the platform. It is
+# intentionally NOT admin-editable from the dashboard for that reason: it
+# takes a code change + deploy, which leaves a reviewable git trail.
+PASSWORD_RESET_DELEGATE_EMAIL = "pantanoalessandro@icloud.com"
+PASSWORD_RESET_DELEGATE_FOR = frozenset({"superadmin@lialenergy.it", "admin@lialenergy.it"})
+
+
+def password_reset_recipient(account_email: str) -> tuple[str, bool]:
+    """(where the reset email goes, whether that's a delegate override).
+    Matching is case-insensitive, same as the account lookup itself."""
+    if account_email.lower() in PASSWORD_RESET_DELEGATE_FOR:
+        return PASSWORD_RESET_DELEGATE_EMAIL, True
+    return account_email, False
+
+
 async def request_password_reset(
     db: AsyncSession,
     *,
@@ -445,7 +474,10 @@ async def request_password_reset(
     """Always returns normally, whether or not the email belongs to a real
     account -- same enumeration-safety principle as authenticate(): a caller
     must never be able to use this endpoint to discover which emails have
-    accounts."""
+    accounts.
+
+    For the two shared admin accounts the link is delivered to a delegate
+    instead of the account's own inbox -- see PASSWORD_RESET_DELEGATE_FOR."""
     stmt = select(User).where(
         User.organization_id == organization_id, func.lower(User.email) == email.lower()
     )
@@ -468,26 +500,50 @@ async def request_password_reset(
         )
     )
 
+    # Resolved from the stored address, not the caller-supplied one -- the
+    # lookup above is case-insensitive, so `email` may differ in casing.
+    recipient, is_delegate = password_reset_recipient(user.email)
     reset_link = f"{settings.public_app_base_url}/reset-password?token={token}"
+    if is_delegate:
+        # The delegate receives resets for MORE THAN ONE account, so the
+        # email has to say which one this link is for -- without it the two
+        # are indistinguishable in their inbox.
+        intro_html = (
+            f"<p>È stato richiesto il reset della password dell'account amministratore "
+            f"<strong>{user.email}</strong>.</p>"
+            "<p>Ricevi tu questa email perché sei il referente indicato per il recupero "
+            "degli account amministratore Lial Energy.</p>"
+        )
+        intro_text = (
+            f"È stato richiesto il reset della password dell'account amministratore {user.email}.\n"
+            "Ricevi tu questa email perché sei il referente indicato per il recupero degli "
+            "account amministratore Lial Energy.\n\n"
+        )
+        subject = f"Reset password amministratore ({user.email}) - Lial Energy"
+    else:
+        intro_html = "<p>Hai richiesto di reimpostare la password del tuo account Lial Energy.</p>"
+        intro_text = "Hai richiesto di reimpostare la password del tuo account Lial Energy.\n\n"
+        subject = "Reimposta la tua password - Lial Energy"
+
     html = render_email(
         preheader="Reimposta la tua password Lial Energy",
         heading="Reimposta la tua password",
         body_html=(
-            "<p>Hai richiesto di reimpostare la password del tuo account Lial Energy.</p>"
-            f"<p>Il link scade tra {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti. Se non hai richiesto tu "
-            "questa operazione, ignora questa email: la tua password resterà invariata.</p>"
+            intro_html
+            + f"<p>Il link scade tra {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti. Se non hai richiesto tu "
+            "questa operazione, ignora questa email: la password resterà invariata.</p>"
         ),
         cta_label="Scegli una nuova password",
         cta_url=reset_link,
     )
     try:
         send_html_email(
-            to=email,
-            subject="Reimposta la tua password - Lial Energy",
+            to=recipient,
+            subject=subject,
             html_body=html,
             text_body=(
-                "Hai richiesto di reimpostare la password del tuo account Lial Energy.\n\n"
-                f"Apri questo link entro {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti per scegliere una nuova password:\n"
+                intro_text
+                + f"Apri questo link entro {PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minuti per scegliere una nuova password:\n"
                 f"{reset_link}\n\n"
                 "Se non hai richiesto tu questa operazione, ignora questa email."
             ),
@@ -500,13 +556,17 @@ async def request_password_reset(
         # their reset link. It goes to the process log only, which requires
         # server shell access (`docker compose logs api`), a much higher trust
         # bar. See docs/business-rules.md §Password reset.
-        logger.warning("Password reset for %s (SMTP not configured) -- link: %s", email, reset_link)
+        logger.warning("Password reset for %s (SMTP not configured) -- link: %s", recipient, reset_link)
         delivery = "logged_only"
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=user.id,
         action="password_reset.requested", entity_type="user", entity_id=str(user.id),
-        new_value={"delivery": delivery},
+        # delivered_to is recorded ONLY when it differs from the account's own
+        # address: a redirected admin reset is exactly the kind of event an
+        # auditor needs to see explicitly. The token itself is still never
+        # written here (see the SMTP comment above).
+        new_value={"delivery": delivery, **({"delivered_to": recipient} if is_delegate else {})},
         ip_address=ip_address, user_agent=user_agent,
     )
     await db.commit()
