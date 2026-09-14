@@ -4,6 +4,70 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 46 — 2026-09-14 — Ricostruire il progetto per un'altra azienda, davvero
+
+Obiettivo dichiarato: se un domani questo progetto va rifatto identico per
+un'altra azienda, deve esserci già tutto — comprese le istruzioni perché lo
+faccia un agente da solo. Il grosso della documentazione c'era già; mancava
+il pezzo che la rendeva vera.
+
+- [x] **`python -m app.seed.bootstrap`** (nuovo). Finora esisteva un solo
+  modo di popolare un database vuoto: `python -m app.seed`, che è la **demo
+  di Lial Energy** — venti promoter finti, cinquanta clienti, contratti in
+  ogni stato. Per un cliente reale era inutilizzabile, e la guida non aveva
+  niente da proporre al suo posto. Il bootstrap crea **solo ciò senza cui
+  l'applicazione non parte**: il catalogo globale dei permessi,
+  l'organizzazione, i suoi ruoli di sistema con i relativi permessi, la scala
+  dei 12 gradi, una versione di piano provvigioni attiva, e **un solo**
+  amministratore. Nessun cliente, nessun prodotto, nessun contratto.
+- [x] **È idempotente**, ed è una scelta, non una comodità: la ricostruzione
+  di un server raramente riesce tutta al primo tentativo, e un bootstrap che
+  al secondo colpo esplode su una UNIQUE è un bootstrap che nessuno osa
+  rilanciare. Rieseguirlo aggiunge solo ciò che manca e **non sovrascrive la
+  password di un amministratore già esistente** (c'è un test apposta).
+- [x] L'amministratore nasce con l'email **già verificata** — l'account viene
+  creato da un comando eseguito sul server, prova di controllo più forte di
+  un link cliccato, e all'ora del bootstrap l'SMTP di solito non è ancora
+  configurato. Privacy e dati anagrafici restano invece **vuoti di
+  proposito**: sono atti di una persona vera, e l'interfaccia glieli chiede
+  al primo accesso.
+- [x] **`CLAUDE.md`** in radice (nuovo): le cose che non si deducono leggendo
+  il codice. Che questo server è in produzione; che "dev" qui *è* la
+  produzione (`docker-compose.dev.yml`, `ENVIRONMENT=development`, clienti
+  veri); che le immagini sono cotte e `restart` non ricarica niente; il
+  comando di test che **non** cancella il database reale, con la trappola dei
+  due Postgres (quello dei container non risolve dall'host, e su
+  `localhost:5432` ce n'è un altro con credenziali diverse — l'errore che dà
+  sembra una password sbagliata ma è il server sbagliato); che `pnpm lint`
+  **non passa** e il criterio è "non peggiora"; cosa aggiornare nella
+  documentazione a seconda di cosa si è toccato.
+- [x] **Guida alla migrazione, §12** (nuova): il runbook ordinato da server
+  nudo a installazione funzionante per un'azienda diversa. Otto passi, ognuno
+  con la propria verifica. Il rebranding sta al **passo 2**, prima della
+  build, perché le immagini sono cotte e farlo dopo significa ricostruirle.
+- [x] **§11, tre costanti promosse in cima** perché non sono cosmetiche come
+  il resto della sezione. La più seria: `PASSWORD_RESET_DELEGATE_EMAIL` /
+  `PASSWORD_RESET_DELEGATE_FOR` in `auth/service.py` dirottano i link di
+  reset password di due account amministrativi Lial Energy verso un
+  indirizzo personale di terza parte. È voluto qui; su un deployment di
+  un'altra azienda sarebbe un recapito di terzi dentro il recupero password
+  di un cliente estraneo. Con esse `DEFAULT_ADMIN_NOTIFICATION_EMAIL` e il
+  contratto di collaborazione (testo legale con nome e PEC di una persona
+  fisica).
+- [x] **§6.1** (nuova): *"lo schema non è tutta la storia"*. Dopo
+  `alembic upgrade head` ci sono 63 tabelle e zero righe. Quali quattro
+  famiglie di dati di riferimento servono comunque, da dove arrivano, e una
+  query sola per verificare che ci siano. `database-schema.sql` è
+  `--schema-only` di proposito e non le contiene: era un buco che si scopriva
+  solo provando.
+- [x] Riferimento della revision in §6 allineato (`f1c3d85b204e` /
+  `0039_document_description`), nota corrispondente in `database-model.md`,
+  `README.md` che ora punta a `CLAUDE.md`, alla §12 e al bootstrap.
+- [x] 6 test nuovi e il comando della guida **provato per davvero** contro un
+  database vero, due volte di fila: la seconda dice "0 rank creati,
+  amministratore già esistente, invariato", e la query di verifica della
+  §6.1 risponde 12 gradi / 1 piano attivo / 1 utente.
+
 ## Session 45 — 2026-09-14 — Documenti allegati aggiuntivi, e il contratto a schermo intero
 
 Tre cose chieste insieme, sulla stessa schermata.

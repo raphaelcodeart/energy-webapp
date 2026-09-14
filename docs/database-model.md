@@ -16,6 +16,15 @@ This document covers the tables implemented through Phase E (the current vertica
 slice). Phase F/G tables (`notifications_*`, `knowledge_*`, `ai_*`) are sketched in
 `ai-architecture.md` and will be migrated when those phases start.
 
+> **The schema is not the whole story.** After `alembic upgrade head` there are
+> 63 tables and no rows — and the application cannot start work without four
+> families of reference data (`permissions`, `roles` + `role_permissions`,
+> `ranks`, one ACTIVE `commission_plan_versions`) plus a first user. None of it
+> is in `database-schema.sql`, which is `--schema-only` by design. What has to
+> be there, where it comes from, and how to check it in one query:
+> `docs/server-migration-guide.md` §6.1. The command that creates it for a new
+> company is `python -m app.seed.bootstrap`.
+
 ## 1. Identity & tenancy
 
 ```

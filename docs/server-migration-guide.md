@@ -172,6 +172,37 @@ Salva l'`Organization ID` stampato in output — serve per fare login.
 **Scenario B — stai migrando dati reali dal vecchio server:** vedi sezione 5
 ("Migrare i dati da un server esistente") invece di eseguire il seed.
 
+**Scenario C — stai avviando un'AZIENDA NUOVA (né la demo, né un ripristino):**
+non eseguire `python -m app.seed`. Quel comando crea venti promoter finti,
+una cinquantina di clienti e i relativi contratti, ed è l'ultima cosa che
+vuoi dentro il database di un cliente reale. Usa invece il bootstrap, che
+crea **solo** ciò senza cui l'applicazione non parte (permessi, ruoli, gradi,
+piano provvigioni) più un unico amministratore:
+
+```bash
+docker compose -f docker-compose.dev.yml exec api \
+  python -m app.seed.bootstrap \
+    --organization-name "Nome Azienda" \
+    --legal-name "Nome Azienda S.r.l." \
+    --admin-email "titolare@azienda.it"
+```
+
+Stampa l'`Organization ID` e, se non hai passato `--admin-password`, una
+password generata **mostrata una sola volta**: salvala subito, non è
+recuperabile (si può solo fare un reset password, che però richiede l'SMTP
+già configurato — e a quel punto non lo è ancora). È idempotente: se il primo
+tentativo si interrompe a metà, rilancialo senza paura.
+
+L'amministratore appena creato ha l'email già marcata come verificata — nasce
+da un comando eseguito sul server, prova di controllo più forte di un link
+cliccato, e all'ora del bootstrap l'SMTP di solito non esiste ancora. Privacy
+e dati anagrafici restano invece vuoti **di proposito**: sono atti di una
+persona vera, e l'interfaccia glieli chiede al primo accesso. Non è un
+bootstrap incompleto.
+
+Poi prosegui con la §12, che è la procedura completa per un cliente diverso
+da Lial Energy (rebranding compreso).
+
 **Opzionale — arricchire la demo con più contenuti (Session 14):** il seed
 base crea solo 20 agenti/6 livelli e una manciata di clienti. Per popolare
 l'albero della rete vendita fino a 12 livelli con più rami (utile per demo
@@ -453,7 +484,7 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (**rigenerato 2026-09-14, allineato alla revision
-Alembic `e5b2c74a91d8` / migrazione `0038_stripe_webhook_events`**;
+Alembic `f1c3d85b204e` / migrazione `0039_document_description`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
 usa un utente Postgres diverso da `lial`). Contiene tutte le **63 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
@@ -481,6 +512,15 @@ docker compose -f docker-compose.dev.yml exec -T postgres \
 
 I tre numeri devono coincidere. Se non coincidono, il dump è stale: rilancia
 `scripts/dump-schema.sh` prima di fidarti di quel file per una ricostruzione.
+
+**Non usare `git diff` come prova che il dump sia aggiornato** (Session 46):
+`pg_dump` 16.14 scrive in cima e in fondo al file un token casuale
+(`\restrict …` / `\unrestrict …`) che cambia a **ogni** esecuzione, quindi un
+dump rigenerato risulta sempre "modificato" anche quando lo schema è
+identico. Conta quello che c'è *dentro* il diff, non il fatto che esista: se
+le uniche due righe cambiate sono quelle, il file era già allineato e vale la
+pena fare `git checkout docs/database-schema.sql` invece di committare
+rumore.
 
 La spiegazione **concettuale** (perché ogni tabella esiste, come si collegano,
 diagramma ER) è in `docs/database-model.md` — leggila insieme allo schema SQL,
@@ -600,6 +640,46 @@ creati/gestiti dall'applicazione, mai a mano:
   (`infrastructure/nginx/nginx.conf`, proxy diretto a MinIO), MAI tramite
   l'host Docker interno `minio:9000`, che non è raggiungibile da fuori la rete
   Docker.
+
+### 6.1 Dati di riferimento: ciò che lo schema NON contiene
+
+Uno schema vuoto non è un'applicazione funzionante. Dopo `alembic upgrade
+head` ci sono 63 tabelle e praticamente nessuna riga: tre migrazioni dati
+(0011, 0012, 0013) inseriscono **qualche** codice in `permissions`, e basta.
+Nessun ruolo, nessun grado, nessun piano provvigioni, nessun utente con cui
+fare login. Le righe indispensabili sono queste quattro famiglie, e nessuna
+delle quattro sta in `docs/database-schema.sql` (che è `--schema-only` di
+proposito: i dati veri sono in `scripts/backup.sh`, gitignorato).
+
+| Tabella | Cosa ci deve stare | Da dove arriva |
+|---|---|---|
+| `permissions` | un codice per permesso (`contracts.approve`, …), **globale**, senza `organization_id` | costante `PERMISSIONS` in `app/domains/rbac/models.py`; alcune migrazioni dati (0011, 0012, 0013) ne inseriscono già una parte con `ON CONFLICT DO NOTHING` |
+| `roles` + `role_permissions` | i ruoli di sistema dell'organizzazione e cosa può fare ciascuno | `SYSTEM_ROLES` + `DEFAULT_ROLE_PERMISSIONS`, stesso file |
+| `ranks` | la scala dei gradi della rete (S1…MD5) con i gettoni per grado | `app/seed/ranks.py` — **valori placeholder**, vedi `docs/open-questions.md` #1 |
+| `commission_plan_versions` | almeno una versione `ACTIVE`: senza, il motore provvigioni non ha su cosa appoggiarsi | idem |
+
+Più, ovviamente, **un utente con cui entrare la prima volta**.
+
+Tutte e cinque le cose le crea un solo comando, `python -m app.seed.bootstrap`
+(§4.4 scenario C) — che a differenza del seed demo non inventa nessun
+promoter, cliente, prodotto o contratto. È idempotente: rilanciarlo aggiunge
+solo ciò che manca, non duplica e **non sovrascrive la password di un
+amministratore già esistente**.
+
+Verifica rapida che il minimo indispensabile ci sia:
+
+```bash
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U lial -d lial_energy -tAc "
+  SELECT
+    (SELECT count(*) FROM permissions)                                    AS permessi,
+    (SELECT count(*) FROM roles)                                          AS ruoli,
+    (SELECT count(*) FROM role_permissions)                               AS concessioni,
+    (SELECT count(*) FROM ranks)                                          AS gradi,
+    (SELECT count(*) FROM commission_plan_versions WHERE status='ACTIVE') AS piani_attivi,
+    (SELECT count(*) FROM users)                                          AS utenti;"
+```
+
+`gradi` deve essere 12, `piani_attivi` almeno 1, e nessuno degli altri 0.
 
 ## 7. Mappa del codice (per orientarsi velocemente)
 
@@ -936,6 +1016,33 @@ di schema), ma oggi **nessuna email, titolo di pagina o logo legge
 effettivamente da quella riga** -- ogni stringa "Lial Energy" è nel codice.
 Prima di mettere in produzione per un cliente diverso, cambia:
 
+**PRIMA DI TUTTO IL RESTO — tre costanti che non sono cosmetiche** (Session 46).
+Le altre voci di questa sezione sono branding: se le dimentichi, il cliente
+vede il logo sbagliato. Queste tre no.
+
+- `apps/api/app/domains/auth/service.py`: `PASSWORD_RESET_DELEGATE_EMAIL` e
+  `PASSWORD_RESET_DELEGATE_FOR`. Sono una deviazione *voluta e documentata*
+  per Lial Energy: i link di reset password di due account amministrativi
+  specifici (`superadmin@lialenergy.it`, `admin@lialenergy.it`) vengono
+  recapitati a un indirizzo personale di terza parte invece che alla casella
+  dell'account. Su un deployment di un'altra azienda quella riga va
+  **svuotata** (`PASSWORD_RESET_DELEGATE_FOR = frozenset()`), altrimenti resta
+  un recapito di terzi dentro il flusso di recupero password di un cliente
+  che non c'entra nulla. È la prima cosa da togliere, prima ancora del logo.
+- `apps/api/app/domains/organizations/service.py`:
+  `DEFAULT_ADMIN_NOTIFICATION_EMAIL = "info@lialenergy.it"` — la casella a cui
+  arrivano le notifiche amministrative finché l'organizzazione non ne imposta
+  una propria. Va messa quella del cliente, o le sue notifiche arrivano a
+  Lial Energy.
+- `apps/api/app/domains/network/collaboration_documents.py`: è il **contratto
+  di collaborazione vero** che un promoter accetta per lavorare con Lial
+  Energy, testo legale incluso il nome di una persona fisica e una PEC. Non è
+  riutilizzabile da un'altra azienda: va sostituito integralmente con il
+  contratto del cliente (stessa struttura a blocchi, vedi i costruttori
+  `heading/paragraph/clause/bullets/table/signature` in cima al file) e la
+  `version` va cambiata, così chi aveva già accettato la vecchia versione
+  riceve la nuova da accettare.
+
 **Email (branding condiviso da ogni email del sistema)**:
 - `apps/api/app/core/email_templates.py`: `LOGO_URL` (oggi hotlinkato a
   `lialenergy.it/img/logo.png`), `BRAND_COLOR` (`#f97316`), il testo
@@ -995,3 +1102,174 @@ singolo deployment potrebbe servire brand diversi per organizzazione senza
 toccare il codice sorgente ad ogni nuovo cliente -- oggi il sistema supporta
 più `organizations` nello schema (multi-tenant a livello dati), ma il
 branding è comunque unico per deployment, non per organizzazione.
+
+## 12. Runbook: rifare il progetto per un'altra azienda, dall'inizio alla fine (Session 46)
+
+La §11 elenca *cosa* è specifico di Lial Energy. Questa sezione è l'*ordine*
+in cui farlo, scritta per essere eseguita da cima a fondo — anche da un
+agente — senza dover decidere nulla per conto proprio. Ogni passo ha una
+verifica: se la verifica non passa, il passo successivo non va fatto.
+
+Serve, prima di cominciare: un server (§2/§3), un dominio con i DNS già
+puntati all'IP del server, e dal cliente il **nome e la ragione sociale**,
+un **logo**, l'**email del primo amministratore** e (per andare in
+produzione, non per installare) IBAN aziendale, credenziali SMTP e chiavi
+Stripe.
+
+### Passo 1 — Server e codice
+
+```bash
+# §3: docker, git, openssl
+apt-get update && apt-get install -y docker.io docker-compose-v2 git openssl
+systemctl enable --now docker
+git clone <repo> /opt/<nome-progetto> && cd /opt/<nome-progetto>
+```
+
+**Verifica**: `docker compose version` risponde 2.x.
+
+### Passo 2 — Rebranding, PRIMA di costruire le immagini
+
+Farlo adesso e non dopo: le immagini Docker sono *cotte*, quindi ogni
+modifica al sorgente fatta dopo la build richiede una rebuild (§8). In
+ordine di rischio, non di visibilità:
+
+1. Le **tre costanti non cosmetiche** in cima alla §11
+   (`PASSWORD_RESET_DELEGATE_*`, `DEFAULT_ADMIN_NOTIFICATION_EMAIL`, il
+   contratto di collaborazione). Queste vanno fatte anche se il cliente
+   accetta di lanciare con il branding provvisorio.
+2. Logo ed email: `apps/api/app/core/email_templates.py`
+   (`LOGO_URL`, `BRAND_COLOR`, footer), `apps/dashboard/public/logo.png`,
+   `apps/dashboard/app/icon.png`, `apple-icon.png`.
+3. Titoli e nomi: `apps/dashboard/app/layout.tsx`,
+   `apps/dashboard/app/manifest.ts`.
+4. Tutto il resto delle stringhe, con una ricerca esplicita:
+
+```bash
+grep -rniE "lial ?energy|lialenergy" apps/ infrastructure/ --include='*.py' \
+  --include='*.tsx' --include='*.ts' --include='*.conf' -l
+```
+
+**Verifica**: lo stesso `grep` rieseguito non elenca più nessun file sotto
+`apps/api/app/` e `apps/dashboard/` che finisca davanti a un utente. Restano
+legittimamente i nomi interni (`POSTGRES_DB=lial_energy`, i bucket
+`lial-*`): non li vede nessuno, cambiarli è facoltativo e costa una
+migrazione dei dati se fatto dopo.
+
+**Nota onesta sul colore**: il colore del brand **non** è centralizzato. Le
+classi `orange-*`/`amber-*` sono scritte a mano in quasi ogni componente
+(§11). Cambiare colore è una sostituzione su tutto `apps/dashboard/
+components/`, non una riga di config. Se il cliente non ha un vincolo di
+brand forte, lasciarlo arancione è una scelta legittima.
+
+### Passo 3 — `.env`
+
+```bash
+cp .env.example .env
+openssl rand -hex 32   # JWT_SECRET_KEY
+openssl rand -hex 24   # POSTGRES_PASSWORD
+openssl rand -hex 24   # MINIO_ROOT_PASSWORD / S3_SECRET_KEY
+```
+
+`.env.example` è tenuto **sovrainsieme** del `.env` reale: se una variabile
+serve, è lì dentro con un commento. Nessuna impostazione dell'applicazione è
+obbligatoria a livello di codice (hanno tutte un default), il che è comodo in
+sviluppo e **pericoloso in produzione**: uno stack con `JWT_SECRET_KEY`
+lasciato al placeholder parte senza lamentarsi. Controlla a mano che i tre
+segreti sopra e `NEXT_PUBLIC_APP_URL` (il dominio vero, in `https://`) siano
+valorizzati.
+
+**Verifica**:
+
+```bash
+grep -E "^(JWT_SECRET_KEY|POSTGRES_PASSWORD|S3_SECRET_KEY|NEXT_PUBLIC_APP_URL)=" .env
+```
+
+Nessuno dei quattro deve contenere `change-me`, `placeholder` o il valore di
+`.env.example`.
+
+### Passo 4 — Stack su
+
+```bash
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Il container `api` esegue `alembic upgrade head` da solo all'avvio, e crea i
+due bucket MinIO al primo startup: lo schema e lo storage non si toccano a
+mano.
+
+**Verifica**: `scripts/health-check.sh dev` → tutte le righe OK. Se no, §8
+("Problemi noti già risolti") prima di improvvisare.
+
+### Passo 5 — L'organizzazione e il primo amministratore
+
+**Non** `python -m app.seed` (è la demo di Lial Energy: venti promoter finti).
+
+```bash
+docker compose -f docker-compose.dev.yml exec api \
+  python -m app.seed.bootstrap \
+    --organization-name "Nome Azienda" \
+    --legal-name "Nome Azienda S.r.l." \
+    --admin-email "titolare@azienda.it"
+```
+
+Salva subito `Organization ID` e la password stampata (una volta sola).
+
+**Verifica**: la query di §6.1 — 12 gradi, almeno un piano provvigioni
+attivo, un solo utente.
+
+### Passo 6 — Dominio e HTTPS
+
+Segui la §4.6 alla lettera, sostituendo il dominio. I due punti in cui si
+sbaglia sempre sono già scritti lì: certbot rifiuta una cartella
+`live/<dominio>` preesistente, e un bind mount Docker creato prima che la
+cartella host venisse ricreata continua a vedere l'inode vecchio (serve
+ricreare il container, un reload di nginx non basta).
+
+**Verifica**: `curl -sI https://<dominio>/login` → `200`, certificato reale
+(non self-signed), e `http://` che redirige a `https://`.
+
+### Passo 7 — Configurazione dall'interfaccia (non dal codice)
+
+Entra come amministratore. Ti verrà chiesto di completare il profilo: è
+normale, vedi §4.4 scenario C. Poi, in Impostazioni organizzazione:
+
+- **SMTP** — finché non è configurato, nessuna email parte: niente verifica
+  email, niente reset password, niente notifiche. È il primo da fare.
+- **Stripe** — chiavi API e **webhook secret**. Attenzione: `sk_test`/
+  `pk_test` sono le chiavi di *prova*; con quelle il pulsante "Paga con
+  carta" è visibile ai clienti ma nessun pagamento è reale. Prima di aprire
+  al pubblico, chiavi live.
+- **IBAN aziendale** e intestatario, per i pagamenti a bonifico.
+
+Poi, sempre dall'interfaccia: i **prodotti** reali (con i gettoni per grado,
+che il bootstrap lascia ai valori placeholder di `app/seed/ranks.py`), e solo
+dopo i primi **promoter**.
+
+**Verifica**: da una casella esterna, prova un "password dimenticata" e
+controlla che l'email arrivi davvero.
+
+### Passo 8 — Backup e rinnovo certificato
+
+Le due righe di crontab della §4.8. Sono l'unica cosa di questo runbook che,
+se dimenticata, non dà nessun errore immediato: il certificato scade dopo 90
+giorni e i backup semplicemente non esistono il giorno in cui servono.
+
+**Verifica**: `crontab -l` mostra entrambe le righe, e un
+`./scripts/backup.sh dev` eseguito a mano produce un file in `./backups/`.
+
+### Cosa il cliente NON eredita da Lial Energy
+
+Perché niente di tutto questo è nel database di una nuova azienda:
+
+- **La scala dei gradi e i gettoni** (`app/seed/ranks.py`) sono
+  **placeholder** — interpolati fra quattro valori di esempio del cliente
+  originale, vedi `docs/open-questions.md` #1. Vanno riviste con il cliente
+  prima di pagare una sola provvigione.
+- **Il contratto di collaborazione** e il suo allegato (§11) sono di Lial
+  Energy.
+- **I prodotti**, e con essi le percentuali di cashback, i bonus primo
+  segnalatore e le durate contrattuali: nessuno viene creato dal bootstrap.
+- **Il sito vetrina** `infrastructure/marketing-site/` è interamente Lial
+  Energy: o se ne fa uno nuovo, o si toglie il blocco `server` che lo serve
+  in `infrastructure/nginx/nginx.conf`.

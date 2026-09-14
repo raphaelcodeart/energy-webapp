@@ -7,10 +7,24 @@ dashboard cliente/promoter/amministratore.
 See `docs/` for the full documentation set — start with `docs/architecture.md` and
 `docs/implementation-progress.md` (what's actually built vs. planned).
 
+**Working on this with an AI agent?** Read `CLAUDE.md` first. It is loaded
+automatically by Claude Code and holds the things the code does not say out
+loud: that this deployment is live, that the containers run baked images, the
+exact test invocation that does not wipe the real database, and what has to be
+updated alongside a change.
+
 **Migrating or rebuilding on a new server?** Go straight to
 `docs/server-migration-guide.md` — it has the exact steps, the full database
 schema (`docs/database-schema.sql`, a real `pg_dump` of the live database), and
 every real bug already found and fixed while standing this up.
+
+**Standing this codebase up for a *different company*?** Same guide, §12: an
+ordered runbook from a bare server to a working installation, each step with
+its own verification, plus §11 for everything that is hardcoded Lial Energy
+and has to be replaced first. The one command that makes it possible is
+`python -m app.seed.bootstrap`, which creates a real, empty organization —
+permissions, roles, ranks, commission plan, one administrator — instead of the
+demo's twenty fictional promoters.
 
 **Using the app day to day?** See `docs/user-guide.md` (in Italian).
 
@@ -55,6 +69,21 @@ The seed script prints the demo organization ID and login credentials
 (password `DemoPass123!` for all seeded users) — you need the organization ID to
 log in via the dashboard's login form.
 
+For a **real** installation, do not run that. Run the bootstrap instead — it
+creates only what the application cannot start without (the global permission
+catalogue, the organization's system roles, the rank ladder, an active
+commission plan) plus a single administrator, and it is idempotent:
+
+```bash
+docker compose -f docker-compose.dev.yml exec api \
+  python -m app.seed.bootstrap \
+    --organization-name "Nome Azienda" \
+    --legal-name "Nome Azienda S.r.l." \
+    --admin-email "titolare@azienda.it"
+```
+
+The generated password is printed once and is not recoverable.
+
 ## Verifying the system
 
 ```bash
@@ -77,6 +106,12 @@ pip install -e ".[dev]"
 TEST_DATABASE_URL=postgresql+psycopg://lial:<password>@localhost:5432/lial_energy_test python -m pytest
 ```
 
+`conftest.py` drops and recreates every table at the start of the run, so the
+database name in that URL must be `lial_energy_test` — never `lial_energy`.
+On the live server the container hostnames do not resolve from the host and
+another Postgres occupies `localhost:5432`; `CLAUDE.md` §2 has the invocation
+that works there.
+
 Run the frontend checks:
 
 ```bash
@@ -97,7 +132,9 @@ pnpm build
 /infrastructure
   /nginx       Reverse proxy config
 /scripts       deploy / backup / restore / health-check / migrate / rollback
+               dump-schema (regenerates docs/database-schema.sql)
 /docs          Architecture, data model, business rules, ADRs, security model, ...
+CLAUDE.md      Operating instructions for AI agents working on this repo
 ```
 
 ## What's implemented vs. planned
