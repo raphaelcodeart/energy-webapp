@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict AXdNWgFdx0t0yyB2b9BAk2Yshfdcdtia1k5t8R3LwVNzJ8So8xQi4Chzyyt4LwA
+\restrict PMyRqDO1KRTP173lODuZPtAydFyvM59uuPhrZS6BjnJkiGZSw1lX6JrdYCgzBqF
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -346,7 +346,29 @@ CREATE TABLE public.contracts (
     expires_at timestamp with time zone,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    email character varying(320)
+    email character varying(320),
+    updated_at timestamp with time zone,
+    created_by_user_id uuid,
+    created_by_role character varying(32),
+    activated_by_promoter_id uuid,
+    first_referrer_agent_id uuid,
+    customer_kind character varying(32),
+    net_amount_cents bigint,
+    vat_rate numeric(5,2),
+    vat_amount_cents bigint,
+    gross_amount_cents bigint,
+    payment_plan character varying(16),
+    payment_method character varying(16),
+    stripe_checkout_session_id character varying(255),
+    stripe_customer_id character varying(255),
+    stripe_subscription_id character varying(255),
+    paid_at timestamp with time zone,
+    cashback_credited_at timestamp with time zone,
+    terms_accepted_at timestamp with time zone,
+    terms_accepted_by_user_id uuid,
+    terms_version character varying(32),
+    terms_accepted_ip character varying(45),
+    terms_accepted_user_agent character varying(500)
 );
 
 
@@ -463,6 +485,75 @@ CREATE TABLE public.email_verification_tokens (
     used_at timestamp with time zone,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: import_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import_providers (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    provider_type character varying(32) NOT NULL,
+    name character varying(128) NOT NULL,
+    base_url character varying(500),
+    api_key character varying(500),
+    enabled boolean DEFAULT true NOT NULL,
+    created_by_user_id uuid NOT NULL
+);
+
+
+--
+-- Name: imported_product_orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.imported_product_orders (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_user_id uuid NOT NULL,
+    imported_product_id uuid NOT NULL,
+    created_by_user_id uuid NOT NULL,
+    amount_cents bigint NOT NULL,
+    credit_applied_cents bigint DEFAULT '0'::bigint NOT NULL,
+    credit_debit_transaction_id uuid,
+    status character varying(16) DEFAULT 'AWAITING_PAYMENT'::character varying NOT NULL,
+    payment_method character varying(16) DEFAULT 'BANK_TRANSFER'::character varying NOT NULL,
+    stripe_checkout_session_id character varying(255),
+    note character varying(1000),
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp with time zone,
+    paid_by_user_id uuid,
+    paid_at timestamp with time zone,
+    cancelled_by_user_id uuid,
+    cancelled_at timestamp with time zone,
+    cancellation_reason character varying(500),
+    CONSTRAINT ck_imported_product_orders_ck_imported_orders_credit_ap_3f85 CHECK ((credit_applied_cents <= amount_cents)),
+    CONSTRAINT ck_imported_product_orders_ck_imported_orders_credit_ap_4bb7 CHECK ((credit_applied_cents >= 0))
+);
+
+
+--
+-- Name: imported_products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.imported_products (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    provider_id uuid NOT NULL,
+    external_id character varying(255),
+    external_url character varying(1000),
+    name character varying(255) NOT NULL,
+    description character varying(2000) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(1000),
+    price_cents bigint NOT NULL,
+    credit_discount_percentage integer DEFAULT 0 NOT NULL,
+    status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    created_by_user_id uuid NOT NULL
 );
 
 
@@ -732,7 +823,10 @@ CREATE TABLE public.product_versions (
     created_at timestamp with time zone NOT NULL,
     commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL,
     credit_discount_percentage integer DEFAULT 0 NOT NULL,
-    cashback_enabled boolean DEFAULT false NOT NULL
+    cashback_enabled boolean DEFAULT false NOT NULL,
+    contract_cashback_percentage integer DEFAULT 0 NOT NULL,
+    first_referrer_bonus_enabled boolean DEFAULT false NOT NULL,
+    first_referrer_bonus_cents bigint DEFAULT '0'::bigint NOT NULL
 );
 
 
@@ -971,6 +1065,7 @@ CREATE TABLE public.wallet_transactions (
     source character varying(32),
     reference_invoice_redemption_id uuid,
     reference_order_id uuid,
+    reference_imported_order_id uuid,
     CONSTRAINT ck_wallet_transactions_ck_wallet_transactions_has_a_side CHECK (((from_wallet_id IS NOT NULL) OR (to_wallet_id IS NOT NULL)))
 );
 
@@ -1198,6 +1293,30 @@ ALTER TABLE ONLY public.domain_outbox
 
 ALTER TABLE ONLY public.email_verification_tokens
     ADD CONSTRAINT pk_email_verification_tokens PRIMARY KEY (id);
+
+
+--
+-- Name: import_providers pk_import_providers; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_providers
+    ADD CONSTRAINT pk_import_providers PRIMARY KEY (id);
+
+
+--
+-- Name: imported_product_orders pk_imported_product_orders; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT pk_imported_product_orders PRIMARY KEY (id);
+
+
+--
+-- Name: imported_products pk_imported_products; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_products
+    ADD CONSTRAINT pk_imported_products PRIMARY KEY (id);
 
 
 --
@@ -1465,6 +1584,14 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
+-- Name: contracts uq_contracts_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT uq_contracts_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
+
+
+--
 -- Name: customers uq_customers_user_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1478,6 +1605,14 @@ ALTER TABLE ONLY public.customers
 
 ALTER TABLE ONLY public.documents
     ADD CONSTRAINT uq_documents_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: imported_product_orders uq_imported_product_orders_stripe_session; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT uq_imported_product_orders_stripe_session UNIQUE (stripe_checkout_session_id);
 
 
 --
@@ -1862,6 +1997,48 @@ CREATE UNIQUE INDEX ix_email_verification_tokens_token_hash ON public.email_veri
 --
 
 CREATE INDEX ix_email_verification_tokens_user_id ON public.email_verification_tokens USING btree (user_id);
+
+
+--
+-- Name: ix_import_providers_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_import_providers_organization_id ON public.import_providers USING btree (organization_id);
+
+
+--
+-- Name: ix_imported_product_orders_customer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imported_product_orders_customer_user_id ON public.imported_product_orders USING btree (customer_user_id);
+
+
+--
+-- Name: ix_imported_product_orders_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imported_product_orders_organization_id ON public.imported_product_orders USING btree (organization_id);
+
+
+--
+-- Name: ix_imported_product_orders_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imported_product_orders_status ON public.imported_product_orders USING btree (status);
+
+
+--
+-- Name: ix_imported_products_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imported_products_organization_id ON public.imported_products USING btree (organization_id);
+
+
+--
+-- Name: ix_imported_products_provider_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_imported_products_provider_id ON public.imported_products USING btree (provider_id);
 
 
 --
@@ -2686,6 +2863,14 @@ ALTER TABLE ONLY public.contract_status_history
 
 
 --
+-- Name: contracts fk_contracts_activated_by_promoter_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT fk_contracts_activated_by_promoter_id_agent_profiles FOREIGN KEY (activated_by_promoter_id) REFERENCES public.agent_profiles(id);
+
+
+--
 -- Name: contracts fk_contracts_contract_attribution_id_contract_attributions; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2694,11 +2879,27 @@ ALTER TABLE ONLY public.contracts
 
 
 --
+-- Name: contracts fk_contracts_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT fk_contracts_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: contracts fk_contracts_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contracts
     ADD CONSTRAINT fk_contracts_customer_id_customers FOREIGN KEY (customer_id) REFERENCES public.customers(id);
+
+
+--
+-- Name: contracts fk_contracts_first_referrer_agent_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT fk_contracts_first_referrer_agent_id_agent_profiles FOREIGN KEY (first_referrer_agent_id) REFERENCES public.agent_profiles(id);
 
 
 --
@@ -2731,6 +2932,14 @@ ALTER TABLE ONLY public.contracts
 
 ALTER TABLE ONLY public.contracts
     ADD CONSTRAINT fk_contracts_supply_point_id_supply_points FOREIGN KEY (supply_point_id) REFERENCES public.supply_points(id);
+
+
+--
+-- Name: contracts fk_contracts_terms_accepted_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT fk_contracts_terms_accepted_by_user_id_users FOREIGN KEY (terms_accepted_by_user_id) REFERENCES public.users(id);
 
 
 --
@@ -2851,6 +3060,102 @@ ALTER TABLE ONLY public.domain_outbox
 
 ALTER TABLE ONLY public.email_verification_tokens
     ADD CONSTRAINT fk_email_verification_tokens_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: import_providers fk_import_providers_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_providers
+    ADD CONSTRAINT fk_import_providers_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: import_providers fk_import_providers_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_providers
+    ADD CONSTRAINT fk_import_providers_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_cancelled_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_cancelled_by_user_id_users FOREIGN KEY (cancelled_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_credit_debit_transaction_id__583a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_credit_debit_transaction_id__583a FOREIGN KEY (credit_debit_transaction_id) REFERENCES public.wallet_transactions(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_customer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_customer_user_id_users FOREIGN KEY (customer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_imported_product_id_imported_d6e8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_imported_product_id_imported_d6e8 FOREIGN KEY (imported_product_id) REFERENCES public.imported_products(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: imported_product_orders fk_imported_product_orders_paid_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_product_orders
+    ADD CONSTRAINT fk_imported_product_orders_paid_by_user_id_users FOREIGN KEY (paid_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: imported_products fk_imported_products_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_products
+    ADD CONSTRAINT fk_imported_products_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: imported_products fk_imported_products_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_products
+    ADD CONSTRAINT fk_imported_products_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: imported_products fk_imported_products_provider_id_import_providers; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.imported_products
+    ADD CONSTRAINT fk_imported_products_provider_id_import_providers FOREIGN KEY (provider_id) REFERENCES public.import_providers(id);
 
 
 --
@@ -3382,6 +3687,14 @@ ALTER TABLE ONLY public.wallet_transactions
 
 
 --
+-- Name: wallet_transactions fk_wallet_transactions_reference_imported_order_id_impo_d9ec; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_imported_order_id_impo_d9ec FOREIGN KEY (reference_imported_order_id) REFERENCES public.imported_product_orders(id);
+
+
+--
 -- Name: wallet_transactions fk_wallet_transactions_reference_invoice_redemption_id__3fd7; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3433,5 +3746,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AXdNWgFdx0t0yyB2b9BAk2Yshfdcdtia1k5t8R3LwVNzJ8So8xQi4Chzyyt4LwA
+\unrestrict PMyRqDO1KRTP173lODuZPtAydFyvM59uuPhrZS6BjnJkiGZSw1lX6JrdYCgzBqF
 

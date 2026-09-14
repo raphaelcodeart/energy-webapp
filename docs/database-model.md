@@ -208,7 +208,7 @@ attribution_corrections
   -- rejected if there's no existing attribution to correct.
 ```
 
-## 4. Catalog, customers, contracts
+## 4. Catalog, customers, contracts (economics + authorship extended Session 38)
 
 ```
 products
@@ -218,7 +218,18 @@ products
   energy_type nullable (ELECTRICITY/GAS/DUAL_FUEL -- only meaningful when
     product_type=ENERGY_CONTRACT; was NOT NULL before Session 10, relaxed
     because a DIGITAL/PHYSICAL/SUBSCRIPTION product has no energy type),
-  customer_type, status,
+  customer_type (PRIVATE/BUSINESS/BOTH -- REDEFINED Session 38. The column
+    existed from the start but nothing ever read it, and its old vocabulary
+    (PMI, ENERGY_INTENSIVE, SOLE_PROPRIETOR, CONDOMINIUM) did not line up
+    with customers.kind (COMPANY, ...), so the two could never be compared.
+    It now holds the binary business answer and IS enforced: a customer is
+    only offered -- and only allowed to activate -- contracts their kind
+    matches. Legacy values still parse and collapse onto BUSINESS; see
+    catalog/pricing.py::normalize_product_customer_type. Migration 0035
+    rewrote every existing row to BOTH, deliberately NOT to its literal old
+    value: nothing filtered on this column before, so BOTH is the only value
+    that leaves the catalog looking identical),
+  status,
   category (INTERNAL default/DROPSHIPPING/PARTNER -- added Session 23,
     orthogonal to product_type; see §11)
 
@@ -234,7 +245,22 @@ product_versions
     contracts.expires_at, see below),
   commission_plan_version_id, required_documents jsonb, terms_version,
   valid_from, valid_to nullable, status,
-  credit_discount_percentage (0-100, default 0 -- added Session 23; see §11)
+  credit_discount_percentage (0-100, default 0 -- added Session 23; see §11),
+  cashback_enabled (bool, default false -- added Session 33; the opt-in "+5%
+    al checkout" cashback, DROPSHIPPING/PARTNER orders only; see §11),
+  contract_cashback_percentage (0-100, default 0 -- added Session 38; the
+    INTERNAL counterpart of cashback_enabled and a deliberately DIFFERENT
+    mechanism: share of a paid contract's GROSS (VAT included) credited back
+    as LialCash automatically, with NO surcharge. 0 on every product that
+    exists today, so nothing changes until an admin opts in. See
+    business-rules.md#cashback-modes),
+  first_referrer_bonus_enabled (bool, default false) and
+  first_referrer_bonus_cents (default 0) -- added Session 38: a one-off bonus
+    for the promoter who ORIGINALLY brought the customer in, additive to the
+    recursive commission. Configured here rather than keyed off a price or a
+    product id in a controller. INTERNAL only (commissions come from
+    contracts); clamped in catalog/service.py. See
+    business-rules.md#first-referrer-bonus
 
 customers
   id, organization_id, kind (PRIVATE/SOLE_PROPRIETOR/COMPANY/CONDOMINIUM),
@@ -283,6 +309,60 @@ contracts
     recurring charge; basic format check only, `^[A-Z]{2}[0-9A-Z]{13,32}$`,
     not a full mod-97 checksum. Editable by the customer on their own
     contract or by staff on any contract),
+  email nullable (added Session 33 -- contact address for THIS pratica,
+    deliberately independent of the account's login email),
+
+  -- Who built it (added Session 38). Previously only recoverable indirectly,
+  -- from the actor on the first contract_status_history row.
+  updated_at nullable,
+  created_by_user_id nullable, created_by_role nullable (CUSTOMER/PROMOTER/
+    ADMIN, snapshotted from the creator's roles -- a person's roles change,
+    what they were acting as here cannot),
+  activated_by_promoter_id nullable -> agent_profiles (set ONLY when a
+    promoter completed the contract in place of the customer, which is
+    exactly when the admin screen should say "Contratto compilato dal
+    promoter X". Null when the customer did it themselves or staff created
+    it -- never inferred from who earns the commission, which is the same
+    promoter in the ordinary case),
+  first_referrer_agent_id nullable -> agent_profiles (the promoter who
+    ORIGINALLY brought this customer in, resolved from customer_attributions
+    at creation and then frozen. Deliberately distinct from
+    contract_attributions.producer_agent_id: reassigning the customer later
+    changes who earns FUTURE business, not who is owed the bonus on a
+    contract already opened),
+
+  -- Economics, frozen at creation (added Session 38). Snapshot, never a live
+  -- join to the product version: an admin editing a price or a VAT rate
+  -- tomorrow must not restate what somebody already agreed to pay. Computed
+  -- exclusively server-side by catalog/pricing.py -- no amount here ever
+  -- originates from a browser. See business-rules.md#vat.
+  customer_kind nullable (the buyer's kind AS IT WAS -- it is what decided
+    whether VAT applies at all, so it is frozen alongside the amounts),
+  net_amount_cents, vat_rate NUMERIC(5,2) (percentage points, e.g. 22.00 --
+    0.00 for a private customer whatever the product's rate is),
+  vat_amount_cents, gross_amount_cents (all nullable: every contract created
+    before Session 38 has them NULL and is never back-filled, because
+    recomputing from today's product is exactly the retroactive restatement
+    the snapshot exists to prevent),
+
+  -- Payment (added Session 38). No contract had ever been paid through this
+  -- app when these landed (every production row sat at DRAFT/
+  -- DOCUMENTS_PENDING/UNDER_REVIEW), so none of this restates prior
+  -- behaviour -- it is the payment step that did not exist. Stripe is the
+  -- only proof of payment: a success URL never is.
+  payment_plan nullable (FULL/MONTHLY_12/KLARNA_3),
+  payment_method nullable (CARD/BANK_TRANSFER),
+  stripe_checkout_session_id nullable UNIQUE, stripe_customer_id nullable,
+  stripe_subscription_id nullable, paid_at nullable,
+  cashback_credited_at nullable (the readable exactly-once guard for the
+    LialCash credit, on top of the wallet ledger's own unique idempotency
+    key -- same belt-and-braces pattern as orders.cashback_credited_at),
+
+  -- Proof of what was accepted (added Session 38). Stored here rather than
+  -- read back through the product, so an admin replacing a contract PDF
+  -- later cannot change what this customer accepted.
+  terms_accepted_at, terms_accepted_by_user_id, terms_version,
+  terms_accepted_ip, terms_accepted_user_agent (all nullable),
   created_at
 
 contract_status_history
@@ -311,7 +391,7 @@ documents (added Session 14 -- sensitive contract paperwork; see
 Contract `status` is constrained (checked in application code + a Postgres CHECK
 constraint) to the state machine in `business-rules.md §Contract state machine`.
 
-## 5. Commissions
+## 5. Commissions (first-referrer bonus added Session 38)
 
 ```
 ranks
@@ -341,9 +421,23 @@ commission_calculation_steps
 
 commission_movements                                    -- the append-only ledger
   id, organization_id, agent_id, contract_id, origin_event_id, calculation_id,
-  movement_type, amount_cents, currency, status, effective_date, scheduled_date nullable,
+  movement_type (PERSONAL_TOKEN / ENTREPRENEURIAL_DIFFERENCE /
+    FIRST_REFERRER_BONUS -- the last added Session 38: a one-off bonus to
+    the promoter who ORIGINALLY brought the customer in, ADDITIVE to the two
+    plan movements, never a replacement, and paid to a different agent than
+    the producer whenever somebody else assisted that customer),
+  amount_cents, currency, status, effective_date, scheduled_date nullable,
   paid_date nullable, rule_version_id, network_snapshot_id, idempotency_key (unique),
   created_at
+
+  -- Note on idempotency_key: every other movement derives it from
+  -- (contract, trigger_event, agent, type), because the recursive
+  -- commission is earned again on each renewal. FIRST_REFERRER_BONUS
+  -- deliberately OMITS the trigger event
+  -- ("first-referrer-bonus:{contract}:{agent}"), which makes the UNIQUE
+  -- constraint itself the "once per contract, ever" guarantee -- a renewal,
+  -- a replayed outbox event or a manual re-run simply cannot produce a
+  -- second one.
 
 commission_adjustments / commission_offsets / commission_reversals
   id, organization_id, original_movement_id, new_movement_id, reason, requested_by,
@@ -481,7 +575,7 @@ public `lial-media` bucket (marketing material, not the sensitive-document
 workflow in §4/`documents`), uploaded via
 `core/storage.py::upload_documentation_attachment()`.
 
-## 9. Internal wallet (added Session 21; extended Sessions 23-24, 33)
+## 9. Internal wallet (added Session 21; extended Sessions 23-24, 33, 37-38)
 
 **"LialCash" (Session 33)**: purely a UI label, not a schema/domain change --
 every `wallets`/`wallet_transactions` amount is still `balance_cents`/
@@ -519,12 +613,18 @@ wallet_transactions                                     -- the ledger
     PURCHASE_DEBIT added Session 24, the mirror of ADMIN_CREDIT: to_wallet_id
     NULL instead of from_wallet_id NULL, money leaves a wallet to pay for an
     order and ceases to exist),
-  source nullable (added Session 23, extended Session 33 -- MANUAL_ADMIN /
-    INVOICE_REDEMPTION_BASE / INVOICE_REDEMPTION_BONUS /
-    ORDER_CASHBACK_BASE / ORDER_CASHBACK_BONUS, a structured tag
-    distinguishing WHY an ADMIN_CREDIT row exists without parsing
-    free-text `note`; NULL for TRANSFER/PURCHASE_DEBIT/REVERSAL, where
-    `type` alone already says enough),
+  source nullable (added Session 23, extended Sessions 33/37/38 --
+    MANUAL_ADMIN / WELCOME_BONUS / INVOICE_REDEMPTION_BASE /
+    INVOICE_REDEMPTION_BONUS / ORDER_CASHBACK_BASE / ORDER_CASHBACK_BONUS /
+    CONTRACT_CASHBACK, a structured tag distinguishing WHY an ADMIN_CREDIT
+    row exists without parsing free-text `note`; NULL for
+    TRANSFER/PURCHASE_DEBIT/REVERSAL, where `type` alone already says
+    enough. CONTRACT_CASHBACK (Session 38) is deliberately its own value
+    rather than reusing ORDER_CASHBACK_BASE: three genuinely different
+    business rules produce credit here -- the partner-invoice 5%, the order
+    opt-in 5%, and the surcharge-free automatic credit on a paid Lial
+    Energy contract -- and accounting has to be able to tell them apart at
+    a glance. See business-rules.md#cashback-modes),
   reference_contract_id nullable (links a cashback credit to the purchase
     that triggered it -- always NULL for TRANSFER/REVERSAL),
   reference_invoice_redemption_id nullable (added Session 23, FK
@@ -838,3 +938,59 @@ which remain each domain's own single source of truth:
 This is what the customer-facing "Contabilità" dashboard section renders
 (filters by LialCash/Bonifico/Carta, totals, CSV export) -- see
 `business-rules.md#internal-wallet`.
+
+## 15. Imported products: the "Acquisti LialEnergy" plugin (added Session 34)
+
+Three tables that are **deliberately a parallel catalog**, not an extension
+of `products`/`product_versions`, per an explicit product decision: products
+pulled in from an external dropshipping API (AliExpress today) must never be
+mixed with the ones Lial Energy curates by hand. Treated as a plugin bolted
+onto the existing software rather than a change to it -- nothing in the
+`catalog`/`orders` domains was modified to make room for it.
+
+```
+import_providers
+  id, organization_id, provider_type (ALIEXPRESS), name,
+  base_url nullable, api_key nullable (never returned in full by the API --
+    schemas mask it to the last 4 characters, same discipline as the Stripe
+    secret key in organizations.settings, see §12),
+  enabled, created_by_user_id, created_at
+
+imported_products
+  id, organization_id, provider_id, external_id nullable, external_url
+    nullable, name, description, image_url nullable, price_cents,
+  credit_discount_percentage (0-100 -- how much of the price may be paid in
+    LialCash; this is the whole point of the category),
+  status, created_by_user_id, created_at
+
+  -- There is deliberately NO cashback column of any kind on this table.
+  -- These products exist to let a customer SPEND accumulated LialCash, never
+  -- to earn more: "non ricaricano cashback". Its absence is the enforcement.
+
+imported_product_orders
+  id, organization_id, customer_user_id, imported_product_id,
+  created_by_user_id, amount_cents, credit_applied_cents,
+  credit_debit_transaction_id nullable -> wallet_transactions,
+  status (AWAITING_PAYMENT/PAID/CANCELLED), payment_method
+    (BANK_TRANSFER/CARD), stripe_checkout_session_id nullable,
+  note, payment_proof_storage_key / _original_filename / _uploaded_at,
+  paid_by_user_id / paid_at, cancelled_by_user_id / cancelled_at /
+  cancellation_reason, created_at
+
+  -- Mirrors `orders` minus every cashback field, for the same reason.
+```
+
+**Separate storage, one continuous experience.** The split exists only to keep
+the two product catalogs apart. Everywhere a human looks -- "I miei Ordini",
+the admin orders screen, Contabilità -- the two order tables are merged into
+one chronological list and behave identically: the same order code derivation
+(`id[:8].upper()`), the same statuses, the same payment actions, the same
+emails. Which table backs a given order is an internal routing detail (which
+endpoint an action calls), never surfaced in the UI, and the customer is never
+shown that a product came from AliExpress.
+
+`wallet_transactions.reference_imported_order_id` is the fourth reference
+column on the ledger (see §9), kept separate from `reference_order_id` so each
+stays a real foreign key to its own table -- a single polymorphic
+"order_id + order_type" pair would have given up referential integrity for
+cosmetic tidiness.

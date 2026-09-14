@@ -172,10 +172,16 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   provvigione totale pagata a tutta la filiera, perché nel piano multilivello
   ogni persona nella catena prende una quota diversa).
 - **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
-  pulsante **Condividi** su ogni prodotto: copia negli appunti un link diretto
-  a quel prodotto con il tuo codice promoter già incorporato, pronto da inviare
-  a un cliente. C'è anche un pulsante **Condividi il tuo link** in alto (link
-  generico, senza prodotto specifico).
+  pulsante **Condividi** su ogni prodotto: un link diretto a quel prodotto con
+  il tuo codice promoter già incorporato, pronto da inviare a un cliente.
+  C'è anche un pulsante **Condividi il tuo link** in alto (link generico,
+  senza prodotto specifico).
+  - **Dal telefono si apre direttamente il menu di condivisione del
+    dispositivo** (WhatsApp, Telegram, SMS, email, e qualsiasi altra app tu
+    abbia installata): non devi più copiare il link, uscire dall'app e
+    incollarlo. Da computer, dove quel menu non esiste, il link viene copiato
+    negli appunti come prima — il pulsante ti dice quale delle due cose è
+    successa ("Link condiviso!" oppure "Link copiato!").
 - **Movimenti Provvigioni** — storico dei gettoni personali e delle differenze
   imprenditoriali maturate.
 - **Simulatore Provvigioni** — anteprima di quanto genererebbe un contratto
@@ -217,7 +223,8 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   ancora attivati** — quindi con provvigioni non ancora generate), attività
   recente.
 - **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), prodotto e
-  punto di fornitura con nome comprensibile, colonna scadenza/rinnovo colorata
+  punto di fornitura con nome comprensibile, colonna **Origine** (vedi sotto),
+  colonna **Importo** con netto / IVA / totale, colonna scadenza/rinnovo colorata
   per urgenza, filtro per anno (storico separato per anno, utile perché ogni
   anno ci saranno contratti da rinnovare), filtri per stato, azione di
   transizione di stato con motivazione obbligatoria. Il pulsante **Recensisci**
@@ -227,6 +234,20 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   quando il cliente ha caricato il suo, **approvarlo o respingerlo** con una
   nota — la nota compare automaticamente al promoter nella sua vista di rete,
   cosi sa cosa manca e può contattare il cliente.
+  - La colonna **Origine** risponde a colpo d'occhio alla domanda "chi ha
+    fatto questo contratto?": *Compilato dal promoter — Nome Cognome* quando
+    un promoter lo ha completato **al posto** del cliente, *Sottoscritto dal
+    cliente* quando è stato il cliente da solo, *Creato da amministrazione*
+    quando lo ha inserito lo staff. Sotto, quando diverso, compare anche
+    *Segnalato da …*, cioè il promoter che aveva portato quel cliente in
+    Lial Energy la prima volta — può essere una persona diversa da chi ha
+    compilato il contratto, ed è quella che riceve l'eventuale bonus primo
+    segnalatore.
+  - La colonna **Importo** mostra il totale del contratto così com'era **nel
+    momento in cui è stato firmato**: se domani modifichi il prezzo o l'IVA
+    del prodotto, i contratti già esistenti non cambiano. I contratti creati
+    prima dell'introduzione di questa colonna mostrano "—": il sistema
+    volutamente non inventa un prezzo a posteriori.
 - **Nuovo Contratto** — form completo: scegli se cliente nuovo o esistente; per
   un cliente nuovo raccoglie tipologia (privato/azienda), codice fiscale o
   partita IVA, nome e cognome (o ragione sociale), email, cellulare, PEC
@@ -332,6 +353,16 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   wallet); si fa più comodamente dal suo popup in "Anagrafiche Clienti"
   (vedi sopra) oppure da questa sezione, che resta la vista d'insieme su
   tutta l'organizzazione.
+  - **Se una ricarica dà errore, NON ripeterla alla cieca: ricarica la
+    pagina e controlla il saldo prima.** In generale il sistema è ora
+    protetto — riprovare la stessa ricarica non accredita due volte, perché
+    la richiesta porta con sé una chiave che il server riconosce come "è la
+    stessa operazione di prima". Fino a settembre 2026 però esisteva un
+    difetto per cui un problema del server di posta faceva comparire un
+    errore su una ricarica **già andata a buon fine**, e il secondo clic
+    accreditava davvero una seconda volta; è corretto, ma l'abitudine di
+    verificare il saldo prima di ripetere un'operazione sui soldi resta
+    quella giusta.
 - **Contabilità** — non esiste una vista admin separata: ogni cliente vede
   la propria in "Contabilità" nella sua area (LialCash del wallet + ordini
   pagati in euro, filtri, totali, export CSV); l'amministrazione ha
@@ -347,6 +378,27 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
 - Il calcolo cristallizza la catena degli sponsor così com'era in quel momento
   — spostamenti successivi nella rete non cambiano mai calcoli già fatti.
 - Ogni movimento di provvigione riporta una spiegazione testuale.
+- **IVA**: un contratto intestato a un **privato non ha IVA**; uno intestato a
+  un'**azienda / partita IVA** è prezzo + IVA. Lo decide la tipologia del
+  cliente, non il prodotto — il prodotto stabilisce solo *quale* aliquota
+  applicare quando l'IVA c'è. Il conteggio viene congelato sul contratto alla
+  creazione.
+- **Quali contratti vede un cliente**: ogni prodotto di tipo contratto ha un
+  "Cliente Target" (*Solo privati* / *Solo aziende* / *Entrambi*, impostabile
+  dall'amministrazione in Prodotti). Un cliente vede a catalogo solo i
+  contratti compatibili con la propria tipologia — e il sistema li rifiuta
+  comunque anche se qualcuno provasse ad aggirare la schermata.
+- **Cashback sul contratto** (se attivato dall'amministrazione sul prodotto):
+  quando il contratto risulta pagato, al cliente viene accreditata
+  automaticamente una percentuale del totale pagato come LialCash sul wallet.
+  **Non c'è nessun 5% aggiuntivo da pagare**: quella regola riguarda solo il
+  riscatto delle fatture dei partner esterni e gli acquisti nello Shop, non i
+  servizi Lial Energy. Di default è disattivato su tutti i prodotti.
+- **Bonus primo segnalatore** (se attivato dall'amministrazione sul prodotto):
+  un importo extra riconosciuto **una sola volta per contratto** al promoter
+  che aveva portato quel cliente in Lial Energy, **in aggiunta** alla
+  provvigione normale e mai al posto suo. Non va a tutta la rete, e non va al
+  promoter che si limita a compilare il contratto se è una persona diversa.
 - Se il venditore indicato in un contratto non esiste o non è attivo, il
   sistema **rifiuta la creazione del contratto** con un errore chiaro — prima
   poteva capitare che il contratto si attivasse comunque senza pagare

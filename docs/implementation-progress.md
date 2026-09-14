@@ -85,6 +85,52 @@ But the investigation surfaced a **real and much worse latent one**, now fixed:
   the two actually happened.
 - Test suite 237 -> 256. mypy 34 -> 28 errors, ruff 43 -> 38 (no new ones).
 
+### Documentazione risincronizzata (2026-09-14)
+
+`docs/database-schema.sql` was **three migrations stale** -- still at
+`6c1d4e9f2a58` / 56 tables, missing the entire imported-products plugin
+(Sessions 33-34) and every Session 38 column. Regenerated from the live
+database with `scripts/dump-schema.sh`: now `b4e2f81c05a9`, **59 tables**,
+verified against the running Postgres (`information_schema` count and
+`alembic_version` both match). This is the artifact a rebuild on a new server
+depends on, so it drifting silently is the expensive kind of stale.
+
+- `server-migration-guide.md`: §6 refreshed (revision, table count, per-domain
+  table list now including the three imported-product tables and the new
+  contract columns) + a copy-pasteable three-command check for "is this dump
+  still in sync?"; §7 code map gained `catalog/pricing.py` and the two
+  `core/email.py` entry points; §8 gained bug **#17** (the SMTP-after-commit
+  double-credit, with the "break the socket, not the name" note about the
+  regression test); §9 corrected -- it claimed Stripe was ready pending real
+  keys, without saying that **production is still running `sk_test`/`pk_test`
+  with "Paga con carta" visible to customers**, and it did not list contract
+  payment / subscriptions / Klarna / a webhook-event table as missing.
+- `database-model.md`: §4 rewritten for the contract economics and authorship
+  columns and the redefined `products.customer_type`; §5 documents
+  `FIRST_REFERRER_BONUS` and why its idempotency key deliberately omits the
+  trigger event; §9 documents the `CONTRACT_CASHBACK` source; **new §15** for
+  the imported-products plugin, which had never been documented at all.
+- `business-rules.md`: new `#contract-economics` section (VAT, product
+  audience, the three cashback modes side by side, the first-referrer bonus,
+  contract authorship).
+- `architecture.md`: module map updated (`catalog/pricing.py` as the single
+  pricing authority, `imported_products`, the real state of `payments`), and
+  four new non-negotiable data-integrity rules -- frozen contract economics,
+  no economic value from the client, exactly-once via DB constraints rather
+  than application flags, and "a notification can never fail an operation
+  that already committed".
+- `security-model.md`: `wallet.credit` as the narrowest money permission, the
+  "an idempotency key must be stable across retries, not per click" lesson,
+  and `GET /customers/me` under the existing own-record pattern.
+- `open-questions.md`: items **#8-#12** -- what "il totale del contratto"
+  actually is, the contract cashback percentage, which products carry the
+  first-referrer bonus, the still-missing promoter contract PDF, and whether
+  Klarna is even enabled on the real Stripe account.
+- `user-guide.md` (Italian, end users): the new Origine/Importo columns, the
+  VAT rule in plain language, product audience, contract cashback without the
+  5%, the first-referrer bonus, native share on mobile, and a "check the
+  balance before retrying a top-up" note.
+
 ## Session 37 — 2026-09-13 — Pagination across every long list (admin, customer, promoter)
 
 - [x] `apps/dashboard/components/pagination.tsx` (new) — one reusable

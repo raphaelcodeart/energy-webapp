@@ -452,15 +452,35 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
-ricostruzione a memoria (rigenerato 2026-09-09, allineato alla revision
-Alembic `6c1d4e9f2a58` / migrazione `0032_invoice_redemption_payment`;
+ricostruzione a memoria (**rigenerato 2026-09-14, allineato alla revision
+Alembic `b4e2f81c05a9` / migrazione `0035_contract_economics_and_attribution`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le 56 tabelle con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **59 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
-indietro di interi domini prima di essere risincronizzato, l'ultima volta
-in Session 33).
+indietro di interi domini prima di essere risincronizzato — in Session 33, e
+di nuovo in Session 38, quando mancavano le tre tabelle del plugin prodotti
+importati e tutte le colonne economiche dei contratti).
+
+Se hai bisogno di verificare in un secondo che il file sia ancora allineato,
+senza rileggerlo tutto:
+
+```bash
+# revision attesa dal codice (ultima migrazione nel repo)
+ls apps/api/alembic/versions/ | tail -1
+# revision realmente applicata al database in esecuzione
+docker compose -f docker-compose.dev.yml exec -T postgres \
+  psql -U lial -d lial_energy -tAc "SELECT version_num FROM alembic_version;"
+# tabelle nel dump vs tabelle nel database
+grep -c '^CREATE TABLE' docs/database-schema.sql
+docker compose -f docker-compose.dev.yml exec -T postgres \
+  psql -U lial -d lial_energy -tAc \
+  "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+```
+
+I tre numeri devono coincidere. Se non coincidono, il dump è stale: rilancia
+`scripts/dump-schema.sh` prima di fidarti di quel file per una ricostruzione.
 
 La spiegazione **concettuale** (perché ogni tabella esiste, come si collegano,
 diagramma ER) è in `docs/database-model.md` — leggila insieme allo schema SQL,
@@ -481,7 +501,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 56 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 59 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -501,11 +521,18 @@ Catalogo/clienti:  products (ha anche category: INTERNAL/DROPSHIPPING/
                     PARTNER), product_versions (ha anche
                     contract_duration_months, token per grado su
                     commissions.services.rank_evaluation,
-                    credit_discount_percentage, cashback_enabled),
+                    credit_discount_percentage, cashback_enabled,
+                    contract_cashback_percentage,
+                    first_referrer_bonus_enabled/_cents),
                     customers (ha anche photo_url, pec), customer_profiles,
                     companies, addresses, supply_points (ha anche label)
 Contratti:         contracts (ha anche activated_at/expires_at/iban, email
-                    per-contratto separata dall'email di login), 
+                    per-contratto separata dall'email di login, e da
+                    Session 38: chi lo ha creato e con quale ruolo,
+                    activated_by_promoter_id/first_referrer_agent_id,
+                    lo snapshot economico netto/IVA/lordo congelato alla
+                    firma, i campi di pagamento Stripe e la prova di
+                    accettazione delle condizioni),
                     contract_status_history, contract_events,
                     contract_attributions, documents (documenti sensibili
                     del contratto -- bucket privato lial-documents)
@@ -532,6 +559,13 @@ Ordini Shop:       orders (acquisto prodotti DROPSHIPPING/PARTNER: sconto
                     dominio `accounting`, nessuna tabella propria, che
                     unisce questa tabella e wallet_transactions in
                     un'unica vista di sola lettura per il cliente)
+Prodotti importati ("Acquisti LialEnergy", plugin Session 34 -- catalogo
+                    PARALLELO, volutamente separato da products):
+                    import_providers (credenziali API del fornitore, api_key
+                    mascherata in risposta), imported_products (nessun campo
+                    cashback: servono solo a SPENDERE LialCash, mai a
+                    guadagnarne), imported_product_orders (specchio di
+                    orders meno i campi cashback)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```
@@ -565,7 +599,21 @@ apps/api/app/
                    rate_limit.py (limite per-IP via Redis su endpoint auth)
   domains/<nome>/  un dominio di business per cartella: models.py, schemas.py,
                    service.py, router.py (+ calculators/policies per commissions)
-                   -- include "support" (ticket cliente/promoter <-> staff)
+                   -- include "support" (ticket cliente/promoter <-> staff),
+                   "imported_products" (catalogo parallelo dropshipping, vedi
+                   database-model.md §15) e "payments" (Stripe: creazione
+                   sessioni di checkout + webhook, vedi §9)
+  domains/catalog/pricing.py
+                   L'UNICO posto dove si decide l'IVA e il prezzo di un
+                   contratto (privato = niente IVA, azienda = prezzo + IVA),
+                   quali clienti possono comprare quale prodotto, e da dove
+                   nasce un accredito LialCash. Ogni importo del sistema
+                   passa di qui ed è calcolato lato server: nessun prezzo
+                   arriva mai dal browser. Vedi business-rules.md#vat
+  core/email.py    send_html_email() (solleva eccezione: usalo SOLO per reset
+                   password e OTP, dove l'email È il risultato) e
+                   send_html_email_best_effort() (non solleva mai: per ogni
+                   notifica inviata DOPO un commit -- vedi §8 #12)
   celery_app.py    app Celery -- STESSO codice dell'api, non duplicato (vedi
                    apps/worker/README.md e docs/adr/0001-modular-monolith.md)
   seed/            dati demo (python -m app.seed)
@@ -731,6 +779,35 @@ probabilmente il problema è un altro. Documentati per intero in
     intero, così un futuro uso scorretto di `.get()`/altri metodi dict su
     un oggetto Stripe fallisce nei test invece che in produzione.
 
+17. **(Session 38) "Ricarica wallet" mostra "Si è verificato un errore" su
+    una ricarica che in realtà È ANDATA A BUON FINE — e ricliccando il
+    wallet viene ricaricato DUE VOLTE**: `wallets/service.py::credit_wallet`
+    fa `db.commit()` e *poi* manda l'email di conferma. Quel blocco
+    catturava solo `EmailNotConfiguredError`, cioè uno solo dei tanti modi
+    in cui un server di posta reale fallisce. `send_html_email()` apre una
+    connessione smtplib **bloccante con timeout di 10 secondi** verso un
+    host esterno: un login rifiutato, un timeout, un problema DNS o TLS
+    sfuggivano e diventavano un 500 su un'operazione già committata e già
+    scritta nell'audit. L'amministratore vedeva l'errore, ricliccava, e --
+    poiché la dashboard generava una `idempotency_key` nuova **a ogni
+    clic** -- accreditava una seconda volta.
+    Fix su entrambi i lati: `core/email.py::send_html_email_best_effort()`
+    non solleva mai e ora è usato in **ogni** punto in cui una notifica
+    parte DOPO un commit (ordini, ordini importati, riscatti, ticket,
+    inviti account, accrediti wallet) -- ma deliberatamente **NON** per i
+    link di reset password e gli OTP, dove l'email *è* il risultato e
+    fallire rumorosamente è corretto. Lato dashboard, una sola chiave per
+    ricarica, rigenerata solo dopo un successo, così riprovare è innocuo.
+    Corretto nello stesso passaggio: `db.flush()` stava **fuori** dal
+    recupero `IntegrityError` in tutti e quattro i percorsi di scrittura
+    del wallet (era coperto solo `commit()`).
+    Il test di regressione (`tests/test_wallet_topup_resilience.py`) rompe
+    SMTP al confine vero, `smtplib.SMTP`, **non** a un nome di modulo: la
+    prima versione del test faceva monkeypatch di `send_html_email` sul
+    modulo sbagliato e **passava anche contro il codice bacato**. Verificato
+    6 fallimenti su 6 prima del fix, 6 successi su 6 dopo. Se un giorno
+    riscrivi quel test, rompi la socket, non il nome.
+
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
 risolto, per lo stesso motivo per cui questi lo sono.
 
@@ -761,6 +838,19 @@ sessione per sessione):
 - **Backup off-server** -- `scripts/backup.sh` gira già in cron (vedi §4.8),
   ma resta solo sullo stesso disco del database; nessuna copia automatica
   su un host/object-storage separato.
+- **Pagamento del CONTRATTO** (aggiornato Session 38) -- gli ordini Shop e i
+  riscatti fattura si pagano davvero da tempo, ma un *contratto* Lial Energy
+  non è mai stato pagabile: al 2026-09-14 in produzione ogni contratto è
+  fermo a DRAFT/DOCUMENTS_PENDING/UNDER_REVIEW, nessuno è mai arrivato a
+  PAID. Le colonne sul contratto ci sono già (`payment_plan`,
+  `payment_method`, `stripe_*`, `paid_at` -- migrazione 0035), la logica di
+  checkout no. Manca quindi anche: **abbonamento mensile Stripe**
+  (`mode="subscription"`, oggi tutto il codice usa solo `mode="payment"`),
+  **Klarna** (nessun riferimento nel codice; va prima verificata la
+  disponibilità sull'account Stripe reale per paese/valuta/importo), e una
+  **tabella di eventi webhook processati**: oggi l'idempotenza del webhook
+  è garantita solo a valle (guardia di stato sull'ordine + `idempotency_key`
+  unica sul wallet), l'`event.id` di Stripe non viene mai persistito.
 
 **Cosa invece ESISTE ed è realmente in produzione, per evitare di
 ricostruirlo per errore credendolo mancante**:
@@ -771,6 +861,15 @@ ricostruirlo per errore credendolo mancante**:
   §Partner-invoice-cashback`). Serve solo che un SUPER_ADMIN inserisca le
   chiavi Stripe reali dal pannello (`Impostazioni Azienda -> Pagamenti`) --
   il codice è già lì, verificato con chiavi di test.
+
+  > ⚠️ **Stato al 2026-09-14: le chiavi salvate in produzione sono ancora
+  > quelle di TEST** (`sk_test…` / `pk_test…`, più un `whsec_…` valido),
+  > mentre il pulsante "Paga con carta" è attivo e visibile ai clienti su
+  > `https://app.lialenergy.it`. `is_stripe_configured()` restituisce `True`
+  > e non distingue test da live, quindi **nessun incasso reale sta
+  > avvenendo**. Prima di aprire i pagamenti veri vanno sostituite le tre
+  > chiavi dal pannello e rifatto un pagamento di prova end-to-end
+  > (checkout → webhook → ordine PAID → accredito wallet).
 - **Notifiche**, sia in-app (campanella nell'header, ogni dashboard) sia
   email brandizzate con logo (`core/email_templates.py::render_email`) per
   OTP, cashback accreditato, ordini, riscatti, reset password, ticket --

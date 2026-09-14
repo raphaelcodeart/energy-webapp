@@ -64,11 +64,12 @@ domain's ORM internals directly from a router.
 | `network` | agent nodes, edges, closure table, snapshots, moves | C |
 | `referral` | promoter codes, referral events/sessions, attribution | C |
 | `customers` | customer profiles, companies, addresses | D |
-| `catalog` | products, product versions, pricing | D |
+| `catalog` | products, product versions, pricing. **`pricing.py` is the single place VAT, who-may-buy-what, and where-a-LialCash-credit-comes-from are decided** — every money figure in the app derives from it, server-side only (see `business-rules.md#contract-economics`) | D |
+| `imported_products` | the "Acquisti LialEnergy" plugin: a deliberately PARALLEL catalog + order table for externally-imported (dropshipping API) products, so they never mix with the hand-curated ones. Merged with `orders` only at the presentation layer (see `database-model.md §15`) | D (built) |
 | `supply_points` | POD/PDR | D |
 | `contracts` | contract state machine, events | D |
 | `documents` | document metadata, versions, permissions | D |
-| `payments` | payment provider abstraction, webhooks | D |
+| `payments` | Stripe checkout-session creation (orders, imported orders, invoice redemptions) + the per-organization webhook. Contract payment (unico / abbonamento 12 mesi / Klarna) is **not built yet** — see `server-migration-guide.md §9` | D |
 | `ranks` | qualifications / career plan, versioned thresholds | E |
 | `commissions` | plan versions, calculators, ledger, simulator | E |
 | `renewals` / `reversals` | renewal & storno events | E |
@@ -97,6 +98,23 @@ applies the tenant/branch filter in the repository layer, not only in the router
 - Consolidated commission ledger movements are immutable; corrections are new movements.
 - Contract attribution is frozen via `network_snapshot_id` at activation time; later
   network moves never rewrite historical attribution or past calculations.
+- **A contract's economics are frozen at creation too** (`net_amount_cents`,
+  `vat_rate`, `vat_amount_cents`, `gross_amount_cents`, `customer_kind`): editing a
+  product's price or VAT rate can never restate a contract somebody already signed.
+  Same rule, one layer down, as the network snapshot above.
+- **No economic value is ever taken from the client.** Prices, VAT, commissions,
+  cashback, bonuses and wallet amounts are computed from database rows inside the
+  service layer; the browser sends identifiers and intent, never amounts.
+- **Exactly-once for anything that moves money** is enforced by a UNIQUE constraint on
+  a deterministic key, not by an application flag that could drift: `wallet_
+  transactions.idempotency_key`, `commission_movements.idempotency_key`,
+  `uq_commission_calculations_contract_trigger`. Readable guards (e.g.
+  `contracts.cashback_credited_at`) exist on top of those, never instead of them.
+- **A notification can never fail an operation that already committed.** Mail sent
+  after a commit goes through `core/email.py::send_html_email_best_effort`, which
+  never raises — the one exception being password-reset links and OTP codes, where the
+  email IS the deliverable (see `server-migration-guide.md §8 #17` for the
+  double-credit bug this rule exists to prevent).
 
 ## 6. Repository layout (target)
 

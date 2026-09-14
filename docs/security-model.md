@@ -113,7 +113,10 @@
   (`GET /wallets/me`, `POST /wallets/transfer`) -- the source wallet is
   always resolved from the caller's own `user_id`, never from the request
   body, so there is no cross-user access surface to gate. See
-  `business-rules.md §Internal wallet`.
+  `business-rules.md §Internal wallet`. The same "own record, resolved from
+  the session" shape is what `GET /wallets/me/welcome-bonus` (Session 37) and
+  `GET /customers/me` (Session 38) use: authentication only, no permission,
+  and the identifier never comes from the request.
   - **Financial-integrity controls, not just RBAC**: a wallet debit uses an
     atomic compare-and-swap `UPDATE ... WHERE balance_cents >= :amount`
     (checked via affected-row-count, not a pre-read-then-write race) plus a
@@ -122,6 +125,20 @@
     carries a client-generated `idempotency_key` (unique DB constraint) so a
     double-submitted request can never double-apply. `POST /wallets/transfer`
     is additionally rate-limited per IP (20/60s) against scripted abuse.
+  - **`wallet.credit` (Session 29, migration `0029`) is narrower still**:
+    `SUPER_ADMIN` alone. It is the one permission that mints credit out of
+    nothing (`POST /wallets/admin/topup`), as opposed to moving or reversing
+    credit that already exists. A plain `ADMIN` holding `wallet.manage` gets
+    a 403 here.
+  - **An idempotency key must be stable across retries, not per click
+    (Session 38)**: the dashboard used to mint a fresh `crypto.randomUUID()`
+    on every "Ricarica" press, which turned the DB's uniqueness guarantee
+    into a no-op the moment an admin retried after an error — and an error
+    was reachable on a top-up that had already succeeded. It now keeps one
+    key per top-up being composed, rotated only after one actually lands.
+    Idempotency is only as strong as the weakest end of it: a unique
+    constraint on a value the client re-randomizes protects nothing. See
+    `server-migration-guide.md §8 #17`.
   - **Spending existing wallet credit needs a fresh OTP (Session 33)**: at
     self-checkout (`POST /orders/mine`), any `credit_applied_cents > 0`
     requires an `otp_code` matching one just emailed via `POST
