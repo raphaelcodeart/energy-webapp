@@ -69,7 +69,7 @@ domain's ORM internals directly from a router.
 | `supply_points` | POD/PDR | D |
 | `contracts` | contract state machine, events | D |
 | `documents` | document metadata, versions, permissions | D |
-| `payments` | Stripe checkout-session creation (orders, imported orders, invoice redemptions) + the per-organization webhook. Contract payment (unico / abbonamento 12 mesi / Klarna) is **not built yet** — see `server-migration-guide.md §9` | D |
+| `payments` | Stripe checkout-session creation (orders, imported orders, invoice redemptions) + the per-organization webhook. Contract payment (unico / abbonamento 12 mesi / finanziaria Stripe) is **not built yet** — see `server-migration-guide.md §9` | D |
 | `ranks` | qualifications / career plan, versioned thresholds | E |
 | `commissions` | plan versions, calculators, ledger, simulator | E |
 | `renewals` / `reversals` | renewal & storno events | E |

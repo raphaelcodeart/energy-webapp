@@ -101,7 +101,8 @@ project**, so folding them in would silently start billing amounts nobody has
 agreed to.
 
 This matters now for the first time, because contracts are about to become
-payable (three plans: unico / mensile 12 mesi / Klarna). The business talks
+payable (three plans: unico / mensile 12 mesi / finanziaria Stripe). The
+business talks
 about a "contratto BAR / Energia Circolare da €249", while the products
 actually in the catalog are priced €15–€35 base with a small monthly
 recurring fee — so either that product does not exist yet, or "il totale" is
@@ -151,17 +152,38 @@ terms_accepted_user_agent` (migration 0035).
 
 **Where to fix**: pending the official PDF from the business.
 
-## 12. Klarna: disponibilità reale sull'account Stripe (Session 38)
+## 12. "Finanziaria Stripe": di quale prodotto si tratta esattamente (Session 38)
 
-**Assumption**: unverified. Klarna's 3-installment option is a Stripe *payment
-method*, not a separate API — but its availability depends on the account's
-capabilities plus country, currency, amount and product type, and **none of
-that can be checked from the code**. There is currently zero Klarna reference
-anywhere in the repository.
+**Assumption**: none yet — and this one needs answering *before* any code is
+written, not during.
 
-**Where to fix**: Stripe Dashboard → Payment methods, on the real (live)
-account. Until confirmed, the option must stay hidden rather than offered and
-then failing at checkout.
+The third payment plan was originally described as "3 rate tramite Klarna";
+the business has since corrected the wording to **"finanziaria Stripe"**. The
+two are not necessarily the same thing, and Stripe sells several products that
+could reasonably be called that:
+
+- **BNPL payment methods** (Klarna, Scalapay, Afterpay/Clearpay, Affirm ...):
+  the customer picks instalments *inside the provider's own flow*, Lial Energy
+  is paid in full immediately and carries no credit risk. Enabled per-account
+  in the Stripe Dashboard, and offered by simply listing the method on the
+  Checkout Session — no separate API. **How many instalments is the
+  provider's decision, not a parameter we set**, which is why the stored plan
+  value is `FINANCING` rather than anything mentioning "3".
+- **Stripe Capital**: financing offered *to the merchant* (Lial Energy),
+  repaid out of future Stripe revenue. Nothing to do with how a customer pays
+  a contract — if this is what was meant, it does not belong in the contract
+  checkout at all.
+
+Availability of any BNPL method further depends on account capabilities,
+country, currency, amount and product category, and **none of that is
+checkable from the code**. There is currently zero financing-related code
+anywhere in the repository; only the `payment_plan = "FINANCING"` value is
+reserved.
+
+**Where to fix**: first a one-line answer from the business ("quale voce vedi
+nel tuo Stripe?"), then Stripe Dashboard → Payment methods on the real (live)
+account. Until both are settled the option must stay hidden rather than
+offered and then failing at checkout in front of a customer.
 
 ---
 

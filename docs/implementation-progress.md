@@ -104,7 +104,8 @@ depends on, so it drifting silently is the expensive kind of stale.
   regression test); §9 corrected -- it claimed Stripe was ready pending real
   keys, without saying that **production is still running `sk_test`/`pk_test`
   with "Paga con carta" visible to customers**, and it did not list contract
-  payment / subscriptions / Klarna / a webhook-event table as missing.
+  payment / subscriptions / Stripe financing / a webhook-event table as
+  missing.
 - `database-model.md`: §4 rewritten for the contract economics and authorship
   columns and the redefined `products.customer_type`; §5 documents
   `FIRST_REFERRER_BONUS` and why its idempotency key deliberately omits the
@@ -124,8 +125,9 @@ depends on, so it drifting silently is the expensive kind of stale.
   and `GET /customers/me` under the existing own-record pattern.
 - `open-questions.md`: items **#8-#12** -- what "il totale del contratto"
   actually is, the contract cashback percentage, which products carry the
-  first-referrer bonus, the still-missing promoter contract PDF, and whether
-  Klarna is even enabled on the real Stripe account.
+  first-referrer bonus, the still-missing promoter contract PDF, and what
+  "finanziaria Stripe" actually refers to (and whether it is enabled on the
+  real account).
 - `user-guide.md` (Italian, end users): the new Origine/Importo columns, the
   VAT rule in plain language, product audience, contract cashback without the
   5%, the first-referrer bonus, native share on mobile, and a "check the

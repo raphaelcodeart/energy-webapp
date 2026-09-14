@@ -350,7 +350,11 @@ contracts
   -- DOCUMENTS_PENDING/UNDER_REVIEW), so none of this restates prior
   -- behaviour -- it is the payment step that did not exist. Stripe is the
   -- only proof of payment: a success URL never is.
-  payment_plan nullable (FULL/MONTHLY_12/KLARNA_3),
+  payment_plan nullable (FULL = pagamento unico / MONTHLY_12 = dodici rate
+    mensili, una vera subscription Stripe / FINANCING = "Finanziaria
+    Stripe", importo finanziato e rimborsato al finanziatore, non a noi.
+    Nulla scrive ancora questa colonna: lo step di pagamento del contratto
+    non è costruito),
   payment_method nullable (CARD/BANK_TRANSFER),
   stripe_checkout_session_id nullable UNIQUE, stripe_customer_id nullable,
   stripe_subscription_id nullable, paid_at nullable,

@@ -115,7 +115,16 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     # this restates existing behaviour -- it is the payment step that did not
     # exist. Stripe is the only source of truth that any of it was paid: the
     # success URL is never treated as proof, only the verified webhook is.
-    #: FULL / MONTHLY_12 / KLARNA_3 -- see contracts/payment_plans.py.
+    #: How the customer chose to pay:
+    #:   FULL       -- one-off payment of the whole amount
+    #:   MONTHLY_12 -- twelve monthly instalments (a real Stripe
+    #:                 subscription, never twelve hand-made payments)
+    #:   FINANCING  -- "Finanziaria Stripe": the amount is financed and the
+    #:                 customer repays the financing provider, not us.
+    #: Nothing writes this column yet -- the contract payment step is not
+    #: built (see docs/server-migration-guide.md §9). The values are fixed
+    #: here so the column has one agreed vocabulary before anything starts
+    #: relying on it.
     payment_plan: Mapped[str | None] = mapped_column(String(16), nullable=True)
     #: CARD / BANK_TRANSFER.
     payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)

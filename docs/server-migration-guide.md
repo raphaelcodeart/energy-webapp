@@ -846,8 +846,10 @@ sessione per sessione):
   `payment_method`, `stripe_*`, `paid_at` -- migrazione 0035), la logica di
   checkout no. Manca quindi anche: **abbonamento mensile Stripe**
   (`mode="subscription"`, oggi tutto il codice usa solo `mode="payment"`),
-  **Klarna** (nessun riferimento nel codice; va prima verificata la
-  disponibilità sull'account Stripe reale per paese/valuta/importo), e una
+  la **finanziaria Stripe** (nessun riferimento nel codice; va prima
+  chiarito con l'azienda di quale prodotto Stripe si tratti esattamente e
+  verificata la disponibilità sull'account reale per paese/valuta/importo --
+  vedi `open-questions.md` #12), e una
   **tabella di eventi webhook processati**: oggi l'idempotenza del webhook
   è garantita solo a valle (guardia di stato sull'ordine + `idempotency_key`
   unica sul wallet), l'`event.id` di Stripe non viene mai persistito.
