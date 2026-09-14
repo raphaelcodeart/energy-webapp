@@ -26,6 +26,7 @@ from app.domains.organizations import models as _organizations_models  # noqa: F
 from app.domains.organizations.models import Organization
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.partners import models as _partners_models  # noqa: F401
+from app.domains.payments import models as _payments_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.support import models as _support_models  # noqa: F401

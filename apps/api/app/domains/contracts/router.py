@@ -6,12 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
+from app.domains.contracts import payment_plans
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.contracts.schemas import (
+    ContractCheckoutRequest,
     ContractCreate,
     ContractForCustomerCreate,
     ContractIbanUpdate,
+    ContractPaymentOptionRead,
+    ContractPaymentOptionsRead,
     ContractRead,
     ContractSelfServiceCreate,
     ContractStatusHistoryRead,
@@ -21,6 +25,7 @@ from app.domains.contracts.service import InvalidProducerAgentError, SelfService
 from app.domains.contracts.state_machine import InvalidTransitionError
 from app.domains.customers.models import Customer
 from app.domains.network import service as network_service
+from app.domains.organizations import service as organizations_service
 from app.domains.support.service import actor_role_for
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
@@ -155,6 +160,82 @@ async def create_contract_for_my_customer(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])
+
+
+@router.get("/mine/{contract_id}/payment-options", response_model=ContractPaymentOptionsRead)
+async def get_my_contract_payment_options(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContractPaymentOptionsRead:
+    """How this contract can be paid, priced. Own contract only.
+
+    Every figure is computed here from the amount frozen on the contract --
+    the browser is never asked what anything costs, it only picks a plan
+    key."""
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    await _assert_own_contract_or_staff(db, current_user=current_user, contract=contract)
+
+    card_available = await organizations_service.is_stripe_configured(
+        db, organization_id=current_user.organization_id
+    )
+    payable = contract.status == "PAYMENT_PENDING" and bool(contract.gross_amount_cents)
+    options = (
+        [
+            ContractPaymentOptionRead(
+                key=b.plan.key, label=b.plan.label, description=b.plan.description,
+                instalments=b.plan.instalments, instalment_cents=b.instalment_cents,
+                total_cents=b.total_cents, rounding_difference_cents=b.rounding_difference_cents,
+            )
+            for b in payment_plans.available_breakdowns(contract.gross_amount_cents or 0)
+        ]
+        if payable
+        else []
+    )
+    return ContractPaymentOptionsRead(
+        contract_id=contract.id, payable=payable, status=contract.status,
+        missing_amount=contract.status == "PAYMENT_PENDING" and not contract.gross_amount_cents,
+        gross_amount_cents=contract.gross_amount_cents, card_available=card_available,
+        options=options,
+    )
+
+
+@router.post("/mine/{contract_id}/checkout-session")
+async def create_my_contract_checkout_session(
+    contract_id: uuid.UUID,
+    payload: ContractCheckoutRequest,
+    success_url: str,
+    cancel_url: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Opens Stripe Checkout for one's own contract, once an administrator
+    has approved it (status PAYMENT_PENDING). Returns the URL; the contract
+    is NOT marked paid here -- only the verified webhook does that."""
+    from app.domains.payments import service as payments_service
+
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    await _assert_own_contract_or_staff(db, current_user=current_user, contract=contract)
+    if contract.status != "PAYMENT_PENDING":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Questo contratto non è (ancora) in attesa di pagamento.",
+        )
+
+    try:
+        url = await payments_service.create_checkout_session_for_contract(
+            db, organization_id=current_user.organization_id, contract=contract,
+            plan_key=payload.payment_plan, success_url=success_url, cancel_url=cancel_url,
+        )
+    except payments_service.StripeNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    except payments_service.PaymentsError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"checkout_url": url}
 
 
 @router.get("", response_model=list[ContractRead])

@@ -152,38 +152,18 @@ terms_accepted_user_agent` (migration 0035).
 
 **Where to fix**: pending the official PDF from the business.
 
-## 12. "Finanziaria Stripe": di quale prodotto si tratta esattamente (Session 38)
+## 12. ~~"Finanziaria Stripe"~~ — RISOLTA (Session 44)
 
-**Assumption**: none yet — and this one needs answering *before* any code is
-written, not during.
+The third payment plan is **3 rate**, and it needs no external financing
+provider at all: it is the same Stripe subscription as the 12-instalment
+plan, with N = 3. Lial Energy splits its own invoice and is paid by the
+customer's own card each month, so there is nothing to finance, no BNPL
+capability to enable, and no account review to wait for.
 
-The third payment plan was originally described as "3 rate tramite Klarna";
-the business has since corrected the wording to **"finanziaria Stripe"**. The
-two are not necessarily the same thing, and Stripe sells several products that
-could reasonably be called that:
-
-- **BNPL payment methods** (Klarna, Scalapay, Afterpay/Clearpay, Affirm ...):
-  the customer picks instalments *inside the provider's own flow*, Lial Energy
-  is paid in full immediately and carries no credit risk. Enabled per-account
-  in the Stripe Dashboard, and offered by simply listing the method on the
-  Checkout Session — no separate API. **How many instalments is the
-  provider's decision, not a parameter we set**, which is why the stored plan
-  value is `FINANCING` rather than anything mentioning "3".
-- **Stripe Capital**: financing offered *to the merchant* (Lial Energy),
-  repaid out of future Stripe revenue. Nothing to do with how a customer pays
-  a contract — if this is what was meant, it does not belong in the contract
-  checkout at all.
-
-Availability of any BNPL method further depends on account capabilities,
-country, currency, amount and product category, and **none of that is
-checkable from the code**. There is currently zero financing-related code
-anywhere in the repository; only the `payment_plan = "FINANCING"` value is
-reserved.
-
-**Where to fix**: first a one-line answer from the business ("quale voce vedi
-nel tuo Stripe?"), then Stripe Dashboard → Payment methods on the real (live)
-account. Until both are settled the option must stay hidden rather than
-offered and then failing at checkout in front of a customer.
+Built in Session 44 (`contracts/payment_plans.py`). Left here rather than
+deleted because "possiamo usare Klarna?" is the kind of question that comes
+back, and the answer — that the requirement never actually needed it — is
+worth keeping.
 
 ---
 

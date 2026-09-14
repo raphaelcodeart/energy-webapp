@@ -43,6 +43,7 @@ from app.domains.organizations.router import router as organizations_router
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.partners import models as _partners_models  # noqa: F401
 from app.domains.partners.router import router as partners_router
+from app.domains.payments import models as _payments_models  # noqa: F401
 from app.domains.payments.router import router as payments_router
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401

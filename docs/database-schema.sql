@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Xynt1uYzpplMNqBc5aPhj1scEtjYh1RUPnlso8G7zrhxavS7HIS1WpEp42mtbEj
+\restrict 7U3q74accQNvh3WR5Lt0aZKpb7g8M6PDmTLCrpziyFVyDUiYSSRdOkMSOenVuXA
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -1003,6 +1003,21 @@ CREATE TABLE public.sessions (
 
 
 --
+-- Name: stripe_webhook_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.stripe_webhook_events (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    stripe_event_id character varying(255) NOT NULL,
+    event_type character varying(64) NOT NULL,
+    processed_at timestamp with time zone,
+    outcome character varying(255)
+);
+
+
+--
 -- Name: supply_points; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1575,6 +1590,14 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: stripe_webhook_events pk_stripe_webhook_events; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stripe_webhook_events
+    ADD CONSTRAINT pk_stripe_webhook_events PRIMARY KEY (id);
+
+
+--
 -- Name: supply_points pk_supply_points; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1780,6 +1803,14 @@ ALTER TABLE ONLY public.ranks
 
 ALTER TABLE ONLY public.roles
     ADD CONSTRAINT uq_roles_org_code UNIQUE (organization_id, code);
+
+
+--
+-- Name: stripe_webhook_events uq_stripe_webhook_events_event_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stripe_webhook_events
+    ADD CONSTRAINT uq_stripe_webhook_events_event_id UNIQUE (stripe_event_id);
 
 
 --
@@ -2471,6 +2502,20 @@ CREATE UNIQUE INDEX ix_sessions_refresh_token_hash ON public.sessions USING btre
 --
 
 CREATE INDEX ix_sessions_user_id ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: ix_stripe_webhook_events_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_stripe_webhook_events_event_type ON public.stripe_webhook_events USING btree (event_type);
+
+
+--
+-- Name: ix_stripe_webhook_events_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_stripe_webhook_events_organization_id ON public.stripe_webhook_events USING btree (organization_id);
 
 
 --
@@ -3768,6 +3813,14 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: stripe_webhook_events fk_stripe_webhook_events_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.stripe_webhook_events
+    ADD CONSTRAINT fk_stripe_webhook_events_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: supply_points fk_supply_points_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3955,5 +4008,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Xynt1uYzpplMNqBc5aPhj1scEtjYh1RUPnlso8G7zrhxavS7HIS1WpEp42mtbEj
+\unrestrict 7U3q74accQNvh3WR5Lt0aZKpb7g8M6PDmTLCrpziyFVyDUiYSSRdOkMSOenVuXA
 

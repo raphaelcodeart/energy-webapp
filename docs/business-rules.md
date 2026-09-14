@@ -146,6 +146,88 @@ sponsor rather than block.
   and does transfer. No product enables the bonus today, so this is currently
   theoretical — flag it if that changes.
 
+## Pagamento del contratto: unica, 3 rate, 12 rate (Session 44) {#contract-payment}
+
+**Contracts only.** The Shop's own checkout (orders, imported orders) is a
+separate, already-working flow and is untouched: an order is a purchase, a
+contract is a subscription to a service.
+
+### Quando si può pagare
+
+Documents uploaded → the contract auto-advances to `UNDER_REVIEW` → an
+administrator clicks **Approva** → it cascades to `PAYMENT_PENDING`, and only
+then does the customer see the payment step on their own contract. Nothing
+about that sequence changed; what is new is that the customer can now pay it
+themselves instead of an admin confirming a transfer.
+
+### Le tre modalità
+
+| Piano | Come funziona |
+|---|---|
+| **Soluzione unica** | Un addebito, `mode="payment"`. |
+| **3 rate mensili** | Abbonamento Stripe, prima rata subito, altre due addebitate da sole. |
+| **12 rate mensili** | Identico, con 12 rate. |
+
+3 rate and 12 rate are **the same mechanism** and differ only in the count.
+No external financing provider is involved — Lial Energy splits its own
+invoice — so this needs no capability beyond ordinary card payments. (This is
+what the earlier "finanziaria Stripe" question turned out to mean; see
+`open-questions.md` #12.)
+
+**Everything is created through the API, per contract.** No Stripe Product or
+Price is defined in the dashboard: the Price is built inline from
+`contracts.gross_amount_cents`, the amount already frozen on that contract
+with that customer's VAT. A fixed Price would have to be re-made by hand on
+every price change and would know nothing about who is buying.
+
+**A subscription runs forever unless told to stop**, so "12 rate" is made
+true explicitly: `cancel_at` is set on the subscription right after it
+exists, rather than counting invoices as they arrive — one missed webhook
+delivery would otherwise keep charging somebody who had finished paying.
+
+### Gli arrotondamenti, detti e non nascosti
+
+A Stripe subscription bills the **same** amount every period, and a price
+rarely divides evenly by 3 or 12. The instalment is rounded to the cent and
+the plan's real total (`instalment × N`) is **shown next to each option**,
+with the difference from the contract spelled out when there is one — at most
+6 cents for 12 instalments, and exactly 0 for every price currently in the
+catalog (249,00 divides cleanly by both 3 and 12).
+
+The two obvious alternatives are worse: adding the remainder to the first
+invoice requires a Stripe Product created **per contract**
+(`add_invoice_items` cannot take an inline product), littering the account
+with one object per sale to recover a few cents; and silently rounding up
+overcharges without saying so.
+
+### Cosa rende un contratto pagato
+
+Only the **verified webhook**. The success URL is never proof — a customer
+can open it by hand. On `checkout.session.completed` the contract moves
+`PAYMENT_PENDING → PAID`, which auto-cascades to `ACTIVE` through the
+existing state machine, so commissions are calculated at exactly the same
+point as for any other contract. For an instalment plan this happens on the
+**first** payment: the contract is in force and the rest is collected
+automatically.
+
+### Rate successive
+
+`invoice.paid` / `invoice.payment_failed` are recorded in the audit log. A
+failed monthly charge notifies **both** the staff and the customer and
+**does not** suspend the contract: one declined card is not grounds for
+automatically cutting off somebody's energy supply — that is a decision for a
+human with the context.
+
+### Idempotenza a livello di evento {#stripe-event-idempotency}
+
+`stripe_webhook_events` records the Stripe `event.id` **before** any handler
+runs; the UNIQUE constraint decides which of two concurrent deliveries
+proceeds. Previously the webhook relied on each handler happening to be
+idempotent on its own — true for the flows that existed, but an instalment
+plan fires `invoice.paid` every month for the same subscription, so "the same
+event again" and "the next instalment" had to stop being indistinguishable.
+Stripe promises at-least-once delivery, not exactly-once.
+
 ## Contract economics: IVA, tipo cliente, cashback, bonus (Session 38) {#contract-economics}
 
 Three rules that had **no server-side implementation at all** before this,

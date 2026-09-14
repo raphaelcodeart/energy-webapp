@@ -172,3 +172,42 @@ class ContractStatusHistoryRead(BaseModel):
     reason: str | None
     notes: str | None
     created_at: datetime
+
+
+class ContractPaymentOptionRead(BaseModel):
+    """One way to pay THIS contract, already priced. Computed server-side
+    from the amount frozen on the contract -- the browser never proposes an
+    amount, it only picks a key."""
+
+    key: str
+    label: str
+    description: str
+    instalments: int
+    instalment_cents: int
+    total_cents: int
+    #: Difference between this plan's total and the contract's own amount,
+    #: caused by rounding an instalment to the cent. Shown to the customer
+    #: rather than hidden; 0 for every price currently in the catalog.
+    rounding_difference_cents: int
+
+
+class ContractPaymentOptionsRead(BaseModel):
+    contract_id: uuid.UUID
+    #: False when the contract is not at the payment step yet (or is already
+    #: paid) -- the dashboard uses this to explain rather than to hide.
+    payable: bool
+    status: str
+    #: True for a contract that IS at the payment step but carries no frozen
+    #: amount, i.e. one created before the price snapshot existed. A distinct
+    #: flag rather than lumping it in with "not payable": telling somebody
+    #: their contract is not awaiting payment when it plainly is would send
+    #: them looking for a problem that is on our side, not theirs.
+    missing_amount: bool = False
+    gross_amount_cents: int | None = None
+    card_available: bool = False
+    options: list[ContractPaymentOptionRead] = []
+
+
+class ContractCheckoutRequest(BaseModel):
+    #: FULL / INSTALMENTS_3 / MONTHLY_12 -- see contracts/payment_plans.py.
+    payment_plan: str

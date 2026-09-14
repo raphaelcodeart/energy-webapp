@@ -453,9 +453,9 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (**rigenerato 2026-09-14, allineato alla revision
-Alembic `d9a04b7e13c5` / migrazione `0037_collaboration_documents_acceptance`**;
+Alembic `e5b2c74a91d8` / migrazione `0038_stripe_webhook_events`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **62 tabelle** con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **63 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -501,7 +501,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 62 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 63 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -574,6 +574,10 @@ Prodotti importati ("Acquisti LialEnergy", plugin Session 34 -- catalogo
                     friend_referral_reward_claims (le richieste di omaggio --
                     una gift card da 25 euro ogni 5 invitati con contratto
                     attivo, ripetibile, consegnata a mano dallo staff)
+Pagamenti:         stripe_webhook_events (idempotenza a livello di evento
+                    Stripe: l'event.id viene registrato PRIMA di eseguire
+                    qualsiasi handler, e il vincolo UNIQUE decide quale di
+                    due consegne concorrenti procede)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```
@@ -868,21 +872,15 @@ sessione per sessione):
 - **Backup off-server** -- `scripts/backup.sh` gira già in cron (vedi §4.8),
   ma resta solo sullo stesso disco del database; nessuna copia automatica
   su un host/object-storage separato.
-- **Pagamento del CONTRATTO** (aggiornato Session 38) -- gli ordini Shop e i
-  riscatti fattura si pagano davvero da tempo, ma un *contratto* Lial Energy
-  non è mai stato pagabile: al 2026-09-14 in produzione ogni contratto è
-  fermo a DRAFT/DOCUMENTS_PENDING/UNDER_REVIEW, nessuno è mai arrivato a
-  PAID. Le colonne sul contratto ci sono già (`payment_plan`,
-  `payment_method`, `stripe_*`, `paid_at` -- migrazione 0035), la logica di
-  checkout no. Manca quindi anche: **abbonamento mensile Stripe**
-  (`mode="subscription"`, oggi tutto il codice usa solo `mode="payment"`),
-  la **finanziaria Stripe** (nessun riferimento nel codice; va prima
-  chiarito con l'azienda di quale prodotto Stripe si tratti esattamente e
-  verificata la disponibilità sull'account reale per paese/valuta/importo --
-  vedi `open-questions.md` #12), e una
-  **tabella di eventi webhook processati**: oggi l'idempotenza del webhook
-  è garantita solo a valle (guardia di stato sull'ordine + `idempotency_key`
-  unica sul wallet), l'`event.id` di Stripe non viene mai persistito.
+- ~~**Pagamento del CONTRATTO**~~ — **costruito in Session 44**: soluzione
+  unica, 3 rate o 12 rate, con abbonamento Stripe reale
+  (`mode="subscription"`) che si addebita da solo e si ferma dopo N rate.
+  Tutto creato via API per singolo contratto: nessun Product/Price da tenere
+  allineato a mano nel pannello Stripe. L'idempotenza del webhook è ora a
+  livello di evento (`stripe_webhook_events`), non più solo a valle. Le 3
+  rate non usano nessun finanziatore esterno — è Lial Energy che rateizza la
+  propria fattura — quindi la domanda aperta sulla "finanziaria Stripe"
+  decade. Vedi `business-rules.md#contract-payment`.
 
 **Cosa invece ESISTE ed è realmente in produzione, per evitare di
 ricostruirlo per errore credendolo mancante**:

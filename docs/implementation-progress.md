@@ -4,6 +4,64 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 44 — 2026-09-14 — Pagamento del contratto: unica, 3 rate, 12 rate
+
+La Fase B. Solo per i contratti: il checkout dello Shop è un flusso separato e
+funzionante, e non è stato toccato.
+
+- [x] **Tre modalità**, offerte al cliente quando l'amministratore ha
+  approvato i documenti (stato `PAYMENT_PENDING`): soluzione unica, 3 rate
+  mensili, 12 rate mensili. Le due rateali sono **veri abbonamenti Stripe**
+  che si addebitano da soli e si fermano dopo N rate: stesso meccanismo,
+  cambia solo N.
+- [x] **Tutto creato via API, per singolo contratto.** Nessun Product o Price
+  da mantenere a mano nel pannello Stripe: il prezzo si costruisce al volo da
+  `contracts.gross_amount_cents`, l'importo già congelato su quel contratto
+  con l'IVA di quel cliente. Un Price fisso andrebbe rifatto a ogni variazione
+  di listino e non saprebbe nulla di chi compra.
+- [x] **Nessun finanziatore esterno.** Le 3 rate sono Lial Energy che
+  rateizza la propria fattura: nessuna capability BNPL da attivare, nessuna
+  approvazione da attendere. È ciò che la domanda aperta sulla "finanziaria
+  Stripe" voleva dire — chiusa (`open-questions.md` #12).
+- [x] **Un abbonamento non si ferma da solo**: `cancel_at` viene impostato
+  subito dopo la creazione, non contando le fatture man mano che arrivano —
+  una consegna webhook persa continuerebbe ad addebitare a chi ha già finito
+  di pagare.
+- [x] **Arrotondamenti detti, non nascosti.** Un abbonamento addebita lo
+  stesso importo ogni mese e un prezzo raramente si divide esattamente per 3 o
+  12: la rata è arrotondata al centesimo e il totale reale del piano è
+  **scritto accanto a ogni opzione**, con la differenza esplicitata quando
+  c'è (max 6 centesimi su 12 rate, e **zero** per tutti i prezzi a catalogo —
+  249,00 si divide esattamente sia per 3 sia per 12). Le alternative sono
+  peggiori: mettere il resto sulla prima fattura richiede un Product Stripe
+  **per contratto** (`add_invoice_items` non accetta un prodotto inline), e
+  arrotondare per eccesso in silenzio fa pagare di più senza dirlo.
+- [x] **Solo il webhook firmato rende pagato un contratto.** La success URL
+  non prova niente: un cliente può aprirla a mano. Un test lo verifica.
+- [x] **Idempotenza a livello di evento** (`stripe_webhook_events`, migrazione
+  `0038` / `e5b2c74a91d8`): l'`event.id` è registrato PRIMA di eseguire
+  qualsiasi handler e il vincolo UNIQUE decide quale consegna procede. Prima
+  l'idempotenza era una coincidenza — reggeva perché ogni conseguenza era
+  idempotente per conto suo. Con le rate non regge più: `invoice.paid` arriva
+  ogni mese per lo stesso abbonamento.
+- [x] **Una rata non riscossa avvisa tutti e non sospende niente**: notifica
+  allo staff e al cliente, riga in audit log, contratto invariato. Una carta
+  rifiutata non è motivo per tagliare da solo il contratto luce di qualcuno.
+- [x] 11 test nuovi (aritmetica delle rate su tutta la scala dei prezzi,
+  webhook firmato per davvero con HMAC come fa Stripe, doppia consegna dello
+  stesso evento, rata fallita). Suite 285 → 296.
+- [x] Un `NameError` nel router sarebbe arrivato in produzione: i test qui
+  esercitano i servizi, non le rotte, e non l'hanno visto. L'ha trovato mypy.
+  Da allora, prima di ogni deploy, importo `app.main` per intero come
+  controllo.
+
+**Nota su un contratto esistente**: l'unico contratto in `PAYMENT_PENDING` in
+produzione è nato prima dello snapshot del prezzo (Session 38) e quindi non ha
+un importo congelato. Non è pagabile, e il pannello lo dice con parole sue
+("è stato creato prima…, contatta l'assistenza") invece di sostenere che non
+sia in attesa di pagamento — che sarebbe falso e manderebbe il cliente a
+cercare un problema che non è suo.
+
 ## Session 43 — 2026-09-14 — Bottoni di condivisione anche nell'header promoter
 
 - [x] Il bottone "Condividi il tuo link" nell'header dell'area promoter

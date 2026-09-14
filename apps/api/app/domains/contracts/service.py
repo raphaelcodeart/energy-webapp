@@ -779,3 +779,138 @@ async def credit_contract_cashback(
     contract.cashback_credited_at = utcnow()
     await db.commit()
     await db.refresh(contract)
+
+
+# --- Pagamento del contratto (Stripe) ---------------------------------------
+
+
+async def attach_stripe_checkout_session(
+    db: AsyncSession, *, contract: Contract, session_id: str, plan_key: str
+) -> Contract:
+    """Records which Checkout Session is currently live for this contract,
+    and which plan it was opened for. Overwrites any previous one, so only
+    the customer's latest attempt is ever honoured by the webhook -- same
+    rule as orders.
+
+    Deliberately does NOT change the contract's status: it stays
+    PAYMENT_PENDING until Stripe confirms, exactly as it would stay
+    PAYMENT_PENDING waiting for an admin to confirm a bank transfer."""
+    contract.stripe_checkout_session_id = session_id
+    contract.payment_plan = plan_key
+    contract.payment_method = "CARD"
+    contract.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(contract)
+    return contract
+
+
+async def attach_stripe_subscription(
+    db: AsyncSession, *, contract: Contract, subscription_id: str, customer_id: str | None
+) -> Contract:
+    contract.stripe_subscription_id = subscription_id
+    if customer_id:
+        contract.stripe_customer_id = customer_id
+    contract.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(contract)
+    return contract
+
+
+async def mark_paid_via_stripe(
+    db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str
+) -> Contract | None:
+    """Called only from the verified Stripe webhook. The success URL is never
+    treated as proof of anything -- a customer can open it by hand.
+
+    For an instalment plan this fires on the FIRST payment: the contract is
+    in force from then on and the remaining instalments are collected
+    automatically, which is why it reaches PAID (and, through the existing
+    auto-cascade, ACTIVE -- so commissions are calculated exactly once, at
+    the same point in the state machine as every other contract).
+
+    Returns None rather than raising when no contract matches: an event for
+    another organization, or for a session superseded by a newer attempt, is
+    not this call's problem to solve and must not make Stripe retry forever.
+    """
+    contract = (
+        await db.execute(
+            select(Contract).where(
+                Contract.organization_id == organization_id,
+                Contract.stripe_checkout_session_id == stripe_checkout_session_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if contract is None:
+        return None
+    if contract.status != "PAYMENT_PENDING":
+        # Already handled (a redelivery that slipped past the event guard,
+        # or an admin confirming in parallel). Idempotent by design.
+        return contract
+
+    return await transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="PAID",
+        actor_user_id=contract.created_by_user_id or contract.customer_id,
+        reason="Pagamento confermato da Stripe", notes=None, correlation_id=str(uuid.uuid4()),
+    )
+
+
+async def record_subscription_invoice(
+    db: AsyncSession, *, organization_id: uuid.UUID, subscription_id: str, paid: bool, amount_cents: int
+) -> str:
+    """One monthly instalment succeeded or failed.
+
+    Nothing about the contract's status changes: it is already ACTIVE, and a
+    single failed monthly charge is not grounds for automatically suspending
+    somebody's energy contract -- that is a decision for a human with the
+    context. What this does is make sure a human finds out, on both sides.
+    """
+    contract = (
+        await db.execute(
+            select(Contract).where(
+                Contract.organization_id == organization_id,
+                Contract.stripe_subscription_id == subscription_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if contract is None:
+        return "nessun contratto per questo abbonamento"
+
+    code = str(contract.id)[:8].upper()
+    if paid:
+        await audit_service.record(
+            db, organization_id=organization_id, actor_user_id=None,
+            action="contract.instalment_paid", entity_type="contract", entity_id=str(contract.id),
+            new_value={"amount_cents": amount_cents, "subscription_id": subscription_id},
+        )
+        await db.commit()
+        return f"rata incassata per il contratto {code}"
+
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=None,
+        action="contract.instalment_failed", entity_type="contract", entity_id=str(contract.id),
+        new_value={"amount_cents": amount_cents, "subscription_id": subscription_id},
+        reason="Addebito della rata non riuscito",
+    )
+    await notifications_service.notify_roles(
+        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=contract.id,
+        title=f"Rata non riscossa: contratto {code}",
+        body="L'addebito mensile non è andato a buon fine. Verifica il metodo di pagamento del cliente.",
+    )
+    customer_user_id = await _customer_user_id_for(db, contract=contract)
+    if customer_user_id is not None:
+        await notifications_service.notify_user(
+            db, organization_id=organization_id, user_id=customer_user_id,
+            type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=contract.id,
+            title="Rata del contratto non addebitata",
+            body="Non siamo riusciti ad addebitare la rata mensile. Controlla la tua carta: riproveremo a breve.",
+        )
+    await db.commit()
+    return f"rata NON riscossa per il contratto {code}"
+
+
+async def _customer_user_id_for(db: AsyncSession, *, contract: Contract) -> uuid.UUID | None:
+    from app.domains.customers.models import Customer
+
+    customer = await db.get(Customer, contract.customer_id)
+    return customer.user_id if customer is not None else None

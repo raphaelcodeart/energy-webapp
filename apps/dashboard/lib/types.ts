@@ -747,3 +747,35 @@ export type CollaborationDocumentRead = {
   acceptance_label: string;
   blocks: CollaborationDocumentBlock[];
 };
+
+
+// --- Pagamento del contratto (Session 44) ----------------------------------
+// Contracts only; the Shop checkout is separate and unchanged. Every amount
+// is computed server-side from the figure frozen on the contract -- the
+// browser sends back a plan key and nothing else.
+
+export type ContractPaymentOptionRead = {
+  /** FULL / INSTALMENTS_3 / MONTHLY_12 */
+  key: string;
+  label: string;
+  description: string;
+  instalments: number;
+  instalment_cents: number;
+  total_cents: number;
+  /** Difference between this plan's total and the contract's own amount,
+      caused by rounding an instalment to the cent. Shown, never hidden. */
+  rounding_difference_cents: number;
+};
+
+export type ContractPaymentOptionsRead = {
+  contract_id: string;
+  payable: boolean;
+  status: string;
+  /** At the payment step but with no frozen amount -- a contract created
+      before the price snapshot existed. Distinct from "not payable" so the
+      message can say whose problem it is. */
+  missing_amount: boolean;
+  gross_amount_cents: number | null;
+  card_available: boolean;
+  options: ContractPaymentOptionRead[];
+};
