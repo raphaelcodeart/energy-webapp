@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict PMyRqDO1KRTP173lODuZPtAydFyvM59uuPhrZS6BjnJkiGZSw1lX6JrdYCgzBqF
+\restrict AyyoSDO4cJ0e9M3PfD1kZmmGbI5XJZrmfUo3dgNfWWDNwyoappRlm6SfhZRoIz7
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -485,6 +485,52 @@ CREATE TABLE public.email_verification_tokens (
     used_at timestamp with time zone,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: friend_referral_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.friend_referral_codes (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    code character varying(32) NOT NULL,
+    status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL
+);
+
+
+--
+-- Name: friend_referral_reward_claims; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.friend_referral_reward_claims (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    referrer_user_id uuid NOT NULL,
+    milestone integer NOT NULL,
+    status character varying(16) DEFAULT 'REQUESTED'::character varying NOT NULL,
+    handled_by_user_id uuid,
+    handled_at timestamp with time zone,
+    note character varying(500)
+);
+
+
+--
+-- Name: friend_referrals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.friend_referrals (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    organization_id uuid NOT NULL,
+    referrer_user_id uuid NOT NULL,
+    referred_customer_id uuid NOT NULL,
+    code_used character varying(32) NOT NULL,
+    source character varying(16) NOT NULL
 );
 
 
@@ -1296,6 +1342,30 @@ ALTER TABLE ONLY public.email_verification_tokens
 
 
 --
+-- Name: friend_referral_codes pk_friend_referral_codes; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_codes
+    ADD CONSTRAINT pk_friend_referral_codes PRIMARY KEY (id);
+
+
+--
+-- Name: friend_referral_reward_claims pk_friend_referral_reward_claims; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_reward_claims
+    ADD CONSTRAINT pk_friend_referral_reward_claims PRIMARY KEY (id);
+
+
+--
+-- Name: friend_referrals pk_friend_referrals; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referrals
+    ADD CONSTRAINT pk_friend_referrals PRIMARY KEY (id);
+
+
+--
 -- Name: import_providers pk_import_providers; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1605,6 +1675,38 @@ ALTER TABLE ONLY public.customers
 
 ALTER TABLE ONLY public.documents
     ADD CONSTRAINT uq_documents_storage_key UNIQUE (storage_key);
+
+
+--
+-- Name: friend_referral_reward_claims uq_friend_referral_claim_user_milestone; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_reward_claims
+    ADD CONSTRAINT uq_friend_referral_claim_user_milestone UNIQUE (referrer_user_id, milestone);
+
+
+--
+-- Name: friend_referral_codes uq_friend_referral_codes_code; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_codes
+    ADD CONSTRAINT uq_friend_referral_codes_code UNIQUE (code);
+
+
+--
+-- Name: friend_referral_codes uq_friend_referral_codes_user_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_codes
+    ADD CONSTRAINT uq_friend_referral_codes_user_id UNIQUE (user_id);
+
+
+--
+-- Name: friend_referrals uq_friend_referrals_referred_customer_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referrals
+    ADD CONSTRAINT uq_friend_referrals_referred_customer_id UNIQUE (referred_customer_id);
 
 
 --
@@ -1997,6 +2099,48 @@ CREATE UNIQUE INDEX ix_email_verification_tokens_token_hash ON public.email_veri
 --
 
 CREATE INDEX ix_email_verification_tokens_user_id ON public.email_verification_tokens USING btree (user_id);
+
+
+--
+-- Name: ix_friend_referral_codes_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referral_codes_organization_id ON public.friend_referral_codes USING btree (organization_id);
+
+
+--
+-- Name: ix_friend_referral_reward_claims_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referral_reward_claims_organization_id ON public.friend_referral_reward_claims USING btree (organization_id);
+
+
+--
+-- Name: ix_friend_referral_reward_claims_referrer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referral_reward_claims_referrer_user_id ON public.friend_referral_reward_claims USING btree (referrer_user_id);
+
+
+--
+-- Name: ix_friend_referral_reward_claims_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referral_reward_claims_status ON public.friend_referral_reward_claims USING btree (status);
+
+
+--
+-- Name: ix_friend_referrals_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referrals_organization_id ON public.friend_referrals USING btree (organization_id);
+
+
+--
+-- Name: ix_friend_referrals_referrer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_friend_referrals_referrer_user_id ON public.friend_referrals USING btree (referrer_user_id);
 
 
 --
@@ -3063,6 +3207,70 @@ ALTER TABLE ONLY public.email_verification_tokens
 
 
 --
+-- Name: friend_referral_codes fk_friend_referral_codes_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_codes
+    ADD CONSTRAINT fk_friend_referral_codes_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: friend_referral_codes fk_friend_referral_codes_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_codes
+    ADD CONSTRAINT fk_friend_referral_codes_user_id_users FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: friend_referral_reward_claims fk_friend_referral_reward_claims_handled_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_reward_claims
+    ADD CONSTRAINT fk_friend_referral_reward_claims_handled_by_user_id_users FOREIGN KEY (handled_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: friend_referral_reward_claims fk_friend_referral_reward_claims_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_reward_claims
+    ADD CONSTRAINT fk_friend_referral_reward_claims_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: friend_referral_reward_claims fk_friend_referral_reward_claims_referrer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referral_reward_claims
+    ADD CONSTRAINT fk_friend_referral_reward_claims_referrer_user_id_users FOREIGN KEY (referrer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: friend_referrals fk_friend_referrals_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referrals
+    ADD CONSTRAINT fk_friend_referrals_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: friend_referrals fk_friend_referrals_referred_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referrals
+    ADD CONSTRAINT fk_friend_referrals_referred_customer_id_customers FOREIGN KEY (referred_customer_id) REFERENCES public.customers(id);
+
+
+--
+-- Name: friend_referrals fk_friend_referrals_referrer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friend_referrals
+    ADD CONSTRAINT fk_friend_referrals_referrer_user_id_users FOREIGN KEY (referrer_user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: import_providers fk_import_providers_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3746,5 +3954,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict PMyRqDO1KRTP173lODuZPtAydFyvM59uuPhrZS6BjnJkiGZSw1lX6JrdYCgzBqF
+\unrestrict AyyoSDO4cJ0e9M3PfD1kZmmGbI5XJZrmfUo3dgNfWWDNwyoappRlm6SfhZRoIz7
 

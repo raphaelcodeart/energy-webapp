@@ -453,9 +453,9 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (**rigenerato 2026-09-14, allineato alla revision
-Alembic `b4e2f81c05a9` / migrazione `0035_contract_economics_and_attribution`**;
+Alembic `c8f1a37d62be` / migrazione `0036_friend_referrals`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **59 tabelle** con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **62 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -501,7 +501,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 59 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 62 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -566,6 +566,13 @@ Prodotti importati ("Acquisti LialEnergy", plugin Session 34 -- catalogo
                     cashback: servono solo a SPENDERE LialCash, mai a
                     guadagnarne), imported_product_orders (specchio di
                     orders meno i campi cashback)
+Rete segnalatori (Session 39 -- rete a UN livello, staccata da quella
+                    commerciale, nessuna provvigione):
+                    friend_referral_codes (il link personale di chi ha un
+                    login, distinto da promoter_codes che invece paga),
+                    friend_referrals (la lista piatta "chi ho segnalato"),
+                    friend_referral_reward_claims (le richieste di omaggio
+                    ogni 5 segnalati attivi, gestite a mano dallo staff)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```

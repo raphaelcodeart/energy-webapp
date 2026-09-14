@@ -998,3 +998,52 @@ column on the ledger (see §9), kept separate from `reference_order_id` so each
 stays a real foreign key to its own table -- a single polymorphic
 "order_id + order_type" pair would have given up referential integrity for
 cosmetic tidiness.
+
+
+## 16. Rete segnalatori (added Session 39)
+
+Three tables that are **deliberately a parallel structure**, not an extension
+of the commercial network -- see `business-rules.md#friend-referrals` for the
+rules. One level, no hierarchy, no commissions.
+
+```
+friend_referral_codes
+  id, organization_id, user_id (UNIQUE), code (UNIQUE, "SEG-XXXXXXXX"),
+  status, created_at
+
+  -- Separate from promoter_codes on purpose. That table means "this agent
+  -- earns commissions on what comes through here" and is wired into
+  -- attribution, the tree and the commission engine; this one means nothing
+  -- more than "this person shared a link". Overloading promoter_codes with
+  -- codes that pay nobody would have made every existing query about
+  -- promoter codes subtly wrong.
+
+friend_referrals
+  id, organization_id, referrer_user_id (index),
+  referred_customer_id (UNIQUE -- one person can only ever have been brought
+    in by one other), code_used, source (PROMOTER_LINK/FRIEND_LINK),
+  created_at
+
+  -- No activated_at column, deliberately: "attivo" is derived from the
+  -- referred customer's contracts at read time. A stored flag would need an
+  -- event hook on every path that can activate, renew or cancel a contract,
+  -- and the first one anybody forgot would leave the count permanently wrong
+  -- with nothing to reconcile it against.
+
+friend_referral_reward_claims
+  id, organization_id, referrer_user_id (index), milestone (5/10/15...),
+  status (REQUESTED/FULFILLED/REJECTED, index), handled_by_user_id,
+  handled_at, note, created_at
+  UNIQUE (referrer_user_id, milestone)
+
+  -- That UNIQUE is what makes "un omaggio ogni 5" exact: milestone 5 can be
+  -- requested once, ever, whatever the count does afterwards. Not an
+  -- automatic payout -- a human decides what the gift is.
+```
+
+**This structure never decides who gets paid.** Where an invited customer
+lands in the commercial tree is still entirely `referral` + `network`: a
+promoter's link puts them in that promoter's tree; a plain customer's link
+puts them under that customer's own promoter. There is exactly one
+`CustomerAttribution` per registered customer either way, and these three
+tables could be dropped without changing a single euro of commission.

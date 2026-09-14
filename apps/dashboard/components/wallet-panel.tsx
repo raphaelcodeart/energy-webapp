@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
+import { LialCashAmount } from "@/components/lial-cash-amount";
 import { friendlyApiError } from "@/lib/api-error";
 import type { WalletRead, WalletTransactionRead } from "@/lib/types";
 
@@ -299,7 +300,7 @@ export function WalletPanel() {
                       </td>
                       <td className="py-2 px-5 text-slate-500">{t.note ?? "—"}</td>
                       <td className={`py-2 px-5 text-right font-semibold ${isOutgoing ? "text-rose-400" : "text-emerald-400"}`}>
-                        {isOutgoing ? "-" : "+"}{lialCash(t.amount_cents)}
+                        <LialCashAmount cents={t.amount_cents} sign={isOutgoing ? "-" : "+"} />
                       </td>
                       <td className="py-2 px-5">{new Date(t.created_at).toLocaleString("it-IT")}</td>
                     </tr>

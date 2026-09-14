@@ -18,27 +18,28 @@ from app.core.config import get_settings
 # main.py's own noqa import block for the API process -- discovered when
 # process_outbox_task (which runs every minute) turned out to have always
 # crashed on its first flush for exactly this reason.
-from app.domains.audit import models as _audit_models  # noqa: F401,E402
-from app.domains.auth import models as _auth_models  # noqa: F401,E402
-from app.domains.catalog import models as _catalog_models  # noqa: F401,E402
-from app.domains.commissions import models as _commissions_models  # noqa: F401,E402
-from app.domains.contracts import models as _contracts_models  # noqa: F401,E402
-from app.domains.customers import models as _customers_models  # noqa: F401,E402
-from app.domains.documentation import models as _documentation_models  # noqa: F401,E402
-from app.domains.documents import models as _documents_models  # noqa: F401,E402
-from app.domains.imported_products import models as _imported_products_models  # noqa: F401,E402
-from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401,E402
-from app.domains.network import models as _network_models  # noqa: F401,E402
-from app.domains.notifications import models as _notifications_models  # noqa: F401,E402
-from app.domains.orders import models as _orders_models  # noqa: F401,E402
-from app.domains.organizations import models as _organizations_models  # noqa: F401,E402
-from app.domains.outbox import models as _outbox_models  # noqa: F401,E402
-from app.domains.partners import models as _partners_models  # noqa: F401,E402
-from app.domains.rbac import models as _rbac_models  # noqa: F401,E402
-from app.domains.referral import models as _referral_models  # noqa: F401,E402
-from app.domains.support import models as _support_models  # noqa: F401,E402
-from app.domains.users import models as _users_models  # noqa: F401,E402
-from app.domains.wallets import models as _wallets_models  # noqa: F401,E402
+from app.domains.audit import models as _audit_models  # noqa: F401
+from app.domains.auth import models as _auth_models  # noqa: F401
+from app.domains.catalog import models as _catalog_models  # noqa: F401
+from app.domains.commissions import models as _commissions_models  # noqa: F401
+from app.domains.contracts import models as _contracts_models  # noqa: F401
+from app.domains.customers import models as _customers_models  # noqa: F401
+from app.domains.documentation import models as _documentation_models  # noqa: F401
+from app.domains.documents import models as _documents_models  # noqa: F401
+from app.domains.friend_referrals import models as _friend_referrals_models  # noqa: F401
+from app.domains.imported_products import models as _imported_products_models  # noqa: F401
+from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
+from app.domains.network import models as _network_models  # noqa: F401
+from app.domains.notifications import models as _notifications_models  # noqa: F401
+from app.domains.orders import models as _orders_models  # noqa: F401
+from app.domains.organizations import models as _organizations_models  # noqa: F401
+from app.domains.outbox import models as _outbox_models  # noqa: F401
+from app.domains.partners import models as _partners_models  # noqa: F401
+from app.domains.rbac import models as _rbac_models  # noqa: F401
+from app.domains.referral import models as _referral_models  # noqa: F401
+from app.domains.support import models as _support_models  # noqa: F401
+from app.domains.users import models as _users_models  # noqa: F401
+from app.domains.wallets import models as _wallets_models  # noqa: F401
 
 settings = get_settings()
 

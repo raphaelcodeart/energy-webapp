@@ -664,3 +664,50 @@ export type InvoiceRedemptionRead = {
   credited_at: string | null;
 };
 
+
+// --- Rete segnalatori (Session 39) -----------------------------------------
+// A one-level list every account has, deliberately separate from the
+// commercial network: no hierarchy, no commissions. See
+// apps/api/app/domains/friend_referrals/models.py.
+
+export type FriendReferralItemRead = {
+  id: string;
+  display_name: string;
+  /** INVITED / IN_PROGRESS / ACTIVE -- only ACTIVE counts towards the gift. */
+  state: string;
+  /** PROMOTER_LINK / FRIEND_LINK -- which of the two kinds of link was used. */
+  source: string;
+  invited_at: string;
+};
+
+export type FriendReferralClaimRead = {
+  id: string;
+  milestone: number;
+  status: "REQUESTED" | "FULFILLED" | "REJECTED";
+  note: string | null;
+  requested_at: string;
+  handled_at: string | null;
+};
+
+export type FriendReferralSummaryRead = {
+  code: string;
+  invited_total: number;
+  active_total: number;
+  reward_every: number;
+  missing_for_next_reward: number;
+  claimable_milestone: number | null;
+  referrals: FriendReferralItemRead[];
+  claims: FriendReferralClaimRead[];
+};
+
+export type FriendReferralAdminClaimRead = {
+  id: string;
+  referrer_user_id: string;
+  referrer_name: string;
+  referrer_email: string | null;
+  milestone: number;
+  status: "REQUESTED" | "FULFILLED" | "REJECTED";
+  note: string | null;
+  requested_at: string;
+  handled_at: string | null;
+};

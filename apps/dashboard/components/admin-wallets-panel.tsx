@@ -6,6 +6,7 @@ import type { WalletAdminListItemRead, WalletTransactionRead } from "@/lib/types
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
 import { Pagination, usePagination } from "@/components/pagination";
+import { LialCashAmount } from "@/components/lial-cash-amount";
 
 const TYPE_LABELS: Record<string, string> = {
   ADMIN_CREDIT: "Ricarica/Cashback",
@@ -243,7 +244,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                       </td>
                       <td className="py-2 px-5">{w.owner_roles.join(", ") || "—"}</td>
                       <td className="py-2 px-5 font-mono text-[10px]">{w.address}</td>
-                      <td className="py-2 px-5 text-right font-semibold text-orange-400">{lialCash(w.balance_cents)}</td>
+                      <td className="py-2 px-5 text-right font-semibold text-orange-400"><LialCashAmount cents={w.balance_cents} /></td>
                       <td className="py-2 px-5 text-right">
                         {isSuperAdmin ? (
                           <button
@@ -366,7 +367,7 @@ export function AdminWalletsPanel({ isSuperAdmin = false }: AdminWalletsPanelPro
                         {transactionLabel(t)}
                       </span>
                     </td>
-                    <td className="py-3 px-5 text-right font-semibold text-orange-400">{lialCash(t.amount_cents)}</td>
+                    <td className="py-3 px-5 text-right font-semibold text-orange-400"><LialCashAmount cents={t.amount_cents} /></td>
                     <td className="py-3 px-5">{new Date(t.created_at).toLocaleString("it-IT")}</td>
                     <td className="py-3 px-5 text-right">
                       {t.type !== "REVERSAL" && (

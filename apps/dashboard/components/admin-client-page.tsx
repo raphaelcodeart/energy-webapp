@@ -14,6 +14,7 @@ import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
 import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
 import { AdminWalletsPanel } from "@/components/admin-wallets-panel";
 import { AdminPartnersPanel } from "@/components/admin-partners-panel";
+import { AdminFriendReferralClaimsPanel } from "@/components/admin-friend-referral-claims-panel";
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
 import { AdminImportedProductsPanel } from "@/components/admin-imported-products-panel";
@@ -206,6 +207,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "friend-referral-claims",
+    label: "Omaggi Segnalatori",
+    notificationTypes: ["FRIEND_REFERRAL_REWARD_REQUESTED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zM5 12h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+      </svg>
+    ),
+  },
+  {
     key: "invoice-redemptions",
     label: "Riscatti Fatture",
     icon: (
@@ -270,7 +281,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "invoice-redemptions" | "orders" | "imported-products" | "accounting" | "documentation" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "accounting" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -693,6 +704,12 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
           <div className="space-y-6">
             <SectionBanner image="wallets" alt="Fornitori Partner" />
             <AdminPartnersPanel />
+          </div>
+        )}
+        {activeTab === "friend-referral-claims" && (
+          <div className="space-y-6">
+            <SectionBanner image="customers" alt="Omaggi Segnalatori" />
+            <AdminFriendReferralClaimsPanel />
           </div>
         )}
         {activeTab === "invoice-redemptions" && (

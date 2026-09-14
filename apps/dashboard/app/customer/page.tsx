@@ -8,9 +8,10 @@ export default async function CustomerDashboard() {
   const contracts = await apiFetchOrRedirectToLogin<ContractRead[]>("/contracts/mine");
 
   return (
-    <CustomerClientPage 
-      contracts={contracts} 
-      email={session?.email} 
+    <CustomerClientPage
+      contracts={contracts}
+      email={session?.email}
+      organizationId={session?.organizationId}
     />
   );
 }

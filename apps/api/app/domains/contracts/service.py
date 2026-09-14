@@ -679,6 +679,18 @@ async def transition_contract(
             db, organization_id=organization_id, contract=contract, actor_user_id=actor_user_id
         )
 
+    if to_status == "ACTIVE":
+        # Tells whoever brought this customer in (the one-level "segnalatori"
+        # list, a separate thing from the commercial network -- see
+        # friend_referrals/models.py) that they have just gone active, and
+        # whether that unlocked a gift. Best-effort and after the commit: a
+        # notification must never be able to fail an activation.
+        from app.domains.friend_referrals import service as friend_referrals_service
+
+        await friend_referrals_service.notify_referrer_of_activation(
+            db, organization_id=organization_id, customer_id=contract.customer_id
+        )
+
     next_status = AUTO_CASCADE_AFTER.get(contract.status)
     if next_status is not None:
         contract = await transition_contract(

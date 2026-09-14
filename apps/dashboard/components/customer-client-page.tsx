@@ -11,6 +11,7 @@ import { WelcomeBonusCard } from "@/components/welcome-bonus-card";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
 import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { CustomerPromoterApplicationCard } from "@/components/customer-promoter-application-card";
+import { FriendReferralsPanel } from "@/components/friend-referrals-panel";
 import { DocumentationFeed } from "@/components/documentation-feed";
 import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
@@ -151,6 +152,9 @@ interface CustomerClientPageProps {
       contract-activation-wizard.tsx, which invalidates the same query key). */
   contracts: ContractRead[];
   email?: string;
+  /** Needed to build the customer's own "Segnala un amico" link, which
+      carries ?org= exactly like a promoter's referral link does. */
+  organizationId?: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -232,6 +236,16 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+  },
+  {
+    key: "friend-referrals",
+    label: "Segnala un amico",
+    notificationTypes: ["FRIEND_REFERRAL_ACTIVATED", "FRIEND_REFERRAL_REWARD_HANDLED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
       </svg>
     ),
   },
@@ -351,11 +365,11 @@ const HOME_QUICK_LINKS: { key: string; label: string; description: string; icon:
   },
 ];
 
-export function CustomerClientPage({ contracts: initialContracts, email }: CustomerClientPageProps) {
+export function CustomerClientPage({ contracts: initialContracts, email, organizationId }: CustomerClientPageProps) {
   // "lial-contracts" is the customer's home -- matches the Shop's old default
   // landing tab, back when Lial Energy contracts were its first category
   // (see NAV_ITEMS ordering below).
-  const [activeTab, setActiveTab] = useState<"lial-contracts" | "activate-contract" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
+  const [activeTab, setActiveTab] = useState<"lial-contracts" | "activate-contract" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "friend-referrals" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
   // Lazy initializer: Date.now() runs once at mount, not on every render --
   // the sanctioned way to capture an impure value for use during render.
   const [nowMs] = useState(() => Date.now());
@@ -374,7 +388,7 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
   // doesn't re-trigger the banner.
   const VALID_TABS = [
     "lial-contracts", "activate-contract", "contracts", "products", "orders", "support",
-    "promoter-application", "documentation", "wallet", "cashback", "accounting",
+    "promoter-application", "friend-referrals", "documentation", "wallet", "cashback", "accounting",
   ] as const;
 
   useEffect(() => {
@@ -710,6 +724,10 @@ export function CustomerClientPage({ contracts: initialContracts, email }: Custo
             subtitle="Apri un ticket per problemi tecnici, fatturazione o domande sul tuo contratto: un operatore ti risponderà qui."
           />
         </div>
+      )}
+
+      {activeTab === "friend-referrals" && (
+        <FriendReferralsPanel organizationId={organizationId} />
       )}
 
       {activeTab === "promoter-application" && (

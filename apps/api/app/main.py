@@ -26,6 +26,8 @@ from app.domains.documentation import models as _documentation_models  # noqa: F
 from app.domains.documentation.router import router as documentation_router
 from app.domains.documents import models as _documents_models  # noqa: F401
 from app.domains.documents.router import router as documents_router
+from app.domains.friend_referrals import models as _friend_referrals_models  # noqa: F401
+from app.domains.friend_referrals.router import router as friend_referrals_router
 from app.domains.imported_products import models as _imported_products_models  # noqa: F401
 from app.domains.imported_products.router import router as imported_products_router
 from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
@@ -92,6 +94,7 @@ app.include_router(partners_router, prefix="/api")
 app.include_router(invoice_redemptions_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(imported_products_router, prefix="/api")
+app.include_router(friend_referrals_router, prefix="/api")
 app.include_router(organizations_router, prefix="/api")
 app.include_router(payments_router, prefix="/api")
 app.include_router(users_router, prefix="/api")

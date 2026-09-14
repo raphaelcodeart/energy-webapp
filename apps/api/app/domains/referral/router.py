@@ -40,6 +40,53 @@ async def get_my_referral_code(
     return PromoterCodeRead.model_validate(promoter_code)
 
 
+async def _resolve_friend_link(db: AsyncSession, *, organization_id, code: str) -> PromoterCodeRead:
+    """A plain customer's invite link, answered in the same shape a promoter
+    link is -- the public registration page only ever reads the code and the
+    name to show "Invitato da ...", and does not need to know (or tell the
+    visitor) which of the two kinds of link they followed."""
+    from app.domains.customers.models import Company, Customer, CustomerProfile
+    from app.domains.customers.service import display_name_for
+    from app.domains.friend_referrals import service as friend_referrals_service
+    from app.domains.users.models import User
+
+    friend_code = await friend_referrals_service.get_active_code(
+        db, organization_id=organization_id, code=code
+    )
+    if friend_code is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid or expired promoter code")
+    # Refuse a link whose owner has nobody active to attribute new customers
+    # to, HERE rather than after the visitor has filled in the whole form.
+    if await friend_referrals_service.promoter_code_for_referrer(
+        db, organization_id=organization_id, user_id=friend_code.user_id
+    ) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid or expired promoter code")
+
+    customer = (
+        await db.execute(
+            select(Customer).where(
+                Customer.organization_id == organization_id, Customer.user_id == friend_code.user_id
+            )
+        )
+    ).scalar_one_or_none()
+    display_name = None
+    if customer is not None:
+        profile = await db.get(CustomerProfile, customer.id)
+        company = await db.get(Company, customer.id)
+        display_name = display_name_for(customer.kind, profile, company)
+    if not display_name or display_name == "—":
+        user = await db.get(User, friend_code.user_id)
+        display_name = user.email if user else None
+
+    return PromoterCodeRead(
+        id=friend_code.id,
+        code=friend_code.code,
+        personal_link=f"/r/{friend_code.code}",
+        status=friend_code.status,
+        promoter_display_name=display_name,
+    )
+
+
 @router.get("/{code}", response_model=PromoterCodeRead)
 async def resolve_promoter_link(
     code: str,
@@ -57,7 +104,14 @@ async def resolve_promoter_link(
         db, organization_id=_uuid.UUID(organization_id), code=code
     )
     if promoter_code is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invalid or expired promoter code")
+        # Not a promoter code -- it may be an ordinary customer's "segnala un
+        # amico" link (friend_referral_codes), which lands on this same
+        # public page. Resolved here, with no click tracking and no
+        # attribution cookie: the segnalatori list is informational and the
+        # commercial attribution for this registration is decided at signup
+        # from the referrer's OWN promoter, not from a cookie. See
+        # friend_referrals/models.py.
+        return await _resolve_friend_link(db, organization_id=_uuid.UUID(organization_id), code=code)
 
     _, raw_token = await referral_service.record_referral_click(
         db,

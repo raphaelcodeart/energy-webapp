@@ -4,6 +4,43 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 39 — 2026-09-14 — Rete segnalatori (1 livello, separata) + etichetta LialCash
+
+- [x] **"LialCash" su una riga propria** sotto l'importo, in grassetto e più
+  piccolo, come etichetta invece che come parte della frase. Nuovo
+  `components/lial-cash-amount.tsx`, applicato alle transazioni wallet
+  (cliente/promoter e admin), ai saldi nell'elenco wallet admin e ai movimenti
+  LialCash in Contabilità. Il numero conserva dimensione e colore della cella,
+  così ogni lista mantiene la sua enfasi (rosso/verde in uscita/entrata).
+
+- [x] **Rete segnalatori** (`friend_referrals`, nuovo dominio, migrazione
+  `0036` / `c8f1a37d62be`): una rete a UN livello, che ogni account ha,
+  **staccata da quella commerciale e senza provvigioni**. Tre tabelle nuove,
+  **nessuna colonna aggiunta a tabelle esistenti**.
+  - Dove finisce in rete COMMERCIALE chi si iscrive non cambia di una riga:
+    link di un promoter → il suo albero, come sempre; link di un cliente
+    semplice → sotto il promoter di quel cliente. Un test verifica che esista
+    sempre **una sola** `CustomerAttribution` per cliente registrato,
+    qualunque link sia stato usato.
+  - "Attivo" = contratto realmente in forza (ACTIVE/RENEWED), scelta esplicita
+    del business. Lo stato è **derivato** dai contratti, mai memorizzato.
+  - Omaggio ogni 5 attivi: traguardi assoluti (5, 10, 15…), ciascuno
+    richiedibile una sola volta grazie a un UNIQUE. **Non è un accredito
+    automatico**: è una richiesta che notifica lo staff, che decide cosa dare
+    e scrive una nota che il cliente vede ("Omaggi Segnalatori" in admin).
+  - Privacy: la lista mostra **nome e stato soltanto**, mai email o telefono.
+  - `/r/{code}` risolve ora entrambi i tipi di link; un codice il cui
+    proprietario non ha nessun promoter attivo a cui attribuire viene
+    rifiutato **subito**, non dopo che il visitatore ha compilato il modulo.
+  - 12 test. Suite 264 → 276.
+  - Verificato in produzione su utenti reali: il link di Alessandro e quello
+    di Marco Web (promoter) iscrivono nel loro albero; quello di Antonio
+    Alesci (cliente semplice, il cui segnalatore è disattivato) iscrive sotto
+    Alessandro, cioè lo sponsor attivo ereditato.
+
+- [x] `docs/database-schema.sql` rigenerato: 62 tabelle, revision
+  `c8f1a37d62be`.
+
 ## Session 38 — 2026-09-13 — Contract economics: VAT engine, product audience, contract cashback, first-referrer bonus, wallet top-up bug
 
 Phase A of the contract-activation rework. Backend foundations first, on

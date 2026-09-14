@@ -209,6 +209,12 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
     commit, so a customer can never exist without their required promoter
     attribution."""
     from app.domains.customers.models import Company, Customer, CustomerProfile
+    from app.domains.friend_referrals import service as friend_referrals_service
+    from app.domains.friend_referrals.models import (
+        REFERRAL_SOURCE_FRIEND_LINK,
+        REFERRAL_SOURCE_PROMOTER_LINK,
+    )
+    from app.domains.network.models import AgentProfile
     from app.domains.rbac.models import Role, UserRole
     from app.domains.referral import service as referral_service
     from app.domains.referral.models import CustomerAttribution
@@ -218,11 +224,40 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
     if payload.kind in COMPANY_LIKE_KINDS and not payload.company_name:
         raise RegistrationError("company_name is required for this customer kind")
 
+    # Two kinds of link can bring somebody here, and they are resolved in this
+    # order so the existing promoter flow is byte-for-byte unchanged:
+    #
+    #   1. a PROMOTER link  -> exactly as before: the customer joins that
+    #      promoter's tree and that promoter earns on them.
+    #   2. a SEGNALATORE link (friend_referral_codes) -> the customer is
+    #      attributed to the referrer's OWN promoter, because a plain customer
+    #      earns nothing and cannot have a downline. See
+    #      friend_referrals/service.py::promoter_code_for_referrer.
+    #
+    # Either way the new customer ALSO lands in the referrer's one-level
+    # "segnalati" list, which is purely informational -- it never affects
+    # where they sit in the commercial tree or who gets paid.
+    friend_code = None
     promoter_code = await referral_service.get_active_promoter_code(
         db, organization_id=organization_id, code=payload.referral_code
     )
     if promoter_code is None:
-        raise RegistrationError("Invalid or expired referral code -- registration is invite-only")
+        friend_code = await friend_referrals_service.get_active_code(
+            db, organization_id=organization_id, code=payload.referral_code
+        )
+        if friend_code is None:
+            raise RegistrationError("Invalid or expired referral code -- registration is invite-only")
+        promoter_code = await friend_referrals_service.promoter_code_for_referrer(
+            db, organization_id=organization_id, user_id=friend_code.user_id
+        )
+        if promoter_code is None:
+            # The segnalatore's own promoter chain has no active agent left,
+            # so there is nobody to attribute this registration to. Refuse
+            # rather than create a customer nobody owns -- the same invariant
+            # invite-only registration exists to protect.
+            raise RegistrationError(
+                "Questo link di invito non è utilizzabile al momento -- contatta l'assistenza."
+            )
 
     existing = (
         await db.execute(
@@ -283,6 +318,25 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
             attributed_at=datetime.now(UTC),
         )
     )
+
+    # The one-level segnalatori list. For a promoter link the referrer is the
+    # agent's own login (a promoter with no user account simply records
+    # nothing -- there is no list for them to look at). Never raises: this is
+    # an informational list, and a problem here must not fail a registration
+    # that has otherwise completely succeeded.
+    referrer_user_id = friend_code.user_id if friend_code is not None else None
+    if referrer_user_id is None:
+        agent = await db.get(AgentProfile, promoter_code.agent_id)
+        referrer_user_id = agent.user_id if agent is not None else None
+    if referrer_user_id is not None:
+        await friend_referrals_service.record_referral(
+            db,
+            organization_id=organization_id,
+            referrer_user_id=referrer_user_id,
+            referred_customer_id=customer.id,
+            code_used=payload.referral_code,
+            source=REFERRAL_SOURCE_FRIEND_LINK if friend_code is not None else REFERRAL_SOURCE_PROMOTER_LINK,
+        )
 
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=user.id,

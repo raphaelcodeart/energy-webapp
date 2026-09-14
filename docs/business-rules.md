@@ -366,6 +366,54 @@ Per explicit request, a customer can now activate a Lial Energy (`category
     target for a manual click; the cascade happens server-side, so picking
     "APPROVED" there simply comes back already at `PAYMENT_PENDING`.
 
+## Rete segnalatori: un livello, staccata, senza provvigioni (Session 39) {#friend-referrals}
+
+A **second, completely separate** referral structure, added on explicit
+request: "non c'entra nulla con l'attuale rete, è una cosa staccata e separata
+che ogni cliente ha".
+
+- **Who has one**: everyone with a login, promoter or not. Each gets a
+  personal invite code (`friend_referral_codes`, prefix `SEG-`), created
+  lazily the first time they open "Segnala un amico".
+- **What it holds**: one flat level. `friend_referrals` records who signed up
+  through whose link. No hierarchy, no closure table, **no commissions** --
+  the whole thing could be dropped tomorrow without changing a single euro.
+- **Where the invited customer actually lands in the COMMERCIAL tree** is
+  decided by the existing rules and is untouched by this:
+  - the referrer **is** an active promoter → their own tree, exactly as
+    before;
+  - the referrer is **not** → under the referrer's **own** promoter
+    (`friend_referrals/service.py::promoter_code_for_referrer`), because a
+    plain customer earns nothing and cannot have a downline. If that promoter
+    has since been deactivated, the same walk-up applies as everywhere else
+    (see #terminated-promoter-fallback).
+  A promoter's normal link feeds the list too, so their segnalati list and
+  their tree agree — the list is purely additive.
+- **When somebody "counts"**: only once one of their contracts is genuinely in
+  force (`ACTIVE`/`RENEWED`), which is the business's explicit choice over
+  "has started a contract". The list shows three states so progress is still
+  visible: `INVITED` / `IN_PROGRESS` / `ACTIVE`. State is **derived** from
+  contracts at read time, never stored: a stored flag would need an event hook
+  on every path that activates, renews or cancels, and the first one anybody
+  forgot would leave the count permanently wrong.
+- **The gift, one every 5**: at 5, 10, 15 ... activated referrals the person
+  may request an "omaggio". Milestones are absolute, and
+  `uq_friend_referral_claim_user_milestone` makes each claimable exactly once,
+  ever. Somebody who never claimed at 5 and is now at 12 is offered 5 first,
+  then 10 — they are not silently skipped past what they earned.
+- **Not an automatic payout**: the business chose to keep a human in the loop,
+  so a claim is a *request* that notifies staff ("Omaggi Segnalatori" in the
+  admin dashboard), who mark it delivered or not and write a note the customer
+  sees. That way the gift can be LialCash, a product or a voucher, decided
+  case by case — nothing is minted automatically.
+- **Privacy**: the list shows a referred person's **name and state only** —
+  never their email, phone or address. Sharing a link with somebody does not
+  entitle you to their contact details.
+- **Notifications**: the referrer is told when one of their people goes
+  active, and whether that unlocked a gift (`FRIEND_REFERRAL_ACTIVATED`);
+  staff are told about a request (`FRIEND_REFERRAL_REWARD_REQUESTED`); the
+  requester is told the outcome (`FRIEND_REFERRAL_REWARD_HANDLED`).
+
 ## Commercial network rules
 
 - No cycles, no self-parenting, no duplicate active edges, no cross-organization

@@ -9,6 +9,7 @@ import {
   shortCode,
 } from "@/lib/accounting-format";
 import type { FinancialMovementRead } from "@/lib/types";
+import { LialCashAmount } from "@/components/lial-cash-amount";
 
 type MovementFilter = "ALL" | "LIALCASH" | "BANK_TRANSFER" | "CARD";
 
@@ -294,8 +295,14 @@ export function AdminAccountingPanel() {
                       </td>
                       <td className="py-2.5 px-5"><CurrencyBadge m={m} /></td>
                       <td className={`py-2.5 px-5 text-right font-bold ${direction === "out" ? "text-rose-400" : "text-emerald-400"}`}>
-                        {direction === "out" ? "-" : "+"}
-                        {m.currency === "LIALCASH" ? lialCash(Math.abs(m.amount_cents)) : euro(Math.abs(m.amount_cents))}
+                        {m.currency === "LIALCASH" ? (
+                          <LialCashAmount cents={Math.abs(m.amount_cents)} sign={direction === "out" ? "-" : "+"} />
+                        ) : (
+                          <>
+                            {direction === "out" ? "-" : "+"}
+                            {euro(Math.abs(m.amount_cents))}
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
