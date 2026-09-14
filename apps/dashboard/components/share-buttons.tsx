@@ -88,12 +88,18 @@ export function ShareButtons({
   text,
   title = "Lial Energy",
   className = "",
+  hideLabelsOnMobile = false,
 }: {
   url: string;
   /** The message that goes with the link, e.g. "Iscriviti con il mio link:". */
   text: string;
   title?: string;
   className?: string;
+  /** Icons only on a narrow screen, icons + words from `sm` up. For the
+      promoter header, which is on every page of that dashboard: six labelled
+      pills would wrap onto three lines there and push the actual content
+      down on a phone. Everywhere with room keeps the words. */
+  hideLabelsOnMobile?: boolean;
 }) {
   const [result, setResult] = useState<ShareResult | null>(null);
 
@@ -109,8 +115,12 @@ export function ShareButtons({
     setTimeout(() => setResult(null), 2000);
   }
 
-  const pill =
-    "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer";
+  const pill = `inline-flex items-center gap-1.5 ${
+    hideLabelsOnMobile ? "px-2.5 sm:px-3" : "px-3"
+  } py-2 rounded-xl border text-xs font-semibold transition cursor-pointer`;
+  // The label is hidden, never removed: a screen reader and a long-press
+  // tooltip still get the name of the destination.
+  const labelClass = hideLabelsOnMobile ? "hidden sm:inline" : "";
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
@@ -120,10 +130,12 @@ export function ShareButtons({
           href={target.href(url, text, title)}
           target="_blank"
           rel="noopener noreferrer"
+          title={target.label}
+          aria-label={target.label}
           className={`${pill} ${target.className} ${target.touchOnly ? "hidden [@media(pointer:coarse)]:inline-flex" : ""}`}
         >
           {target.icon}
-          {target.label}
+          <span className={labelClass}>{target.label}</span>
         </a>
       ))}
 
@@ -137,7 +149,7 @@ export function ShareButtons({
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342a4 4 0 010-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a4 4 0 105.367-5.925 4 4 0 00-5.367 5.925zm0 8.658a4 4 0 105.367 5.925 4 4 0 00-5.367-5.925z" />
         </svg>
-        Altro
+        <span className={labelClass}>Altro</span>
       </button>
 
       <button
@@ -149,14 +161,14 @@ export function ShareButtons({
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
-            Link copiato!
+            <span className={labelClass}>Link copiato!</span>
           </>
         ) : (
           <>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
             </svg>
-            Copia link
+            <span className={labelClass}>Copia link</span>
           </>
         )}
       </button>

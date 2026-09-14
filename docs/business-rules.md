@@ -384,11 +384,15 @@ admin hands to a newly created root promoter — offers the same set:
 - **Copia link** copies straight to the clipboard and deliberately does NOT
   open the native sheet first: somebody who pressed "Copia link" has already
   decided.
-- Where there is room (Invita un amico, the admin's root-promoter result) the
-  buttons are shown inline. Where there is not (the promoter header bar, a
-  product card in a grid) the same set opens in a small sheet — five pills
-  would wrap badly in a header and would crowd the product out of its own
-  card.
+- **Inline nearly everywhere**: Invita un amico, the admin's root-promoter
+  result, and the promoter header bar. In the header the labels are hidden
+  below `sm` and only the icons show — that bar is on every page of the
+  promoter dashboard, and six labelled pills would wrap onto three lines on a
+  phone and push the page down. The labels are hidden, never removed, so a
+  screen reader and a long-press still name the destination.
+- The one exception is a **product card in a grid**, where a row per card
+  would crowd out the product itself: there the same set opens in a small
+  sheet.
 
 One component, `components/share-buttons.tsx`, backs all of it: adding a
 destination is one entry in its `TARGETS` list and it appears everywhere at

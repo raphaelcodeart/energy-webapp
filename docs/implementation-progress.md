@@ -4,6 +4,26 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 43 — 2026-09-14 — Bottoni di condivisione anche nell'header promoter
+
+- [x] Il bottone "Condividi il tuo link" nell'header dell'area promoter
+  apriva un pannellino; ora mostra **direttamente** WhatsApp · Telegram · SMS
+  · Email · Altro · Copia link, come in "Invita un amico". Un promoter manda
+  quel link decine di volte al giorno: il tap risparmiato a ogni invio è tutto
+  il punto.
+- [x] Su schermo stretto restano **solo le icone** (nuovo flag
+  `hideLabelsOnMobile`): quell'header compare su **ogni** pagina dell'area
+  promoter, e sei pillole con l'etichetta andrebbero a capo su tre righe
+  spingendo giù il contenuto. Le etichette sono nascoste, non rimosse —
+  `title` e `aria-label` restano, quindi lettore di schermo e pressione
+  prolungata dicono comunque dove porta il bottone.
+- [x] Il pannellino resta solo dove serve davvero: le **card prodotto in
+  griglia**, dove una fila per card toglierebbe spazio al prodotto stesso.
+- [x] Verificato nel CSS generato che la regola responsive esista e vinca su
+  `hidden` per ordine di cascata — stesso controllo della sessione scorsa,
+  perché è esattamente il tipo di errore che non si vede finché non lo apre
+  qualcuno col telefono.
+
 ## Session 42 — 2026-09-14 — "[object Object]" nei messaggi d'errore, e l'allegato al contratto
 
 ### Bug: un errore di validazione mostrava "[object Object]"

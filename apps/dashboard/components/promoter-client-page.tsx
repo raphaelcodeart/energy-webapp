@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ShareMenu } from "@/components/share-buttons";
+import { ShareButtons } from "@/components/share-buttons";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
@@ -291,16 +291,21 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
                 {rankName && <p className="text-[10px] text-slate-500 mt-0.5">{rankName}</p>}
               </div>
             </div>
-            {/* A menu rather than a row of buttons: this is a tight header
-                bar, and five pills would wrap badly on a phone. Same
-                destinations, one tap further in. */}
-            <ShareMenu
-              url={personalLink}
-              text="Iscriviti a Lial Energy con il mio link:"
-              label="Condividi il tuo link"
-              heading="Condividi il tuo link promoter"
-              buttonClassName="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer disabled:opacity-50"
-            />
+            {/* The destinations in full, not behind a menu -- a promoter
+                sends this link many times a day, and a tap saved on every
+                send is the whole point. Icons only on a phone: this header
+                is on every page of the promoter dashboard, and six labelled
+                pills would wrap onto three lines and push the page down. */}
+            <div className="flex flex-col items-start sm:items-end gap-1.5">
+              <p className="text-[10px] font-bold text-slate-400 light:text-slate-500 uppercase tracking-wider">
+                Condividi il tuo link
+              </p>
+              <ShareButtons
+                url={personalLink}
+                text="Iscriviti a Lial Energy con il mio link:"
+                hideLabelsOnMobile
+              />
+            </div>
           </div>
         ) : undefined
       }
