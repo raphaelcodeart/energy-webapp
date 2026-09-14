@@ -489,8 +489,19 @@ never interprets HTML. A test asserts no document contains `<` or `>`.
 | Chiave | Cosa | Perché è separato |
 |---|---|---|
 | `CONTRACT` | Il contratto di procacciamento di affari, integrale (16 articoli, 77 clausole numerate) | — |
-| `SPECIFIC_CLAUSES` | Approvazione specifica delle clausole ai sensi degli **artt. 1341 e ss. c.c.** | Sul cartaceo è una **seconda firma separata**. Una sola casella "accetto tutto" non riprodurrebbe quello che il modulo di carta richiede. |
-| `ATTACHMENT` | Allegato A (tabella dei compensi) e Allegato B (schema avanzamenti di carriera) | **Non ancora definito**: il testo fornito era un duplicato del contratto. Sono cifre che le persone firmano, quindi non vengono inventate. Lo scheletro (compreso il tipo di blocco `table`) è pronto. |
+| `SPECIFIC_CLAUSES` | **Allegato al contratto**: approvazione specifica delle clausole (artt. 1341 e ss. c.c.) + Allegato A e Allegato B | La legge richiede che le clausole vessatorie siano approvate separatamente dal contratto, quindi non può essere accorpato al documento sopra. |
+
+**Le tabelle di Allegato A e B mancano ancora.** I due allegati sono
+dichiarati e descritti, ma le cifre non ci sono: il testo fornito per
+l'allegato era un duplicato del contratto e non conteneva alcuna tabella.
+Sono numeri che le persone firmano, quindi non sono stati inventati. I due
+paragrafi segnati `DA COMPLETARE` in `_ATTACHMENT_BLOCKS` vanno sostituiti
+con `table(columns=[...], rows=[[...]])` e la `version` del documento
+incrementata; la dashboard rende la tabella da sé.
+
+**Il testo non parla mai della carta.** Il contratto cartaceo è la *fonte*
+di queste parole, non il loro argomento: a chi legge sullo schermo non si
+dice cosa richiederebbe un foglio che non ha mai visto. Un test lo verifica.
 
 ### Come si firma
 

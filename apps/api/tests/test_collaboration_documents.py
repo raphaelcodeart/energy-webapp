@@ -89,19 +89,39 @@ def test_the_contract_text_is_real_and_lives_on_the_server():
         assert expected in numbers, f"clausola {expected} mancante"
 
 
-def test_the_specific_clause_approval_is_its_own_document():
-    """Artt. 1341 e ss. c.c. require those clauses to be approved separately.
-    The paper form has a second signature line for exactly this, so a single
-    "accetto tutto" would not reproduce it."""
-    approval = collaboration_documents.document_by_key("SPECIFIC_CLAUSES")
-    assert approval is not None
+def test_the_attachment_is_its_own_document_and_says_so_in_its_title():
+    """Artt. 1341 e ss. c.c. require the clausole vessatorie to be approved
+    separately from the contract, so this cannot be folded into the document
+    above. It also has to READ as the attachment it is -- the word "Allegato"
+    belongs in the title, not only in the body."""
+    attachment = collaboration_documents.document_by_key("SPECIFIC_CLAUSES")
+    assert attachment is not None
+    assert "allegato" in attachment.title.lower()
+    assert "allegato" in attachment.acceptance_label.lower()
+
     text = " ".join(
         block.get("text", "") + " ".join(block.get("items", []))
-        for block in approval.blocks
+        for block in attachment.blocks
     )
     assert "1341" in text
     for clause_no in ("n. 2", "n. 3", "n. 5", "n. 7", "n. 9", "n. 16"):
         assert clause_no in text
+    # Both annexes the contract itself names must appear here.
+    assert "Allegato A" in text and "Tabella dei compensi" in text
+    assert "Allegato B" in text and "avanzamenti di carriera" in text
+
+
+def test_no_document_talks_about_the_paper_form():
+    """The paper contract is the SOURCE of this text, not its subject. A
+    reader on screen should never be told what a sheet of paper they have
+    never seen requires -- it reads as an excuse for the interface."""
+    for doc in collaboration_documents.COLLABORATION_DOCUMENTS:
+        haystack = " ".join(
+            [doc.title, doc.subtitle, doc.acceptance_label]
+            + [b.get("text", "") + " ".join(b.get("items", [])) for b in doc.blocks]
+        ).lower()
+        for forbidden in ("cartace", "sul modulo di carta", "firma separata"):
+            assert forbidden not in haystack, f"{doc.key} parla del cartaceo"
 
 
 def test_no_document_carries_markup():
@@ -143,7 +163,7 @@ async def test_missing_one_document_is_refused(db, organization_id):
     partial = collaboration_documents.required_versions()
     partial.pop("SPECIFIC_CLAUSES")
 
-    with pytest.raises(network_service.ContractNotAcceptedError, match="Approvazione specifica"):
+    with pytest.raises(network_service.ContractNotAcceptedError, match="Allegato al contratto"):
         await network_service.apply_as_promoter(
             db, organization_id=organization_id, user_id=user.id,
             first_name="Nuovo", last_name="Promoter", accept_contract=True, otp_code=code,

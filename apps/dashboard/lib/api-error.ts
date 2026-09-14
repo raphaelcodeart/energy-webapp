@@ -113,14 +113,96 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 const GENERIC_FALLBACK = "Si è verificato un errore imprevisto. Riprova più tardi.";
 
+/** Italian names for the fields a validation error can point at, so the
+    message names the box on screen rather than the JSON key.
+
+    `f` marks a feminine noun: Italian adjectives agree with it, and without
+    this the messages read "La città è obbligatorio". */
+const FIELD_LABELS: Record<string, { label: string; f?: boolean }> = {
+  fiscal_code: { label: "Il codice fiscale" },
+  vat_number: { label: "La partita IVA", f: true },
+  residence_street: { label: "L'indirizzo" },
+  residence_city: { label: "La città", f: true },
+  residence_province: { label: "La provincia", f: true },
+  residence_postal_code: { label: "Il CAP" },
+  email: { label: "L'email", f: true },
+  pec: { label: "La PEC", f: true },
+  password: { label: "La password", f: true },
+  phone: { label: "Il telefono" },
+  first_name: { label: "Il nome" },
+  last_name: { label: "Il cognome" },
+  company_name: { label: "La ragione sociale", f: true },
+  referral_code: { label: "Il codice invito" },
+  iban: { label: "L'IBAN" },
+  otp_code: { label: "Il codice di conferma" },
+  amount_cents: { label: "L'importo" },
+  note: { label: "La nota", f: true },
+  reason: { label: "Il motivo" },
+};
+
+/** Turns one Pydantic validation entry into an Italian sentence.
+ *
+ * FastAPI answers a 422 with `detail` as an ARRAY of objects, not a string.
+ * Passing that array on to something expecting a string is what produced the
+ * "[object Object]" a customer saw when they typed a three-letter codice
+ * fiscale -- the value survived every check meant to catch junk (an array of
+ * one has `.length === 1`) and only revealed itself when the browser
+ * stringified it. */
+function translateValidationEntry(entry: {
+  msg?: unknown;
+  loc?: unknown;
+  type?: unknown;
+  ctx?: Record<string, unknown>;
+}): string | undefined {
+  const msg = typeof entry?.msg === "string" ? entry.msg : undefined;
+  if (!msg) return undefined;
+
+  // loc is ["body", "fiscal_code"] or ["fiscal_code"] -- the field is the
+  // last string in it.
+  const loc = Array.isArray(entry.loc) ? entry.loc.filter((l) => typeof l === "string") : [];
+  const field = loc.length ? String(loc[loc.length - 1]) : "";
+  const known = FIELD_LABELS[field];
+  const subject = known?.label ?? "Questo campo";
+  const o = known?.f ? "a" : "o";
+
+  // Our own validators raise ValueError with an Italian message already
+  // written for a human ("Email non valida", "IBAN non valido"); Pydantic
+  // prefixes those with "Value error, ". Prefer that text over anything
+  // generic -- somebody wrote it for exactly this moment.
+  const custom = /^Value error,\s*(.+)$/.exec(msg);
+  if (custom?.[1]) return custom[1];
+
+  const tooShort = /^String should have at least (\d+) characters?$/.exec(msg);
+  if (tooShort) return `${subject} deve avere almeno ${tooShort[1]} caratteri.`;
+  const tooLong = /^String should have at most (\d+) characters?$/.exec(msg);
+  if (tooLong) return `${subject} può avere al massimo ${tooLong[1]} caratteri.`;
+  if (msg === "Field required") return `${subject} è obbligatori${o}.`;
+  if (/^Input should be a valid email/.test(msg)) return `${subject} non è un indirizzo valido.`;
+  if (/^Input should be a valid (integer|number)/.test(msg)) return `${subject} deve essere un numero.`;
+  if (/^Input should be greater than/.test(msg)) return `${subject} deve essere maggiore di zero.`;
+  if (/^String should match pattern/.test(msg)) return `${subject} non è nel formato corretto.`;
+  if (/^Input should be/.test(msg)) return `${subject} non è valid${o}.`;
+
+  // Unknown Pydantic message: at least name the field rather than showing
+  // untranslated English on its own.
+  return `${subject} non è valid${o}.`;
+}
+
 function extractDetail(raw: string): string | undefined {
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed?.detail === "string") return parsed.detail;
     if (typeof parsed?.error === "string") return parsed.error;
-    if (Array.isArray(parsed?.detail) && typeof parsed.detail[0]?.msg === "string") {
-      return parsed.detail[0].msg as string;
+    if (Array.isArray(parsed?.detail)) {
+      // Every failing field, not just the first: somebody who left three
+      // boxes empty should be told about three boxes, not sent round the
+      // loop once per box.
+      const messages = parsed.detail
+        .map((entry: Record<string, unknown>) => translateValidationEntry(entry))
+        .filter((m: string | undefined): m is string => !!m);
+      const unique = Array.from(new Set(messages));
+      if (unique.length) return unique.join(" ");
     }
   } catch {
     // Not JSON -- plain text or an HTML error page (e.g. a 502 from in front
@@ -129,8 +211,22 @@ function extractDetail(raw: string): string | undefined {
   return undefined;
 }
 
-/** Maps one already-extracted backend `detail` string to an Italian sentence. */
-export function translateErrorDetail(detail: string): string {
+/** Maps one already-extracted backend `detail` to an Italian sentence.
+ *
+ * Takes `unknown`, not `string`, on purpose: the parameter was typed `string`
+ * and callers still handed it a FastAPI 422 `detail` array, because a type
+ * annotation does not survive `JSON.parse`. The array then slipped through
+ * every check below (an array of one has `.length === 1`) and was returned
+ * unchanged, so the caller rendered "[object Object]". Whatever arrives is
+ * now normalized here rather than trusted. */
+export function translateErrorDetail(detail: unknown): string {
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((entry) => translateValidationEntry(entry as Record<string, unknown>))
+      .filter((m): m is string => !!m);
+    return messages.length ? Array.from(new Set(messages)).join(" ") : GENERIC_FALLBACK;
+  }
+  if (typeof detail !== "string") return GENERIC_FALLBACK;
   if (KNOWN_MESSAGES[detail]) return KNOWN_MESSAGES[detail];
 
   const permissionMatch = /^Missing permission: (.+)$/.exec(detail);

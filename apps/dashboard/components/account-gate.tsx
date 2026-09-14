@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { translateErrorDetail } from "@/lib/api-error";
+import { friendlyApiError } from "@/lib/api-error";
 
 interface MeRead {
   roles: string[];
@@ -35,8 +35,19 @@ function ProfileCompletionForm({ onComplete }: { onComplete: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Derived, never stored: shown only once there is something to judge, so
+  // the field is not red before it has been typed in.
+  const fiscalCodeError =
+    fiscalCode.length > 0 && fiscalCode.length < 11
+      ? "Il codice fiscale deve avere 16 caratteri (11 se è una partita IVA)."
+      : null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (fiscalCodeError) {
+      setError(fiscalCodeError);
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
@@ -51,10 +62,7 @@ function ProfileCompletionForm({ onComplete }: { onComplete: () => void }) {
           residence_postal_code: postalCode,
         }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ? translateErrorDetail(body.detail) : "Impossibile salvare i dati.");
-      }
+      if (!res.ok) throw new Error(await friendlyApiError(res, "Impossibile salvare i dati."));
       onComplete();
     } catch (err: any) {
       setError(err.message || "Impossibile salvare i dati.");
@@ -69,10 +77,19 @@ function ProfileCompletionForm({ onComplete }: { onComplete: () => void }) {
         <label className="text-[11px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Fiscale</label>
         <input
           required minLength={11} maxLength={16} value={fiscalCode}
-          onChange={(e) => setFiscalCode(e.target.value.toUpperCase())}
+          onChange={(e) => setFiscalCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
           placeholder="RSSMRA80A01H501U"
-          className="w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500"
+          aria-invalid={fiscalCodeError ? true : undefined}
+          className={`w-full rounded-xl glass-input px-3 py-2.5 text-sm uppercase focus:border-orange-500 ${
+            fiscalCodeError ? "border-rose-500/60" : ""
+          }`}
         />
+        {/* Said before pressing Salva, not after: the rule (16 for a person,
+            11 for a P.IVA) is not something anyone should have to discover
+            from an error. */}
+        <p className={`text-[10px] ${fiscalCodeError ? "text-rose-400" : "text-slate-500"}`}>
+          {fiscalCodeError ?? "16 caratteri per una persona fisica, 11 per una partita IVA."}
+        </p>
       </div>
       <div className="space-y-1">
         <label className="text-[11px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Indirizzo di residenza</label>

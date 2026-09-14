@@ -4,6 +4,53 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 42 — 2026-09-14 — "[object Object]" nei messaggi d'errore, e l'allegato al contratto
+
+### Bug: un errore di validazione mostrava "[object Object]"
+
+Segnalato da un test reale: in fase di registrazione, inserendo un codice
+fiscale di tre lettere nel form obbligatorio del profilo, il messaggio
+d'errore era letteralmente `[object Object]`.
+
+- **Causa**: FastAPI risponde a un 422 con `detail` come **array di oggetti**,
+  non come stringa. `translateErrorDetail()` era tipizzata `string` ma riceveva
+  l'array (un'annotazione TypeScript non sopravvive a `JSON.parse`), e l'array
+  passava indenne da ogni controllo pensato per scartare spazzatura — un array
+  di un elemento ha `.length === 1`, quindi superava anche il controllo "frase
+  breve scritta da un umano". Veniva restituito così com'era e `new Error(...)`
+  lo trasformava in `[object Object]`.
+- **Lo stesso schema era in CINQUE punti**, non uno: il form del profilo, la
+  **pagina di registrazione**, il **reset password**, la conferma email e il
+  recupero password. Cioè esattamente le pagine pubbliche dove è più probabile
+  che qualcuno sbagli a digitare.
+- **Correzione su due livelli**: `translateErrorDetail()` ora accetta
+  `unknown` e normalizza qualunque cosa arrivi (la difesa vale anche per
+  chiamanti futuri), e il form del profilo passa dal percorso condiviso
+  `friendlyApiError()`. I messaggi di validazione sono ora tradotti in
+  italiano citando il campo — "Il codice fiscale deve avere almeno 11
+  caratteri.", "La città è obbligatoria." — con concordanza di genere, e
+  vengono elencati **tutti** i campi sbagliati, non solo il primo.
+- Nel form, la regola del codice fiscale è ora scritta **sotto il campo prima
+  di premere Salva** (16 caratteri per una persona fisica, 11 per una partita
+  IVA): non è qualcosa che si debba scoprire da un errore.
+
+### Allegato al contratto
+
+- Il secondo blocco di "Lavora con noi" si chiama ora **"Allegato al
+  contratto"** (prima "Approvazione specifica delle clausole" — mancava la
+  parola che dice cos'è) e contiene, oltre all'approvazione delle clausole ex
+  artt. 1341 e ss. c.c., anche **Allegato A (tabella dei compensi)** e
+  **Allegato B (schema degli avanzamenti di carriera)**, descritti e
+  richiamati agli articoli 7.3 e 7.7 del contratto. Le **tabelle con le cifre
+  restano da fornire**: il testo ricevuto per l'allegato era un duplicato del
+  contratto e non conteneva tabelle.
+- **Tolto ogni riferimento al contratto cartaceo** dal testo mostrato a
+  schermo: la carta è la fonte di quelle parole, non il loro argomento. Un
+  test lo verifica su tutti i documenti.
+- Versione dell'allegato incrementata a `2026.2`: il testo è cambiato, quindi
+  chi accetta da ora registra la versione nuova e chi aveva accettato la
+  precedente conserva la sua.
+
 ## Session 41 — 2026-09-14 — Bottoni di condivisione per singola app
 
 - [x] Ovunque si condivida un link — link personale del promoter, "Invita un

@@ -62,8 +62,8 @@ def table(columns: list[str], rows: list[list[str]], caption: str | None = None)
 
 
 def signature(text: str) -> dict:
-    """A line the paper form has a signature on -- rendered as a callout so it
-    is obvious which parts of the text the checkbox below actually covers."""
+    """The closing declaration of a document -- rendered as a callout so it
+    is obvious which text the checkbox below actually covers."""
     return {"type": BLOCK_SIGNATURE, "text": text}
 
 
@@ -644,26 +644,34 @@ _CONTRACT_BLOCKS: list[dict] = [
         "Allegato B) — Schema degli avanzamenti di carriera",
     ),
     signature(
-        "Sottoscrivendo con il codice OTP ricevuto via email, il Procacciatore dichiara di aver letto e di "
-        "accettare integralmente il presente Contratto."
+        "Il Procacciatore dichiara di aver letto e di accettare integralmente il presente Contratto, che "
+        "viene sottoscritto mediante il codice di conferma ricevuto via email."
     ),
 ]
 
 
 # =============================================================================
-# 2. L'approvazione specifica delle clausole vessatorie (artt. 1341 e ss. c.c.)
+# 2. L'allegato al contratto
 # =============================================================================
 #
-# On paper this is a SECOND signature line, on the same sheet, after the first.
-# Italian law requires those clauses to be approved separately and in writing,
-# so a single "accetto tutto" checkbox would not reproduce what the paper form
-# does. Hence its own entry here, and its own checkbox in the dashboard.
+# Italian law (artt. 1341 e ss. c.c.) requires the clausole vessatorie to be
+# approved separately from the contract itself, which is why this is its own
+# document with its own acceptance rather than being folded into the one
+# above. It also carries the list of the contract's own annexes.
+#
+# Allegato A (tabella dei compensi) and Allegato B (schema degli avanzamenti
+# di carriera) are named here but their figures are NOT reproduced: the text
+# supplied for them was a duplicate of the contract and contained no tables.
+# They are numbers people agree to, so they are left to be filled in rather
+# than invented -- see the `table()` helper at the top of this file, built
+# for exactly that.
 
-_SPECIFIC_APPROVAL_BLOCKS: list[dict] = [
+_ATTACHMENT_BLOCKS: list[dict] = [
+    heading("Approvazione specifica delle clausole (artt. 1341 e ss. c.c.)"),
     paragraph(
         "Ai sensi e per gli effetti degli artt. 1341 e ss. del codice civile, il Procacciatore dichiara di "
-        "aver attentamente esaminato il contenuto delle clausole sopra estese e, inoltre, di "
-        "approvare specificamente le seguenti clausole:"
+        "aver attentamente esaminato il contenuto delle clausole del Contratto e di approvare "
+        "specificamente le seguenti clausole:"
     ),
     bullets(
         "n. 2 — Oggetto del contratto",
@@ -678,9 +686,31 @@ _SPECIFIC_APPROVAL_BLOCKS: list[dict] = [
         "n. 12 — Marchi e segni distintivi",
         "n. 16 — Foro competente",
     ),
+
+    heading("Allegato A — Tabella dei compensi"),
+    paragraph(
+        "LIAL riconosce al Procacciatore i compensi indicati in questa tabella, alle condizioni previste "
+        "dagli articoli 7 e 8 del Contratto. Il diritto al compenso matura solamente una volta attivata "
+        "la fornitura del Prodotto."
+    ),
+    # DA COMPLETARE -- sostituire con table(columns=[...], rows=[[...]]) non
+    # appena i compensi reali sono disponibili, e incrementare la version.
+    paragraph(
+        "La tabella dei compensi in vigore viene comunicata da LIAL e forma parte integrante e "
+        "sostanziale del Contratto."
+    ),
+
+    heading("Allegato B — Schema degli avanzamenti di carriera"),
+    paragraph(
+        "Con il proficuo svolgimento della propria attività il Procacciatore ha diritto agli avanzamenti "
+        "di carriera previsti da LIAL, secondo lo schema che forma parte integrante e sostanziale del "
+        "Contratto ai sensi dell'articolo 7.7."
+    ),
+    # DA COMPLETARE -- come sopra.
+
     signature(
-        "Sul contratto cartaceo questa approvazione richiede una firma separata dalla precedente: per questo "
-        "è una casella a parte e non è compresa nell'accettazione del contratto."
+        "Il Procacciatore dichiara di aver letto il presente Allegato e di approvarne integralmente il "
+        "contenuto, ivi comprese le clausole specificamente elencate."
     ),
 ]
 
@@ -696,37 +726,19 @@ COLLABORATION_DOCUMENTS: tuple[CollaborationDocument, ...] = (
     ),
     CollaborationDocument(
         key="SPECIFIC_CLAUSES",
-        version="2026.1",
-        title="Approvazione specifica delle clausole",
-        subtitle="artt. 1341 e ss. del codice civile",
-        acceptance_label="Approvo specificamente le clausole elencate qui sopra.",
-        blocks=_SPECIFIC_APPROVAL_BLOCKS,
+        version="2026.2",
+        title="Allegato al contratto",
+        subtitle="Approvazione specifica delle clausole · Allegato A e Allegato B",
+        acceptance_label="Ho letto e accetto l'allegato al contratto, comprese le clausole specificamente elencate.",
+        blocks=_ATTACHMENT_BLOCKS,
     ),
-    # --- DA COMPLETARE -------------------------------------------------------
-    # Allegato A (tabella dei compensi) e Allegato B (schema degli avanzamenti
-    # di carriera). Intentionally NOT defined yet: the text supplied for it was
-    # a duplicate of the contract above, and these are figures somebody signs --
-    # inventing them would be worse than not having them.
-    #
-    # To add it, append here:
-    #
-    #   CollaborationDocument(
-    #       key="ATTACHMENT",
-    #       version="2026.1",
-    #       title="Allegato A e B al contratto",
-    #       subtitle="Tabella dei compensi e schema degli avanzamenti di carriera",
-    #       acceptance_label="Ho letto e accetto gli allegati A e B al contratto.",
-    #       blocks=[
-    #           heading("Allegato A — Tabella dei compensi"),
-    #           table(columns=[...], rows=[[...], ...]),
-    #           heading("Allegato B — Schema degli avanzamenti di carriera"),
-    #           table(columns=[...], rows=[[...], ...]),
-    #       ],
-    #   ),
-    #
-    # Nothing else needs changing: the dashboard renders whatever this tuple
-    # contains, and the backend automatically starts requiring the new
-    # acceptance from that deploy onwards.
+    # Allegato A (tabella dei compensi) e Allegato B (schema degli
+    # avanzamenti di carriera) sono già dichiarati nell'allegato qui sopra,
+    # ma senza le rispettive TABELLE: il testo fornito per l'allegato era un
+    # duplicato del contratto e non conteneva alcuna tabella. Sostituire i
+    # due paragrafi segnati "DA COMPLETARE" in _ATTACHMENT_BLOCKS con
+    # table(columns=[...], rows=[[...]]) e incrementare la version di questo
+    # documento: nient'altro cambia, la dashboard rende la tabella da sé.
 )
 
 
