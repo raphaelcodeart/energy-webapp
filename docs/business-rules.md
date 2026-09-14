@@ -104,6 +104,48 @@ pending the real `Allegato_A_...Regolamento_Provvigionale.pdf`:
   MANUAL) and `audit_log`, and the affected agent gets an in-app
   notification.
 
+### Promoter disattivato: il contratto risale allo sponsor attivo (Session 38) {#terminated-promoter-fallback}
+
+A customer's referring promoter can be deactivated (`agent_profiles.status =
+TERMINATED`) months after that customer signed up. `create_contract()` refuses
+to attribute a contract to a non-ACTIVE agent — correctly: a contract that
+activates and pays nobody is the failure documented in
+`paid-contract-commission-audit.md`. The result was a customer who could not
+activate anything, ever, and saw only "Si è verificato un errore imprevisto"
+(the refusal escaped `POST /contracts/mine` as an unhandled 500). Three real
+customers were in this state when it was found.
+
+**Rule, chosen explicitly by the business**: walk **up** to the nearest ACTIVE
+sponsor rather than block.
+
+- `network/service.py::resolve_nearest_active_agent` returns the agent if they
+  are ACTIVE, otherwise the closest ACTIVE ancestor, otherwise `None`. It
+  reads the closure table for structurally open edges and then filters by the
+  agent's own status — the two are independent (`effective_to IS NULL` means
+  "this edge is current", not "this person is still working").
+- Walking up, rather than falling back to the root, is the point: the branch
+  that actually built the relationship keeps it.
+- **The original referrer is still recorded** on the contract
+  (`first_referrer_agent_id`), so nothing is rewritten — and the substitution
+  writes an `audit_log` row (`contract.producer_substituted`, with the old and
+  new agent), because somebody other than the customer's own referrer is being
+  credited and "why is this Alessandro's and not Salvatore's?" deserves an
+  answer, not an inference from two statuses.
+- **The same rule widens the CRM path**: the inheriting sponsor may activate a
+  contract for that customer. Without it, a customer whose promoter left is
+  unreachable from both sides — they cannot self-activate and nobody can do it
+  for them. It widens access to the **upline only**; a promoter on a different
+  branch is still refused.
+- **No active upline at all** → still blocked, but with a sentence a customer
+  can act on ("contatta l'assistenza: ti verrà assegnato un nuovo referente"),
+  never an English exception string with a UUID in it, and never a 500.
+- The **first-referrer bonus does NOT follow this walk-up**
+  (`_maybe_add_first_referrer_bonus` skips a non-ACTIVE referrer). That bonus
+  is defined as belonging to the person who brought the customer in; if they
+  have left, nobody earns it. The recursive commission is a different thing
+  and does transfer. No product enables the bonus today, so this is currently
+  theoretical — flag it if that changes.
+
 ## Contract economics: IVA, tipo cliente, cashback, bonus (Session 38) {#contract-economics}
 
 Three rules that had **no server-side implementation at all** before this,

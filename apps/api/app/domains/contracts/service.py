@@ -393,6 +393,27 @@ async def create_contract_self_service(
         raise SelfServiceContractError(
             "Nessun promoter di riferimento trovato per il tuo account -- contatta l'assistenza."
         )
+    # A customer must never be stranded by something they had no part in.
+    # Their referring promoter can be deactivated months after they signed
+    # up, and create_contract() refuses to attribute a contract to a
+    # non-ACTIVE agent -- correctly, since a contract that activates and pays
+    # nobody is a real failure mode (docs/paid-contract-commission-audit.md).
+    # Business decision: walk UP to the nearest active sponsor rather than
+    # block, so the branch that built the relationship keeps it and nobody
+    # waits for an admin to notice. The original referrer is still recorded
+    # on the contract (first_referrer_agent_id), so the substitution is
+    # visible rather than silent.
+    producer = await network_service.resolve_nearest_active_agent(
+        db, organization_id=organization_id, agent_id=producer_agent_id
+    )
+    if producer is None:
+        raise SelfServiceContractError(
+            "Il promoter che ti ha invitato non è più attivo e non risulta nessun referente attivo "
+            "sopra di lui. Contatta l'assistenza: ti verrà assegnato un nuovo referente e potrai "
+            "completare l'attivazione."
+        )
+    substituted_for_agent_id = producer_agent_id if producer.id != producer_agent_id else None
+    producer_agent_id = producer.id
 
     supply_point = await customers_service.add_supply_point(
         db, organization_id=organization_id, customer_id=customer.id,
@@ -412,6 +433,19 @@ async def create_contract_self_service(
         # screen says "Cliente ha sottoscritto autonomamente".
         activated_by_promoter_id=None,
     )
+    if substituted_for_agent_id is not None:
+        # Audited, not silent: somebody other than the customer's own
+        # referrer is being credited for this contract, and an accountant
+        # asking "why is this Alessandro's and not Salvatore's?" deserves a
+        # row that answers it rather than an inference from two statuses.
+        await audit_service.record(
+            db, organization_id=organization_id, actor_user_id=customer_user_id,
+            action="contract.producer_substituted", entity_type="contract", entity_id=str(contract.id),
+            previous_value={"producer_agent_id": str(substituted_for_agent_id)},
+            new_value={"producer_agent_id": str(producer_agent_id)},
+            reason="Il promoter di riferimento non è attivo: attribuito allo sponsor attivo più vicino",
+        )
+        await db.commit()
     contract = await transition_contract(
         db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
         actor_user_id=customer_user_id, reason="Attivazione self-service", notes=None,
@@ -464,7 +498,21 @@ async def create_contract_for_recruited_customer(
         db, organization_id=organization_id, customer_id=customer_id
     )
     if resolved_agent_id != promoter_agent.id:
-        raise SelfServiceContractError("Questo cliente non è nella tua rete.")
+        # Same walk-up as the self-service path: if the customer's own
+        # referrer has been deactivated, the nearest ACTIVE sponsor above
+        # them inherits the relationship -- and is therefore allowed to
+        # activate a contract for them. Without this, a customer whose
+        # promoter left would be unreachable from BOTH sides: they cannot
+        # self-activate, and nobody can do it for them either.
+        inheritor = (
+            await network_service.resolve_nearest_active_agent(
+                db, organization_id=organization_id, agent_id=resolved_agent_id
+            )
+            if resolved_agent_id is not None
+            else None
+        )
+        if inheritor is None or inheritor.id != promoter_agent.id:
+            raise SelfServiceContractError("Questo cliente non è nella tua rete.")
 
     version = await db.get(ProductVersion, product_version_id)
     if version is None:

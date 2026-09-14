@@ -808,6 +808,28 @@ probabilmente il problema è un altro. Documentati per intero in
     6 fallimenti su 6 prima del fix, 6 successi su 6 dopo. Se un giorno
     riscrivi quel test, rompi la socket, non il nome.
 
+18. **(Session 38) Un cliente clicca "Continua" in Attiva Contratto e riceve
+    "Si è verificato un errore imprevisto"**: il promoter che lo aveva
+    invitato era stato **disattivato** dopo la sua iscrizione.
+    `create_contract()` rifiuta — giustamente — di attribuire un contratto a
+    un agente non ACTIVE (vedi `paid-contract-commission-audit.md`: un
+    contratto che si attiva e non paga nessuno), ma `POST /contracts/mine`
+    non catturava quel rifiuto, quindi una condizione di business che il
+    sistema capisce benissimo usciva come eccezione non gestita → 500 →
+    messaggio generico della dashboard, e il cliente senza nessuna via
+    d'uscita. Tre clienti reali erano in questo stato.
+    Fix: `network/service.py::resolve_nearest_active_agent` risale al primo
+    sponsor ATTIVO sopra (decisione di business esplicita: risalire, non
+    bloccare), la sostituzione finisce in `audit_log` come
+    `contract.producer_substituted`, e i due endpoint self-service catturano
+    comunque `InvalidProducerAgentError` come 400. Se davvero non esiste
+    nessun attivo in tutta la catena, il cliente riceve una frase italiana
+    azionabile invece di una stringa tecnica con un UUID dentro.
+    **Lezione generale**: ogni eccezione di dominio sollevata da un service
+    deve essere catturata da OGNI router che lo chiama. Qui `POST /contracts`
+    (staff) la catturava e i due endpoint self-service no — e il percorso
+    non coperto era proprio quello usato dai clienti.
+
 Se un problema NON è in questa lista, è nuovo — documentalo qui dopo averlo
 risolto, per lo stesso motivo per cui questi lo sono.
 

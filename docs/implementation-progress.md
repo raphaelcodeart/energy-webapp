@@ -85,6 +85,32 @@ But the investigation surfaced a **real and much worse latent one**, now fixed:
   the two actually happened.
 - Test suite 237 -> 256. mypy 34 -> 28 errors, ruff 43 -> 38 (no new ones).
 
+### Bug: cliente bloccato da un promoter disattivato (2026-09-14)
+
+Reported from production: pressing "Continua" in Attiva Contratto returned the
+dashboard's generic "Si è verificato un errore imprevisto".
+
+- **Cause**: the customer's referring promoter had been deactivated after they
+  signed up. `create_contract()` refuses a non-ACTIVE producer (deliberately —
+  otherwise the contract activates and pays nobody), but `POST /contracts/mine`
+  and `POST /contracts/for-customer` never caught `InvalidProducerAgentError`,
+  so it escaped as a 500. Not a regression from the Session 38 work: the
+  refusal has existed since the producer-validation pass, and the self-service
+  endpoints never handled it. Three real customers were affected.
+- **Fix** (business decision taken explicitly: risalire, non bloccare):
+  `network/service.py::resolve_nearest_active_agent` walks up to the closest
+  ACTIVE sponsor; the substitution is audited as
+  `contract.producer_substituted` with both agent ids; the original referrer
+  stays recorded on the contract; the same rule lets the inheriting sponsor
+  activate from the CRM, for the upline only. With no active upline anywhere,
+  the customer gets an actionable Italian sentence, never a 500.
+- 8 new tests (`test_terminated_promoter_fallback.py`), including that an
+  unrelated promoter still cannot reach someone else's customer and that a
+  refusal leaves no half-built contract behind. Suite 256 -> 264.
+- Verified against the three real customers on production: all three now
+  resolve to Alessandro Pantano (their terminated promoters' shared active
+  sponsor), and a customer with an active promoter is not redirected.
+
 ### Documentazione risincronizzata (2026-09-14)
 
 `docs/database-schema.sql` was **three migrations stale** -- still at

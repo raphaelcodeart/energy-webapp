@@ -114,6 +114,17 @@ async def create_my_contract(
         )
     except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except InvalidProducerAgentError as exc:
+        # Reachable on the self-service path for a reason that is nobody's
+        # mistake: the customer's referring promoter has since been
+        # deactivated. create_contract() refuses to attribute a contract to a
+        # non-ACTIVE agent (otherwise it activates and pays nobody -- see
+        # docs/paid-contract-commission-audit.md), but this endpoint used to
+        # let that exception escape, so a customer clicking "Continua" got a
+        # 500 and the dashboard's generic "Si è verificato un errore
+        # imprevisto". A refusal the business understands must never surface
+        # as a crash.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])
 
@@ -138,6 +149,9 @@ async def create_contract_for_my_customer(
             supply_point_payload=payload.supply_point, email=payload.email,
         )
     except SelfServiceContractError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except InvalidProducerAgentError as exc:
+        # Same reasoning as POST /contracts/mine above.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])

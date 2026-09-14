@@ -662,6 +662,59 @@ async def get_active_node(
     ).scalar_one_or_none()
 
 
+async def resolve_nearest_active_agent(
+    db: AsyncSession, *, organization_id: uuid.UUID, agent_id: uuid.UUID
+) -> AgentProfile | None:
+    """The agent themselves if they are ACTIVE, otherwise the closest ACTIVE
+    ancestor above them in the tree. None if nobody in the whole upline is
+    active (including the case where the agent was never placed in the tree).
+
+    Exists because a customer must never be stranded by something they had no
+    part in. Their referring promoter can be deactivated months after they
+    signed up; `create_contract()` then refuses to attribute a contract to a
+    non-ACTIVE agent -- correctly, since a contract that activates and pays
+    nobody is the failure mode documented in
+    docs/paid-contract-commission-audit.md. Before this helper existed, that
+    refusal escaped POST /contracts/mine as a 500, so the customer saw
+    "Si è verificato un errore imprevisto" and had no way forward at all.
+
+    Walking UP rather than falling back to the root is the point: the branch
+    that actually built that relationship keeps it. The business chose this
+    over blocking-and-reassigning-by-hand precisely so nobody sits stuck
+    waiting for an admin to notice.
+
+    Reads the closure table (structurally open edges) and then filters by the
+    agent's own status -- the two are independent: `effective_to IS NULL`
+    means "this edge is current", not "this person is still working"."""
+    ancestors = await _get_active_ancestors(db, organization_id=organization_id, agent_id=agent_id)
+    if not ancestors:
+        # Not in the tree at all. Still answer the "is this one usable?"
+        # question, so a flat agent with no node isn't wrongly reported as
+        # having no active upline when they are themselves fine.
+        agent = await db.get(AgentProfile, agent_id)
+        if agent is not None and agent.organization_id == organization_id and agent.status == "ACTIVE":
+            return agent
+        return None
+
+    by_depth = sorted(ancestors, key=lambda row: row[1])
+    profiles = {
+        profile.id: profile
+        for profile in (
+            await db.execute(
+                select(AgentProfile).where(
+                    AgentProfile.organization_id == organization_id,
+                    AgentProfile.id.in_([ancestor_id for ancestor_id, _ in by_depth]),
+                )
+            )
+        ).scalars()
+    }
+    for ancestor_id, _depth in by_depth:
+        profile = profiles.get(ancestor_id)
+        if profile is not None and profile.status == "ACTIVE":
+            return profile
+    return None
+
+
 async def move_agent(
     db: AsyncSession,
     *,
