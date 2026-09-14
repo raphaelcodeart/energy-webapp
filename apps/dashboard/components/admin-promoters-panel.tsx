@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
+import { ShareButtons } from "@/components/share-buttons";
 import { PhotoUpload } from "@/components/photo-upload";
 import { AdminPromoterNetworkModal } from "@/components/admin-promoter-network-modal";
 import { friendlyApiError } from "@/lib/api-error";
@@ -964,6 +965,15 @@ export function AdminPromotersPanel({
                     {rootLinkCopied ? "Copiato!" : "Copia"}
                   </button>
                 </div>
+                {/* Same destinations as everywhere else: the admin creating a
+                    root promoter usually has to get this link to them right
+                    away, and retyping it into WhatsApp by hand is the step
+                    that used to be missing. */}
+                <ShareButtons
+                  className="mt-2"
+                  url={rootCreateResult.personal_link}
+                  text="Ecco il tuo link personale Lial Energy:"
+                />
               </div>
             </div>
 

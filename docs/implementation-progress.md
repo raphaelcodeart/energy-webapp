@@ -4,6 +4,28 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 41 — 2026-09-14 — Bottoni di condivisione per singola app
+
+- [x] Ovunque si condivida un link — link personale del promoter, "Invita un
+  amico", singolo prodotto consigliato da un promoter, e il link personale che
+  l'admin consegna a un promoter radice appena creato — ci sono ora
+  **WhatsApp · Telegram · SMS · Email · Altro · Copia link**.
+- [x] Ogni destinazione è un **link semplice**, non un SDK: nessuno script di
+  terze parti, nessun pixel di tracciamento, niente in più nel bundle.
+  L'app di destinazione si apre con messaggio e URL già dentro.
+- [x] SMS e "Altro" (il menu nativo del telefono) compaiono **solo su
+  dispositivi touch**, con una regola `@media (pointer: coarse)` invece di un
+  controllo JavaScript — niente disallineamento in idratazione e nessuno stato
+  da tenere sincronizzato. Verificato nel CSS generato che la regola esista
+  davvero e che vinca su `hidden` per ordine di cascata: senza quella verifica
+  i due bottoni sarebbero rimasti invisibili anche sul telefono.
+- [x] "Copia link" copia e basta, non apre prima il menu nativo: chi lo preme
+  ha già scelto (nuovo flag `preferClipboard` in `lib/share-link.ts`).
+- [x] Inline dove c'è spazio, in un piccolo pannello dove non ce n'è (header
+  promoter, card prodotto in griglia). Un solo componente,
+  `components/share-buttons.tsx`: aggiungere una destinazione è una voce nella
+  sua lista `TARGETS` e compare ovunque.
+
 ## Session 40 — 2026-09-14 — Il contratto vero in "Lavora con noi", con doppia accettazione
 
 - [x] **Il testo mostrato non era il contratto.** Era un riassunto di un

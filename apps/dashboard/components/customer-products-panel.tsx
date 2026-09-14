@@ -9,7 +9,7 @@ import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { computePrice, productAllowsCustomerKind } from "@/lib/product-audience";
-import { type ShareResult, shareOrCopyLink } from "@/lib/share-link";
+import { ShareMenu } from "@/components/share-buttons";
 
 const ENERGY_LABELS: Record<string, string> = {
   ELECTRICITY: "Luce",
@@ -132,7 +132,6 @@ export function CustomerProductsPanel({
   });
   const customerKind = myCustomer?.kind ?? null;
 
-  const [sharedId, setSharedId] = useState<{ id: string; result: ShareResult } | null>(null);
   const [activeCategory, setActiveCategory] = useState<ShopTab>(visibleCategories[0] ?? "INTERNAL");
   const [checkoutTarget, setCheckoutTarget] = useState<{ versionId: string; name: string } | null>(null);
   const [importedCheckoutTarget, setImportedCheckoutTarget] = useState<{ id: string; name: string } | null>(null);
@@ -156,21 +155,15 @@ export function CustomerProductsPanel({
     // open while the customer record is still loading.
     .filter((p) => p.category !== "INTERNAL" || productAllowsCustomerKind(p.customer_type, customerKind));
 
-  async function shareProduct(productId: string, productName: string) {
-    if (!referralCode || typeof window === "undefined") return;
+  /** The referral link for one product: lands the recipient on registration
+      with this promoter's code and this product already selected. */
+  function productLink(productId: string, productName: string): string {
+    if (!referralCode || typeof window === "undefined") return "";
     const url = new URL(`/r/${referralCode}`, window.location.origin);
     if (organizationId) url.searchParams.set("org", organizationId);
     url.searchParams.set("product", productId);
     url.searchParams.set("product_name", productName);
-    // Native share sheet on a phone (WhatsApp, Telegram, SMS, ...), a
-    // clipboard copy everywhere else -- see lib/share-link.ts.
-    const result = await shareOrCopyLink({
-      url: url.toString(),
-      title: productName,
-      text: `Ti consiglio "${productName}" di Lial Energy:`,
-    });
-    setSharedId({ id: productId, result });
-    setTimeout(() => setSharedId(null), 2000);
+    return url.toString();
   }
 
   if (isLoading) {
@@ -413,26 +406,15 @@ export function CustomerProductsPanel({
                   </div>
 
                   {referralCode && (
-                    <button
-                      onClick={() => shareProduct(p.id, v.name)}
-                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
-                    >
-                      {sharedId?.id === p.id && sharedId.result !== "failed" ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
-                          {sharedId.result === "shared" ? "Link condiviso!" : "Link copiato!"}
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342a4 4 0 010-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a4 4 0 105.367-5.925 4 4 0 00-5.367 5.925zm0 8.658a4 4 0 105.367 5.925 4 4 0 00-5.367-5.925z" />
-                          </svg>
-                          Condividi
-                        </>
-                      )}
-                    </button>
+                    // A menu, not a row: these are cards in a grid, and five
+                    // pills per card would crowd out the product itself.
+                    <ShareMenu
+                      url={productLink(p.id, v.name)}
+                      text={`Ti consiglio "${v.name}" di Lial Energy:`}
+                      title={v.name}
+                      heading={`Condividi "${v.name}"`}
+                      buttonClassName="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                    />
                   )}
                   {purchasable && (
                     <button

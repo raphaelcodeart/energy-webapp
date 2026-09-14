@@ -366,6 +366,34 @@ Per explicit request, a customer can now activate a Lial Energy (`category
     target for a manual click; the cascade happens server-side, so picking
     "APPROVED" there simply comes back already at `PAYMENT_PENDING`.
 
+## Condivisione dei link: bottoni per app, non solo copia (Session 41) {#share-buttons}
+
+Every place a link is shared — the promoter's personal link, "Invita un
+amico", a single product a promoter recommends, and the personal link an
+admin hands to a newly created root promoter — offers the same set:
+
+**WhatsApp · Telegram · SMS · Email · Altro · Copia link**
+
+- Each destination is a **plain link**, not an SDK: no third-party script, no
+  tracking pixel, nothing added to the bundle. The target app opens with the
+  message and the URL already filled in.
+- **SMS** and **Altro** (the phone's own share sheet, for Messenger, Signal,
+  AirDrop, whatever is installed) appear only on touch devices, via a
+  `@media (pointer: coarse)` rule rather than a JavaScript check — no
+  hydration mismatch, no state to keep in sync.
+- **Copia link** copies straight to the clipboard and deliberately does NOT
+  open the native sheet first: somebody who pressed "Copia link" has already
+  decided.
+- Where there is room (Invita un amico, the admin's root-promoter result) the
+  buttons are shown inline. Where there is not (the promoter header bar, a
+  product card in a grid) the same set opens in a small sheet — five pills
+  would wrap badly in a header and would crowd the product out of its own
+  card.
+
+One component, `components/share-buttons.tsx`, backs all of it: adding a
+destination is one entry in its `TARGETS` list and it appears everywhere at
+once.
+
 ## "Invita un amico": rete a un livello, staccata, senza provvigioni (Session 39) {#friend-referrals}
 
 A **second, completely separate** referral structure, added on explicit

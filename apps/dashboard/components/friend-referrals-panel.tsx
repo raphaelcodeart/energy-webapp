@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
 import { friendlyApiError } from "@/lib/api-error";
-import { type ShareResult, shareOrCopyLink } from "@/lib/share-link";
+import { ShareButtons } from "@/components/share-buttons";
 import type { FriendReferralSummaryRead } from "@/lib/types";
 
 const STATE_LABELS: Record<string, string> = {
@@ -47,7 +47,6 @@ function formatDate(iso: string): string {
 export function FriendReferralsPanel({ organizationId }: { organizationId?: string }) {
   const queryClient = useQueryClient();
   const { data, error } = useQuery({ queryKey: ["friend-referrals", "me"], queryFn: fetchSummary });
-  const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [claimLoading, setClaimLoading] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
 
@@ -58,18 +57,6 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
     const url = new URL(`/r/${data.code}`, window.location.origin);
     if (organizationId) url.searchParams.set("org", organizationId);
     return url.toString();
-  }
-
-  async function handleShare() {
-    const url = personalLink();
-    if (!url) return;
-    const result = await shareOrCopyLink({
-      url,
-      title: "Lial Energy",
-      text: "Ti invito in Lial Energy, iscriviti con il mio link:",
-    });
-    setShareResult(result);
-    setTimeout(() => setShareResult(null), 2000);
   }
 
   async function handleClaim() {
@@ -107,31 +94,15 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
           <strong>{data.reward_description}</strong> &mdash; non solo per i primi {data.reward_every}:
           il premio si ripete a {data.reward_every * 2}, {data.reward_every * 3} e cosi via.
         </p>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <code className="flex-1 min-w-0 truncate rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 px-3 py-2.5 text-xs font-mono text-slate-300 light:text-slate-600">
-            {personalLink() || `…/r/${data.code}`}
-          </code>
-          <button
-            onClick={handleShare}
-            className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer"
-          >
-            {shareResult === "shared" || shareResult === "copied" ? (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-                {shareResult === "shared" ? "Link condiviso!" : "Link copiato!"}
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342a4 4 0 010-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a4 4 0 105.367-5.925 4 4 0 00-5.367 5.925zm0 8.658a4 4 0 105.367 5.925 4 4 0 00-5.367-5.925z" />
-                </svg>
-                Condividi il tuo link
-              </>
-            )}
-          </button>
-        </div>
+        <code className="block w-full truncate rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 px-3 py-2.5 text-xs font-mono text-slate-300 light:text-slate-600 mb-3">
+          {personalLink() || `…/r/${data.code}`}
+        </code>
+        {/* One tap straight into the app they actually use. "Copia link" is
+            still there for everything else. */}
+        <ShareButtons
+          url={personalLink()}
+          text="Ti invito in Lial Energy, iscriviti con il mio link:"
+        />
       </div>
 
       {/* Avanzamento verso l'omaggio */}

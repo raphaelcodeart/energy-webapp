@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { type ShareResult, shareOrCopyLink } from "@/lib/share-link";
+import { ShareMenu } from "@/components/share-buttons";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { BranchTable } from "@/components/branch-table";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
@@ -259,22 +259,13 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
     enabled: !!me,
   });
   const rankName = ranks?.find((r) => r.code === me?.rank_code)?.name;
-  const [shareResult, setShareResult] = useState<ShareResult | null>(null);
-
-  async function sharePersonalLink() {
-    if (!referralCode || typeof window === "undefined") return;
+  // Derived, not stored: the link is a pure function of the code and the org.
+  const personalLink = (() => {
+    if (!referralCode || typeof window === "undefined") return "";
     const url = new URL(`/r/${referralCode.code}`, window.location.origin);
     if (organizationId) url.searchParams.set("org", organizationId);
-    // On a phone this opens the native share sheet (WhatsApp, Telegram,
-    // SMS, ...); everywhere else it copies. See lib/share-link.ts.
-    const result = await shareOrCopyLink({
-      url: url.toString(),
-      title: "Lial Energy",
-      text: "Iscriviti a Lial Energy con il mio link:",
-    });
-    setShareResult(result);
-    setTimeout(() => setShareResult(null), 2000);
-  }
+    return url.toString();
+  })();
 
   return (
     <AppShell
@@ -300,27 +291,16 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
                 {rankName && <p className="text-[10px] text-slate-500 mt-0.5">{rankName}</p>}
               </div>
             </div>
-            <button
-              onClick={sharePersonalLink}
-              disabled={!referralCode}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer disabled:opacity-50"
-            >
-              {shareResult === "shared" || shareResult === "copied" ? (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  {shareResult === "shared" ? "Link condiviso!" : "Link copiato!"}
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342a4 4 0 010-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a4 4 0 105.367-5.925 4 4 0 00-5.367 5.925zm0 8.658a4 4 0 105.367 5.925 4 4 0 00-5.367-5.925z" />
-                  </svg>
-                  Condividi il tuo link
-                </>
-              )}
-            </button>
+            {/* A menu rather than a row of buttons: this is a tight header
+                bar, and five pills would wrap badly on a phone. Same
+                destinations, one tap further in. */}
+            <ShareMenu
+              url={personalLink}
+              text="Iscriviti a Lial Energy con il mio link:"
+              label="Condividi il tuo link"
+              heading="Condividi il tuo link promoter"
+              buttonClassName="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-lg shadow-orange-500/20 transition cursor-pointer disabled:opacity-50"
+            />
           </div>
         ) : undefined
       }

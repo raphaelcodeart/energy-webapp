@@ -21,16 +21,22 @@ type ShareInput = {
   title?: string;
   /** Message body pre-filled in WhatsApp/SMS/etc. alongside the link. */
   text?: string;
+  /** Skip the native sheet and copy straight to the clipboard. Used by the
+      dedicated "Copia link" button, which sits next to explicit WhatsApp /
+      Telegram / Email buttons (see components/share-buttons.tsx): somebody
+      pressing "Copia link" has already decided, and opening a share sheet
+      instead would be answering a question they did not ask. */
+  preferClipboard?: boolean;
 };
 
-export async function shareOrCopyLink({ url, title, text }: ShareInput): Promise<ShareResult> {
+export async function shareOrCopyLink({ url, title, text, preferClipboard = false }: ShareInput): Promise<ShareResult> {
   if (typeof navigator === "undefined") return "failed";
 
   // navigator.share exists but throws NotAllowedError outside a secure
   // context or outside a user gesture, and canShare() is not implemented
   // everywhere share() is -- so feature-detect loosely and let the catch
   // below handle the rest rather than trying to predict every browser.
-  if (typeof navigator.share === "function") {
+  if (!preferClipboard && typeof navigator.share === "function") {
     try {
       await navigator.share({ url, title, text });
       return "shared";
