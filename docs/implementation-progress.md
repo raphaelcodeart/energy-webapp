@@ -4,6 +4,21 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 47 — 2026-09-14 — Un solo pulsante nella barra del sito pubblico
+
+- [x] `infrastructure/marketing-site/`: la barra in alto aveva due pulsanti
+  affiancati — "Accedi", contornato, che portava alla dashboard, e "Inizia
+  Ora →", colorato, che invece scorreva al modulo contatti. Due inviti
+  diversi nello stesso angolo, con il più vistoso che non era quello che la
+  gente stava cercando. Ora è **uno solo: "Accedi"**, nello stile colorato,
+  e porta a `app.lialenergy.it/login`. Stessa cosa nel menu mobile (nuova
+  classe `.mob-btn`: `.nav-btn` lì non andava bene, impone un font-size da
+  barra dentro un menu a schermo intero). Rimossa la regola `.nav-login`,
+  ormai senza utilizzatori.
+- [x] Gli altri "Inizia Ora" della pagina (schede dei piani, sezioni, footer)
+  restano: quelli portano davvero al modulo contatti, ed è ciò che devono
+  fare.
+
 ## Session 46 — 2026-09-14 — Ricostruire il progetto per un'altra azienda, davvero
 
 Obiettivo dichiarato: se un domani questo progetto va rifatto identico per
