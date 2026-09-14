@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict AyyoSDO4cJ0e9M3PfD1kZmmGbI5XJZrmfUo3dgNfWWDNwyoappRlm6SfhZRoIz7
+\restrict Xynt1uYzpplMNqBc5aPhj1scEtjYh1RUPnlso8G7zrhxavS7HIS1WpEp42mtbEj
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -62,7 +62,8 @@ CREATE TABLE public.agent_profiles (
     last_name character varying(120),
     collaboration_contract_version character varying(32),
     collaboration_accepted_at timestamp with time zone,
-    collaboration_otp_verified_at timestamp with time zone
+    collaboration_otp_verified_at timestamp with time zone,
+    collaboration_accepted_documents jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -3954,5 +3955,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AyyoSDO4cJ0e9M3PfD1kZmmGbI5XJZrmfUo3dgNfWWDNwyoappRlm6SfhZRoIz7
+\unrestrict Xynt1uYzpplMNqBc5aPhj1scEtjYh1RUPnlso8G7zrhxavS7HIS1WpEp42mtbEj
 

@@ -430,6 +430,71 @@ che ogni cliente ha".
   staff are told about a request (`FRIEND_REFERRAL_REWARD_REQUESTED`); the
   requester is told the outcome (`FRIEND_REFERRAL_REWARD_HANDLED`).
 
+## "Lavora con noi": quali documenti si firmano (Session 40) {#collaboration-documents}
+
+Becoming a promoter has always required accepting a collaboration agreement
+and confirming with an emailed OTP. Two things were wrong with it until now:
+
+1. **The text shown was not the contract.** It was a one-paragraph summary
+   hardcoded in `customer-promoter-application-card.tsx` — so the app
+   displayed something nobody had drafted as a contract, and updating the
+   real one would not have changed what people saw.
+2. **There was one acceptance where the paper form has more than one.**
+
+### Dove vive il testo
+
+`apps/api/app/domains/network/collaboration_documents.py`, on the server, and
+served to the dashboard by `GET /network/agents/apply/documents`. Deliberately
+not in a React component:
+
+- it is what people legally sign, so there must be exactly one copy of it;
+- the acceptance record stores the **version** somebody actually saw, which is
+  only meaningful if text and version are defined together;
+- changing it needs no frontend release.
+
+It travels as **structured blocks** (heading / paragraph / clause / bullets /
+table / signature), never as markup: the dashboard decides typography and
+never interprets HTML. A test asserts no document contains `<` or `>`.
+
+### I documenti
+
+| Chiave | Cosa | Perché è separato |
+|---|---|---|
+| `CONTRACT` | Il contratto di procacciamento di affari, integrale (16 articoli, 77 clausole numerate) | — |
+| `SPECIFIC_CLAUSES` | Approvazione specifica delle clausole ai sensi degli **artt. 1341 e ss. c.c.** | Sul cartaceo è una **seconda firma separata**. Una sola casella "accetto tutto" non riprodurrebbe quello che il modulo di carta richiede. |
+| `ATTACHMENT` | Allegato A (tabella dei compensi) e Allegato B (schema avanzamenti di carriera) | **Non ancora definito**: il testo fornito era un duplicato del contratto. Sono cifre che le persone firmano, quindi non vengono inventate. Lo scheletro (compreso il tipo di blocco `table`) è pronto. |
+
+### Come si firma
+
+Immutato: si leggono i documenti, si spunta **una casella per documento**, poi
+si conferma con il **codice OTP** che arriva via email — la prova che ha
+acconsentito il titolare dell'account e non solo chi è loggato.
+
+### Cosa viene registrato
+
+`agent_profiles.collaboration_accepted_documents`, JSONB:
+`{chiave: {"version": ..., "accepted_at": ...}}`, una voce per documento. Una
+mappa e non una coppia di colonne per documento, perché l'elenco dei documenti
+è una decisione di business che cambierà ancora e ogni cambio non deve costare
+una migrazione. Le colonne preesistenti
+(`collaboration_contract_version`/`collaboration_accepted_at`) restano e
+continuano a essere allineate per il contratto principale.
+
+**Il server non si fida della casella.** L'applicazione deve inviare
+`{chiave: versione}` per **ogni** documento attualmente richiesto, e il server
+rifiuta se ne manca uno o se la versione è vecchia (la pagina era aperta
+mentre il testo cambiava). Una casella dice solo che qualcuno ha cliccato;
+una versione dice **quale testo** è stato accettato.
+
+**Aggiungere o cambiare un documento**: si aggiunge una voce a
+`COLLABORATION_DOCUMENTS`, o si incrementa la sua `version`. La dashboard
+rende automaticamente un pannello e una casella in più, e il backend inizia a
+pretendere quell'accettazione dal deploy successivo. Mai modificare un testo
+senza incrementare la versione: significherebbe riscrivere in silenzio ciò che
+qualcuno ha già firmato. Le accettazioni già registrate non vengono mai
+riscritte, e i promoter esistenti hanno la mappa vuota — non è stato inventato
+un consenso a un testo che non avevano mai visto.
+
 ## Commercial network rules
 
 - No cycles, no self-parenting, no duplicate active edges, no cross-organization

@@ -141,6 +141,10 @@ export type AgentProfileRead = {
   rejection_reason: string | null;
   is_blacklisted: boolean;
   collaboration_accepted_at: string | null;
+  /** {key: {version, accepted_at}} -- which documents this promoter
+      accepted and at which wording. Empty for anyone who signed up before
+      multi-document acceptance existed. */
+  collaboration_accepted_documents?: Record<string, { version: string; accepted_at: string }>;
 };
 
 export type SimulationStepRead = {
@@ -229,6 +233,10 @@ export type AgentListItemRead = {
   is_blacklisted: boolean;
   user_id: string | null;
   collaboration_accepted_at: string | null;
+  /** {key: {version, accepted_at}} -- which documents this promoter
+      accepted and at which wording. Empty for anyone who signed up before
+      multi-document acceptance existed. */
+  collaboration_accepted_documents?: Record<string, { version: string; accepted_at: string }>;
   email_verified: boolean;
   privacy_accepted: boolean;
   user_status: "ACTIVE" | "FROZEN" | null;
@@ -713,4 +721,29 @@ export type FriendReferralAdminClaimRead = {
   note: string | null;
   requested_at: string;
   handled_at: string | null;
+};
+
+
+// --- Contratto di collaborazione "Lavora con noi" (Session 40) -------------
+// The legal text is served by the backend (structured blocks, never markup)
+// so there is exactly one copy of it and changing it needs no frontend
+// release. See apps/api/app/domains/network/collaboration_documents.py.
+
+export type CollaborationDocumentBlock =
+  | { type: "heading"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "clause"; number: string; text: string }
+  | { type: "bullets"; items: string[] }
+  | { type: "table"; columns: string[]; rows: string[][]; caption: string | null }
+  | { type: "signature"; text: string };
+
+export type CollaborationDocumentRead = {
+  key: string;
+  /** Echoed back on submit: the record stores WHICH TEXT was agreed to, not
+      just that a box was ticked. */
+  version: string;
+  title: string;
+  subtitle: string;
+  acceptance_label: string;
+  blocks: CollaborationDocumentBlock[];
 };

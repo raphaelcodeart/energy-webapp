@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TimestampMixin, UUIDPKMixin
@@ -57,6 +57,15 @@ class AgentProfile(UUIDPKMixin, TimestampMixin, Base):
     # holder, not just whoever is logged in, agreed. Visible to admins so they
     # can see who has/hasn't formally accepted (docs/business-rules.md).
     collaboration_contract_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: Every document this person accepted, as
+    #: {key: {"version": "2026.1", "accepted_at": "<iso8601>"}} -- see
+    #: network/collaboration_documents.py. A JSONB map rather than a column
+    #: pair per document: the set of documents is a business decision that
+    #: will change (the Allegato A/B is already pending), and each change
+    #: must not cost a migration. `collaboration_contract_version` /
+    #: `collaboration_accepted_at` above are kept in step for the main
+    #: contract, so nothing that already reads them breaks.
+    collaboration_accepted_documents: Mapped[dict] = mapped_column(JSONB, default=dict)
     collaboration_accepted_at: Mapped[datetime | None] = mapped_column(nullable=True)
     collaboration_otp_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
 

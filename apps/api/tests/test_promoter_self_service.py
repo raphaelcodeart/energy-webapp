@@ -16,6 +16,7 @@ import pytest
 from app.core.security import hash_otp_code, hash_password
 from app.domains.auth import service as auth_service
 from app.domains.auth.models import OtpCode
+from app.domains.network import collaboration_documents
 from app.domains.network import service as network_service
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users.models import User
@@ -40,6 +41,12 @@ async def _apply_as_promoter(db, organization_id, user_id, *, first_name, last_n
     return await network_service.apply_as_promoter(
         db, organization_id=organization_id, user_id=user_id, first_name=first_name, last_name=last_name,
         accept_contract=True, otp_code=VALID_OTP_CODE,
+        # Every document currently required, at its current version -- derived
+        # rather than hardcoded, so adding a document to
+        # collaboration_documents.py does not silently make these tests
+        # exercise a partial acceptance. What happens when one is MISSING is
+        # covered in test_collaboration_documents.py.
+        accepted_documents=collaboration_documents.required_versions(),
     )
 
 

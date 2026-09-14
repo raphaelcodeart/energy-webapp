@@ -9,6 +9,7 @@ from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError, upload_media
 from app.domains.customers.schemas import CustomerCreate, CustomerRead
+from app.domains.network import collaboration_documents
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile
 from app.domains.network.schemas import (
@@ -20,6 +21,7 @@ from app.domains.network.schemas import (
     BranchContractRead,
     BranchMemberRead,
     BranchSummaryRead,
+    CollaborationDocumentRead,
     MoveAgentRequest,
     OrganizationNetworkLevelsRead,
     PromoterApplicationRequest,
@@ -151,6 +153,30 @@ async def get_my_promoter_application(
     return AgentProfileRead.model_validate(agent)
 
 
+@router.get("/agents/apply/documents", response_model=list[CollaborationDocumentRead])
+async def get_collaboration_documents(
+    _current_user: CurrentUser = Depends(get_current_user),
+) -> list[CollaborationDocumentRead]:
+    """The documents a customer must read and accept to become a promoter,
+    with their current versions.
+
+    Served from the backend rather than hardcoded in the dashboard: this is
+    what people legally sign, so there must be exactly one copy of it, it must
+    be versioned alongside the acceptance record, and changing it must not
+    require a frontend release. The dashboard renders one panel and one
+    checkbox per entry and echoes the versions back on submit.
+
+    Authentication only: it is the same text every applicant sees, and the
+    "lavora con noi" form is reachable by any logged-in customer."""
+    return [
+        CollaborationDocumentRead(
+            key=doc.key, version=doc.version, title=doc.title, subtitle=doc.subtitle,
+            acceptance_label=doc.acceptance_label, blocks=doc.blocks,
+        )
+        for doc in collaboration_documents.COLLABORATION_DOCUMENTS
+    ]
+
+
 @router.post(
     "/agents/apply/request-otp",
     status_code=status.HTTP_202_ACCEPTED,
@@ -221,6 +247,7 @@ async def apply_as_promoter(
             db, organization_id=current_user.organization_id,
             user_id=current_user.user_id, first_name=first_name, last_name=last_name,
             accept_contract=payload.accept_contract, otp_code=payload.otp_code,
+            accepted_documents=payload.accepted_documents,
         )
     except network_service.DuplicateApplicationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc

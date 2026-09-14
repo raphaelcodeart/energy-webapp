@@ -4,6 +4,38 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 40 — 2026-09-14 — Il contratto vero in "Lavora con noi", con doppia accettazione
+
+- [x] **Il testo mostrato non era il contratto.** Era un riassunto di un
+  paragrafo, scritto a mano dentro `customer-promoter-application-card.tsx`.
+  Sostituito dal contratto di procacciamento di affari integrale — 16
+  articoli, 77 clausole numerate, ~25.500 caratteri — trascritto dal PDF
+  cartaceo fornito.
+- [x] **Il testo vive sul server**, `network/collaboration_documents.py`,
+  servito da `GET /network/agents/apply/documents`. Una sola copia, versionata
+  insieme all'accettazione, modificabile senza toccare la dashboard. Viaggia
+  come blocchi strutturati (heading/paragraph/clause/bullets/table/signature),
+  mai come markup: un test verifica che nessun documento contenga `<` o `>`.
+- [x] **Due accettazioni, non una.** Il contratto, e — separatamente —
+  l'approvazione specifica delle clausole ex artt. 1341 e ss. c.c., che sul
+  cartaceo è una seconda firma a parte. Una casella per documento; la firma
+  OTP resta identica.
+- [x] **Si registra la VERSIONE, non un booleano**
+  (`agent_profiles.collaboration_accepted_documents`, JSONB, migrazione `0037`
+  / `d9a04b7e13c5`). Il server rifiuta un'accettazione parziale o con una
+  versione vecchia. Una casella dice che qualcuno ha cliccato; una versione
+  dice quale testo è stato accettato.
+- [x] Admin: il badge "Contratto ✓" in Anagrafiche Promoter mostra ora quanti
+  documenti e a quale versione (nel tooltip).
+- [x] 7 test nuovi, fra cui: il contratto contiene davvero i suoi riferimenti
+  di legge e tutte le clausole; nessun markup; una versione vecchia viene
+  respinta; l'OTP resta obbligatorio sopra le accettazioni. Suite 276 → 284.
+- [ ] **In attesa**: Allegato A (tabella compensi) e Allegato B (schema
+  avanzamenti di carriera). Il testo fornito per l'allegato era un duplicato
+  del contratto; sono cifre che le persone firmano, quindi non sono state
+  inventate. Lo scheletro è pronto e commentato nel file — aggiungere una voce
+  a `COLLABORATION_DOCUMENTS` è l'unica modifica necessaria.
+
 ## Session 39 — 2026-09-14 — "Invita un amico" (1 livello, separata) + etichetta LialCash
 
 - [x] **"LialCash" su una riga propria** sotto l'importo, in grassetto e più

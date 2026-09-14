@@ -577,7 +577,18 @@ export function AdminPromotersPanel({
                             Privacy {a.privacy_accepted ? "✓" : "✗"}
                           </span>
                           <span
-                            title={a.collaboration_accepted_at ? `Contratto accettato il ${new Date(a.collaboration_accepted_at).toLocaleDateString("it-IT")}` : "Contratto di collaborazione non accettato"}
+                            title={
+                              a.collaboration_accepted_at
+                                ? [
+                                    `Accettato il ${new Date(a.collaboration_accepted_at).toLocaleString("it-IT")}`,
+                                    // Which documents, and at which wording -- an
+                                    // acceptance is only meaningful with its version.
+                                    ...Object.entries(a.collaboration_accepted_documents ?? {}).map(
+                                      ([key, v]) => `${key} v${v.version}`
+                                    ),
+                                  ].join(" · ")
+                                : "Contratto di collaborazione non accettato"
+                            }
                             className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
                               a.collaboration_accepted_at
                                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
@@ -585,6 +596,11 @@ export function AdminPromotersPanel({
                             }`}
                           >
                             Contratto {a.collaboration_accepted_at ? "✓" : "✗"}
+                            {Object.keys(a.collaboration_accepted_documents ?? {}).length > 1 && (
+                              <span className="ml-1 opacity-75">
+                                ({Object.keys(a.collaboration_accepted_documents ?? {}).length} doc.)
+                              </span>
+                            )}
                           </span>
                           {a.user_status === "FROZEN" && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold border bg-sky-500/10 text-sky-400 border-sky-500/20">

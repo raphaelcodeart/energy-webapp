@@ -21,6 +21,12 @@ class AgentProfileRead(BaseModel):
     rejection_reason: str | None = None
     is_blacklisted: bool = False
     collaboration_accepted_at: datetime | None = None
+    #: {key: {"version": ..., "accepted_at": ...}} -- which documents this
+    #: person accepted and at which wording. Empty for promoters who signed
+    #: up before multi-document acceptance existed: deliberately not
+    #: back-filled, because an acceptance log must never claim somebody
+    #: agreed to text they were never shown.
+    collaboration_accepted_documents: dict[str, dict] = {}
 
 
 class RankProgressRead(BaseModel):
@@ -143,6 +149,12 @@ class AgentListItemRead(BaseModel):
     is_blacklisted: bool = False
     user_id: uuid.UUID | None = None
     collaboration_accepted_at: datetime | None = None
+    #: {key: {"version": ..., "accepted_at": ...}} -- which documents this
+    #: person accepted and at which wording. Empty for promoters who signed
+    #: up before multi-document acceptance existed: deliberately not
+    #: back-filled, because an acceptance log must never claim somebody
+    #: agreed to text they were never shown.
+    collaboration_accepted_documents: dict[str, dict] = {}
     email_verified: bool = False
     privacy_accepted: bool = False
     user_status: str | None = None
@@ -243,6 +255,11 @@ class PromoterApplicationRequest(BaseModel):
     # Must be true: the "lavora con noi" form shows the collaboration
     # agreement text with a checkbox that gates the submit button.
     accept_contract: bool = False
+    # {document key: version the applicant was shown}, one entry per document
+    # in network/collaboration_documents.py. The version matters: a boolean
+    # only records that a box was ticked, this records WHICH TEXT was agreed
+    # to. The server rejects anything missing or out of date.
+    accepted_documents: dict[str, str] = {}
     # The 6-digit code emailed by POST /agents/apply/request-otp.
     otp_code: str
 
@@ -282,3 +299,16 @@ class OrganizationNetworkLevelsRead(BaseModel):
     people_total: int
     levels_total: int
     people_by_level: dict[int, int]
+
+
+class CollaborationDocumentRead(BaseModel):
+    """One document a would-be promoter must read and accept. `blocks` is
+    structured content (heading / paragraph / clause / bullets / table /
+    signature), never markup -- see network/collaboration_documents.py."""
+
+    key: str
+    version: str
+    title: str
+    subtitle: str
+    acceptance_label: str
+    blocks: list[dict]

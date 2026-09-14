@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { CollaborationDocumentViewer } from "@/components/collaboration-document-viewer";
 import { friendlyApiError } from "@/lib/api-error";
-import type { AgentProfileRead } from "@/lib/types";
+import type { AgentProfileRead, CollaborationDocumentRead } from "@/lib/types";
 
 async function fetchMyApplication(): Promise<AgentProfileRead | null> {
   const res = await fetch("/api/proxy/network/agents/me");
@@ -23,7 +24,17 @@ interface CustomerPromoterApplicationCardProps {
   hideWhenActive?: boolean;
 }
 
-const COLLABORATION_CONTRACT_TEXT = `Accettando questo contratto di collaborazione, dichiari di voler diventare Promoter Lial Energy e di aver preso visione delle condizioni di collaborazione: promuoverai i prodotti e servizi Lial Energy nel rispetto della normativa vigente e del codice di condotta aziendale, e riceverai le commissioni maturate secondo il piano provvigionale in vigore, accreditate sul tuo wallet Lial Energy. La collaborazione non costituisce rapporto di lavoro subordinato ed è revocabile in qualsiasi momento da entrambe le parti.`;
+/** The legal text is NOT here. It is served by the backend
+    (GET /network/agents/apply/documents) so there is exactly one copy of what
+    people sign, it carries a version that gets recorded with the acceptance,
+    and updating it needs no frontend release. This used to be a one-paragraph
+    summary hardcoded in this file -- which meant the app showed a text that
+    was not the contract. */
+async function fetchCollaborationDocuments(): Promise<CollaborationDocumentRead[]> {
+  const res = await fetch("/api/proxy/network/agents/apply/documents");
+  if (!res.ok) throw new Error("Impossibile caricare il contratto di collaborazione.");
+  return res.json();
+}
 
 export function CustomerPromoterApplicationCard({ hideWhenActive = false }: CustomerPromoterApplicationCardProps = {}) {
   const queryClient = useQueryClient();
@@ -32,14 +43,22 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
     queryFn: fetchMyApplication,
   });
   const [modalOpen, setModalOpen] = useState(false);
-  const [acceptContract, setAcceptContract] = useState(false);
+  // One acceptance per document, keyed by document key -- the modal cannot be
+  // submitted until every document the backend returned has been ticked, and
+  // the backend independently refuses an application that is missing one.
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const { data: documents, error: documentsError } = useQuery({
+    queryKey: ["promoter-application", "documents"],
+    queryFn: fetchCollaborationDocuments,
+    enabled: modalOpen,
+  });
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function openModal() {
-    setAcceptContract(false);
+    setAccepted({});
     setOtpRequested(false);
     setOtpCode("");
     setError(null);
@@ -67,7 +86,15 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
       const res = await fetch("/api/proxy/network/agents/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accept_contract: acceptContract, otp_code: otpCode }),
+        body: JSON.stringify({
+          accept_contract: true,
+          // The version of each text actually shown on screen, echoed back:
+          // that is what gets recorded, so "accepted" means a specific
+          // wording, not just a ticked box. A stale version (the page was
+          // open while the contract changed) is refused by the backend.
+          accepted_documents: Object.fromEntries((documents ?? []).map((d) => [d.key, d.version])),
+          otp_code: otpCode,
+        }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res, "Impossibile inviare la richiesta. Riprova più tardi."));
       await queryClient.invalidateQueries({ queryKey: ["customer", "promoter-application"] });
@@ -82,6 +109,11 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
       setSubmitting(false);
     }
   }
+
+  // Derived, never stored: "all accepted" must follow from the documents the
+  // backend actually returned, so a newly added document cannot be skipped by
+  // a stale flag.
+  const allAccepted = !!documents && documents.length > 0 && documents.every((d) => accepted[d.key]);
 
   if (isLoading) {
     return <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 animate-pulse h-40" />;
@@ -174,27 +206,40 @@ export function CustomerPromoterApplicationCard({ hideWhenActive = false }: Cust
 
       {modalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-8 overflow-y-auto">
-          <div className="w-full max-w-md glass-card rounded-2xl p-6 my-auto animate-scale-up">
-            <h3 className="text-base font-semibold text-white light:text-slate-900 mb-3">Diventa Promoter Lial Energy</h3>
+          <div className="w-full max-w-2xl glass-card rounded-2xl p-6 my-auto animate-scale-up">
+            <h3 className="text-base font-semibold text-white light:text-slate-900">Diventa Promoter Lial Energy</h3>
+            <p className="text-xs text-slate-400 light:text-slate-500 mt-1 mb-4">
+              Leggi e accetta i documenti qui sotto, poi firma con il codice che ricevi via email.
+            </p>
 
-            <div className="max-h-40 overflow-y-auto rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 p-3 text-xs text-slate-400 light:text-slate-600 leading-relaxed mb-3">
-              {COLLABORATION_CONTRACT_TEXT}
+            {documentsError && (
+              <p className="text-xs text-rose-400 mb-3">Impossibile caricare il contratto. Riprova più tardi.</p>
+            )}
+            {!documents && !documentsError && (
+              <div className="h-40 rounded-xl bg-white/5 light:bg-slate-900/5 animate-pulse mb-4" />
+            )}
+
+            <div className="space-y-5 mb-5">
+              {(documents ?? []).map((doc) => (
+                <div key={doc.key}>
+                  <CollaborationDocumentViewer document={doc} />
+                  <label className="flex items-start gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer mt-2.5">
+                    <input
+                      type="checkbox"
+                      checked={!!accepted[doc.key]}
+                      onChange={(e) => setAccepted((prev) => ({ ...prev, [doc.key]: e.target.checked }))}
+                      className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
+                    />
+                    <span>{doc.acceptance_label}</span>
+                  </label>
+                </div>
+              ))}
             </div>
-
-            <label className="flex items-start gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer mb-4">
-              <input
-                type="checkbox"
-                checked={acceptContract}
-                onChange={(e) => setAcceptContract(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-white/20 accent-orange-500 shrink-0"
-              />
-              <span>Ho letto e accetto il contratto di collaborazione.</span>
-            </label>
 
             {!otpRequested ? (
               <button
                 onClick={handleRequestOtp}
-                disabled={!acceptContract || submitting}
+                disabled={!allAccepted || submitting}
                 className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-2.5 text-sm font-semibold text-white shadow-lg transition duration-300 disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? "Invio codice..." : "Invia codice di conferma via email"}

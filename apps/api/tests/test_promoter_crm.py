@@ -18,7 +18,6 @@ from app.domains.auth.models import PasswordResetToken
 from app.domains.catalog import service as catalog_service
 from app.domains.catalog.schemas import ProductCreate
 from app.domains.contracts import service as contracts_service
-from app.domains.customers.models import Customer
 from app.domains.customers.schemas import CustomerCreate
 from app.domains.network import service as network_service
 from app.domains.rbac.models import Role

@@ -15,6 +15,7 @@ import pytest
 from app.core.security import hash_otp_code, hash_password
 from app.domains.auth import service as auth_service
 from app.domains.auth.models import EmailVerificationToken, OtpCode
+from app.domains.network import collaboration_documents
 from app.domains.network import service as network_service
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users import service as users_service
@@ -197,6 +198,7 @@ async def test_apply_as_promoter_rejects_invalid_otp(db, organization_id):
         await network_service.apply_as_promoter(
             db, organization_id=organization_id, user_id=user.id, first_name="Test", last_name="Promoter",
             accept_contract=True, otp_code="999999",
+            accepted_documents=collaboration_documents.required_versions(),
         )
 
 
@@ -216,6 +218,7 @@ async def test_apply_as_promoter_records_collaboration_acceptance(db, organizati
     agent = await network_service.apply_as_promoter(
         db, organization_id=organization_id, user_id=user.id, first_name="Test", last_name="Promoter",
         accept_contract=True, otp_code="246810",
+        accepted_documents=collaboration_documents.required_versions(),
     )
 
     assert agent.status == "ACTIVE"

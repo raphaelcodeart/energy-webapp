@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
 from app.domains.audit import service as audit_service
+from app.domains.network import collaboration_documents
 
 if TYPE_CHECKING:
     # Annotation-only -- the real imports stay function-local at their call
@@ -267,6 +268,7 @@ async def apply_as_promoter(
     last_name: str,
     accept_contract: bool,
     otp_code: str,
+    accepted_documents: dict[str, str] | None = None,
 ) -> AgentProfile:
     """Self-service 'Lavora con noi': an existing CUSTOMER becomes a PROMOTER.
 
@@ -299,7 +301,26 @@ async def apply_as_promoter(
     from app.domains.users.models import User
 
     if not accept_contract:
-        raise ContractNotAcceptedError("You must accept the collaboration agreement")
+        raise ContractNotAcceptedError("Devi accettare il contratto di collaborazione")
+
+    # Every document currently required must be accepted, at the version the
+    # applicant was actually shown. A dict of versions rather than a second
+    # boolean: a boolean only says "a box was ticked", this says WHICH TEXT
+    # was agreed to -- which is the only thing worth recording about a
+    # signature. A client sending a stale version (they had the page open
+    # while the text was updated) is refused rather than silently recorded
+    # against the new one.
+    required = collaboration_documents.required_versions()
+    submitted = accepted_documents or {}
+    missing = [
+        doc.title
+        for doc in collaboration_documents.COLLABORATION_DOCUMENTS
+        if submitted.get(doc.key) != doc.version
+    ]
+    if missing:
+        raise ContractNotAcceptedError(
+            "Devi leggere e accettare: " + "; ".join(missing)
+        )
 
     user = await db.get(User, user_id)
     if user is None:
@@ -311,6 +332,10 @@ async def apply_as_promoter(
         raise InvalidOtpError("Invalid or expired confirmation code")
 
     collaboration_accepted_at = utcnow()
+    accepted_documents_record = {
+        key: {"version": version, "accepted_at": collaboration_accepted_at.isoformat()}
+        for key, version in required.items()
+    }
 
     existing = await get_own_agent_profile(db, organization_id=organization_id, user_id=user_id)
     referring_agent_id = await _resolve_referring_agent_id(db, organization_id=organization_id, user_id=user_id)
@@ -340,6 +365,7 @@ async def apply_as_promoter(
             existing.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
             existing.collaboration_accepted_at = collaboration_accepted_at
             existing.collaboration_otp_verified_at = collaboration_accepted_at
+            existing.collaboration_accepted_documents = accepted_documents_record
             await audit_service.record(
                 db, organization_id=organization_id, actor_user_id=user_id,
                 action="network.agent_reapplied", entity_type="agent_profile", entity_id=str(existing.id),
@@ -360,6 +386,7 @@ async def apply_as_promoter(
         existing.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
         existing.collaboration_accepted_at = collaboration_accepted_at
         existing.collaboration_otp_verified_at = collaboration_accepted_at
+        existing.collaboration_accepted_documents = accepted_documents_record
 
         current_parent_id = (
             await db.execute(
@@ -402,6 +429,7 @@ async def apply_as_promoter(
     agent.collaboration_contract_version = COLLABORATION_CONTRACT_VERSION
     agent.collaboration_accepted_at = collaboration_accepted_at
     agent.collaboration_otp_verified_at = collaboration_accepted_at
+    agent.collaboration_accepted_documents = accepted_documents_record
     await rbac_service.assign_role(db, user_id=user_id, organization_id=organization_id, role_code="PROMOTER")
     await db.commit()
     await db.refresh(agent)
@@ -898,6 +926,7 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             AgentProfile.last_name,
             AgentProfile.user_id,
             AgentProfile.collaboration_accepted_at,
+            AgentProfile.collaboration_accepted_documents,
             User.email_verified_at,
             User.privacy_accepted_at,
             User.status,
@@ -933,9 +962,10 @@ async def list_agents(db: AsyncSession, *, organization_id: uuid.UUID) -> list[d
             "last_name": r[13],
             "user_id": r[14],
             "collaboration_accepted_at": r[15],
-            "email_verified": r[16] is not None,
-            "privacy_accepted": r[17] is not None,
-            "user_status": r[18],
+            "collaboration_accepted_documents": r[16] or {},
+            "email_verified": r[17] is not None,
+            "privacy_accepted": r[18] is not None,
+            "user_status": r[19],
         }
         for r in rows
     ]
