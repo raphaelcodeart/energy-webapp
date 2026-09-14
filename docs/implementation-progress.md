@@ -4,6 +4,70 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 48 — 2026-09-14 — Il fascicolo di un contratto: ZIP e Google Drive
+
+Un contratto non vive solo qui dentro: la pratica va mandata a un fornitore,
+a un commercialista, a un legale. Finora l'unico modo era aprire gli allegati
+uno per uno dai link a scadenza, risalvarli a mano e ricopiare i dati del
+cliente da tre schermate diverse.
+
+- [x] **`GET /contracts/{id}/dossier.zip`** — tutti gli allegati più un PDF
+  riassuntivo, in un archivio chiamato `<nome cliente>-<id contratto>.zip`.
+  Costruito interamente in memoria: un file temporaneo su disco sarebbe una
+  copia in chiaro di documenti d'identità da ricordarsi di cancellare.
+- [x] **`POST /contracts/{id}/dossier/drive`** — le stesse identiche cose in
+  una cartella Drive con lo stesso nome. Stesso contenuto perché lo
+  costruisce **un solo modulo** (`contracts/dossier.py`): due sbocchi, una
+  sola verità su cosa ci finisce dentro.
+- [x] **Il PDF** (reportlab, puro Python: nessuna libreria di sistema
+  aggiunta all'immagine, nessun browser headless) contiene tutto ciò che
+  serve a chi legge la pratica senza avere accesso al gestionale —
+  anagrafica, dati societari, recapiti, punto di fornitura con POD/PDR,
+  importi netto/IVA/lordo, modalità e stato del pagamento, IBAN, i due
+  promoter, e l'elenco degli allegati con il loro stato di verifica.
+- [x] **Un allegato irrecuperabile non porta giù il fascicolo.** Se un file
+  non si legge dal bucket, al suo posto entra un `.txt` che dice quale
+  documento manca e perché: il resto serve comunque, e chi apre la cartella
+  deve *leggere* cosa non c'è invece di accorgersene contando i file.
+- [x] **Permesso `documents.review`**, non `documents.download`: il secondo
+  ce l'ha anche il cliente per i propri documenti, mentre qui esce l'intero
+  fascicolo di una pratica. Entrambe le azioni finiscono nell'audit log.
+- [x] **Bug latente trovato e corretto nel proxy BFF**: la rotta GET faceva
+  `await apiRes.text()` su qualunque risposta. Nessun download binario ci
+  passava ancora, quindi non aveva mai dato problemi — ma lo zip sarebbe
+  arrivato corrotto (ogni sequenza non valida in UTF-8 diventa U+FFFD).
+  Ora legge `arrayBuffer()` e inoltra anche il `Content-Disposition`, che è
+  l'unico posto dove vive il nome con cui il file viene salvato.
+- [x] **Google Drive** (`integrations/google_drive.py`): OAuth, l'amministratore
+  autorizza una volta il proprio account e il pulsante funziona per tutti gli
+  amministratori dell'organizzazione. Parla direttamente con l'API REST via
+  `httpx` invece di tirarsi dentro `google-api-python-client`: servono tre
+  chiamate HTTP e una ricerca. Ambito **`drive.file`**, non `drive` —
+  l'applicazione vede e tocca soltanto ciò che ha creato lei, non può
+  leggere né elencare il resto di quel Drive.
+- [x] **Premere due volte non duplica**: cartella riusata se esiste, file con
+  lo stesso nome sostituito e non affiancato. Upload **resumable** e non
+  multipart, perché Drive documenta il multipart fino a 5 MB e un allegato
+  qui può arrivare a 15: scegliere la strada che regge solo i file piccoli
+  significa aspettare la prima foto di bolletta fatta con un telefono
+  recente per scoprirlo.
+- [x] Pannello *Impostazioni → Google Drive* con Client ID/Secret, cartella
+  di destinazione facoltativa, e l'URI di reindirizzamento da registrare su
+  Google mostrato in chiaro con un pulsante Copia — se non combacia
+  carattere per carattere Google rifiuta e non spiega altro. Campi non
+  controllati (`defaultValue` + `key`): nessun `useEffect` che ricopia lo
+  stato del server dentro la form.
+- [x] Procedura completa per creare il client OAuth su Google Cloud in
+  `docs/server-migration-guide.md` §13, compresi i tre modi in cui smette di
+  funzionare (accesso revocato, app "in test" che scade dopo sette giorni,
+  `redirect_uri_mismatch`).
+- [x] 13 test nuovi, fra cui: il nome del fascicolo per un cliente che si
+  chiama "Bàr D'Angelo & C. S.r.l.", i nomi di dispositivo DOS che nel 2026
+  sono ancora un problema, un allegato irrecuperabile, e il PDF verificato
+  **nel contenuto** (compressione dei flussi spenta per la durata del test)
+  invece che sul solo `%PDF` — un PDF vuoto passerebbe qualunque controllo
+  sull'intestazione.
+
 ## Session 47 — 2026-09-14 — Un solo pulsante nella barra del sito pubblico
 
 - [x] `infrastructure/marketing-site/`: la barra in alto aveva due pulsanti

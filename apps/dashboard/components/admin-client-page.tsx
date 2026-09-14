@@ -10,6 +10,7 @@ import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
+import { ContractDossierActions } from "@/components/contract-dossier-actions";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
 import { AdminCommissionsPanel } from "@/components/admin-commissions-panel";
 import { AdminWalletsPanel } from "@/components/admin-wallets-panel";
@@ -776,6 +777,13 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
             <div className="mb-5">
               <p className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase mb-2">Documenti Contrattuali</p>
               <ContractDocumentsPanel contractId={selectedContract.id} isStaff />
+            </div>
+
+            <div className="mb-5">
+              <p className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase mb-2">
+                Fascicolo Completo
+              </p>
+              <ContractDossierActions contractId={selectedContract.id} />
             </div>
 
             {availableTargets.length === 0 ? (

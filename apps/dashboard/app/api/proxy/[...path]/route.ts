@@ -43,11 +43,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const body = await apiRes.text();
-  return new NextResponse(body, {
-    status: apiRes.status,
-    headers: { "Content-Type": apiRes.headers.get("content-type") ?? "application/json" },
+  // arrayBuffer(), non text(): da questa rotta passano anche download
+  // binari (lo zip del fascicolo contratto, GET /contracts/{id}/dossier.zip),
+  // e decodificarli come testo li distrugge -- ogni sequenza non valida in
+  // UTF-8 diventa U+FFFD e l'archivio arriva corrotto. Per il JSON non
+  // cambia niente: sono gli stessi byte.
+  const body = await apiRes.arrayBuffer();
+  const headers = new Headers({
+    "Content-Type": apiRes.headers.get("content-type") ?? "application/json",
   });
+  // Il nome con cui il file viene salvato vive solo qui dentro: senza
+  // inoltrare questo header il browser lo inventa dal percorso.
+  const disposition = apiRes.headers.get("content-disposition");
+  if (disposition) headers.set("Content-Disposition", disposition);
+
+  if (apiRes.status === 204 || apiRes.status === 205 || apiRes.status === 304) {
+    return new NextResponse(null, { status: apiRes.status, headers });
+  }
+  return new NextResponse(body, { status: apiRes.status, headers });
 }
 
 /** Shared by every body-carrying method (POST/PATCH/PUT/DELETE) -- forwarding

@@ -79,6 +79,18 @@ Roma 12, Milano" — non solo il codice POD/PDR, e data di scadenza/rinnovo ben
 in evidenza, colorata in ambra quando manca meno di 30 giorni). Ogni contratto
 mostra anche il proprio **IBAN per l'addebito** (modificabile in linea).
 
+> **Lato amministratore**, aprendo un contratto compare la sezione
+> **Fascicolo Completo** con due pulsanti. **Scarica tutto (ZIP)** produce un
+> archivio chiamato *nome cliente-id contratto* con dentro tutti i documenti
+> allegati e un **PDF riassuntivo** di contratto e cliente (anagrafica,
+> punto di fornitura con POD/PDR, importi con IVA, modalità di pagamento,
+> IBAN, promoter, ed elenco degli allegati con il loro stato di verifica) —
+> è quello che si manda al fornitore o al commercialista. **Invia su Drive**
+> mette le stesse identiche cose in una cartella con lo stesso nome su
+> Google Drive; premerlo due volte non crea una seconda cartella, aggiorna
+> quella che c'è. Il secondo pulsante funziona dopo aver collegato un
+> account Google una volta sola, da *Impostazioni → Google Drive*.
+
 Finché un contratto è in corso di attivazione, la scheda non mostra più
 l'elenco dei documenti in mezzo a tutto il resto: mostra **un solo riquadro**
 che dice cosa manca davvero ("Mancano 2 documenti", "Documenti in verifica",

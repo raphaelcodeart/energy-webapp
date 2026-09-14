@@ -1,12 +1,14 @@
+import urllib.parse
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
-from app.domains.contracts import payment_plans
+from app.domains.audit import service as audit_service
+from app.domains.contracts import dossier, payment_plans
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
 from app.domains.contracts.schemas import (
@@ -24,6 +26,9 @@ from app.domains.contracts.schemas import (
 from app.domains.contracts.service import InvalidProducerAgentError, SelfServiceContractError
 from app.domains.contracts.state_machine import InvalidTransitionError
 from app.domains.customers.models import Customer
+from app.domains.integrations import google_drive
+from app.domains.integrations.google_drive import GoogleDriveError
+from app.domains.integrations.schemas import DriveUploadResultRead
 from app.domains.network import service as network_service
 from app.domains.organizations import service as organizations_service
 from app.domains.support.service import actor_role_for
@@ -352,3 +357,87 @@ async def transition_contract(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     rows = await contract_service.to_read_dicts(db, [contract])
     return ContractRead(**rows[0])
+
+
+@router.get("/{contract_id}/dossier.zip")
+async def download_contract_dossier(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("documents.review")),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Tutti gli allegati del contratto più un PDF riassuntivo, in un solo
+    zip chiamato `<nome cliente>-<id contratto>.zip`.
+
+    Dietro `documents.review` e non `documents.download`: quest'ultimo ce
+    l'ha anche il cliente per i propri documenti, mentre qui si scarica
+    l'intero fascicolo di una pratica -- anagrafica, IBAN, riferimenti di
+    pagamento -- ed è roba da amministrazione, esattamente le stesse persone
+    che quei documenti li verificano una per una.
+
+    Lo zip si costruisce tutto in memoria: un fascicolo sono cinque o sei
+    file da qualche MB, e un file temporaneo su disco sarebbe una copia in
+    chiaro di documenti d'identità da ricordarsi di cancellare."""
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    built = await dossier.build_dossier(
+        db, organization_id=current_user.organization_id, contract=contract
+    )
+    await audit_service.record(
+        db, organization_id=current_user.organization_id, actor_user_id=current_user.user_id,
+        action="contract.dossier_downloaded", entity_type="contract", entity_id=str(contract_id),
+        new_value={"files": len(built.files), "archive": built.zip_filename},
+    )
+    await db.commit()
+
+    content = dossier.zip_bytes(built)
+    # Due volte il nome: `filename=` con i soli ASCII per i client vecchi,
+    # `filename*=` con la versione UTF-8 per tutti gli altri. Senza il
+    # secondo, "Bàrbara Rossi-....zip" arriva storpiato.
+    ascii_name = built.zip_filename.encode("ascii", "replace").decode("ascii").replace("?", "_")
+    quoted = urllib.parse.quote(built.zip_filename)
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quoted}',
+            "Content-Length": str(len(content)),
+        },
+    )
+
+
+@router.post("/{contract_id}/dossier/drive", response_model=DriveUploadResultRead)
+async def send_contract_dossier_to_drive(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("documents.review")),
+    db: AsyncSession = Depends(get_db),
+) -> DriveUploadResultRead:
+    """Lo stesso fascicolo dello zip, in una cartella Google Drive chiamata
+    `<nome cliente>-<id contratto>`. Stesso contenuto perché lo costruisce
+    lo stesso modulo: le due strade non possono divergere."""
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    built = await dossier.build_dossier(
+        db, organization_id=current_user.organization_id, contract=contract
+    )
+    try:
+        result = await google_drive.upload_dossier(
+            db, organization_id=current_user.organization_id, dossier=built
+        )
+    except GoogleDriveError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    await audit_service.record(
+        db, organization_id=current_user.organization_id, actor_user_id=current_user.user_id,
+        action="contract.dossier_sent_to_drive", entity_type="contract", entity_id=str(contract_id),
+        new_value={"folder": result.folder_name, "uploaded": result.uploaded, "replaced": result.replaced},
+    )
+    await db.commit()
+
+    return DriveUploadResultRead(
+        folder_name=result.folder_name,
+        folder_url=result.folder_url,
+        uploaded=result.uploaded,
+        replaced=result.replaced,
+    )

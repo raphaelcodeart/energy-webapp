@@ -1241,6 +1241,8 @@ normale, vedi §4.4 scenario C. Poi, in Impostazioni organizzazione:
   carta" è visibile ai clienti ma nessun pagamento è reale. Prima di aprire
   al pubblico, chiavi live.
 - **IBAN aziendale** e intestatario, per i pagamenti a bonifico.
+- **Google Drive** — facoltativo, serve solo al pulsante "Invia su Drive"
+  sul fascicolo di un contratto. Vedi §13.
 
 Poi, sempre dall'interfaccia: i **prodotti** reali (con i gettoni per grado,
 che il bootstrap lascia ai valori placeholder di `app/seed/ranks.py`), e solo
@@ -1273,3 +1275,86 @@ Perché niente di tutto questo è nel database di una nuova azienda:
 - **Il sito vetrina** `infrastructure/marketing-site/` è interamente Lial
   Energy: o se ne fa uno nuovo, o si toglie il blocco `server` che lo serve
   in `infrastructure/nginx/nginx.conf`.
+
+## 13. Collegare Google Drive (Session 48)
+
+Serve a una cosa sola: il pulsante **"Invia su Drive"** sul fascicolo di un
+contratto, che crea una cartella `<nome cliente>-<id contratto>` con dentro
+tutti gli allegati e il PDF riassuntivo. Senza questa configurazione il resto
+dell'applicazione funziona identico — e il pulsante "Scarica tutto (ZIP)",
+che fa la stessa cosa in locale, non richiede nulla.
+
+I file finiscono sul Drive dell'**account che autorizza**. Un normale account
+Gmail gratuito va benissimo: non serve Google Workspace.
+
+### 13.1 Creare il client OAuth su Google Cloud
+
+Una volta sola, da fare con l'account Google che ospiterà i fascicoli.
+
+1. [console.cloud.google.com](https://console.cloud.google.com/) → crea un
+   progetto (un nome qualsiasi, es. "Gestionale <Azienda>").
+2. **API e servizi → Libreria** → cerca **Google Drive API** → *Abilita*.
+   Senza questo passaggio ogni chiamata torna 403 con un messaggio che parla
+   di API non abilitata, e si perde tempo a cercare l'errore altrove.
+3. **API e servizi → Schermata consenso OAuth**:
+   - tipo di utente **Esterno** (con un account Gmail non c'è altra scelta);
+   - nome dell'applicazione, email di assistenza, email di contatto;
+   - alla voce **Ambiti** non serve aggiungere niente a mano: l'ambito
+     (`drive.file`) lo chiede l'applicazione al momento del consenso;
+   - in **Utenti di test** aggiungi l'indirizzo Google che autorizzerà.
+     Finché l'app resta "in test", solo gli utenti elencati lì possono
+     collegarla — ed è esattamente ciò che serve: non è un'app pubblica.
+4. **API e servizi → Credenziali → Crea credenziali → ID client OAuth**:
+   - tipo **Applicazione web**;
+   - in **URI di reindirizzamento autorizzati** incolla l'URI che la
+     dashboard mostra in *Impostazioni → Google Drive* (è
+     `https://<tuo dominio>/admin/google-drive-callback`). Deve combaciare
+     **carattere per carattere**, `https` compreso: se non combacia, Google
+     rifiuta con `redirect_uri_mismatch` e non dice altro.
+5. Copia **Client ID** e **Client Secret**.
+
+### 13.2 Collegare dalla dashboard
+
+*Impostazioni → Google Drive*:
+
+1. incolla Client ID e Client Secret, **Salva**;
+2. facoltativo: **ID cartella di destinazione** — apri su Drive la cartella
+   dove vuoi che nascano i fascicoli e copia la parte dell'indirizzo dopo
+   `/folders/`. Se lo lasci vuoto, le cartelle nascono nella radice del
+   Drive;
+3. **Collega Google Drive** → autorizzi su Google → torni indietro e la
+   riga di stato diventa verde con l'indirizzo collegato.
+
+Da quel momento il pulsante funziona per **tutti** gli amministratori
+dell'organizzazione, perché i file vanno sul Drive di chi ha autorizzato.
+
+**Verifica**: apri un contratto qualunque dalla dashboard amministratore,
+premi *Invia su Drive*, e apri il link alla cartella che compare. Premilo una
+seconda volta: non deve nascere una seconda cartella, e il messaggio deve
+dire che i file sono stati *aggiornati*, non ricaricati.
+
+### 13.3 Cosa questa applicazione può e non può fare sul tuo Drive
+
+L'ambito richiesto è **`drive.file`**, non `drive`: l'applicazione vede e
+tocca **soltanto i file e le cartelle che ha creato lei**. Non può leggere,
+e nemmeno elencare, il resto del Drive dell'account collegato. È anche il
+motivo per cui il controllo "esiste già una cartella con questo nome?"
+funziona senza diventare una finestra sull'account.
+
+Il **refresh token** è salvato in `Organization.settings`, accanto alle
+chiavi Stripe e con lo stesso trattamento: non torna mai indietro da nessuna
+risposta dell'API. *Scollega* lo dimentica; non cancella nulla di ciò che è
+già su Drive, perché quei file appartengono all'account che li ospita.
+
+### 13.4 Quando smette di funzionare
+
+- **"Il collegamento non è più valido"** — l'utente ha revocato l'accesso
+  dal proprio account Google, oppure il client OAuth è stato cancellato
+  dalla console. Si risolve con *Ricollega*.
+- **Un'app OAuth "in test" scade dopo sette giorni** se la schermata di
+  consenso è in modalità test con utenti di prova. Se il collegamento cade
+  ogni settimana è questo: sulla schermata consenso, *Pubblica app*.
+- **`redirect_uri_mismatch`** — l'URI registrato non è identico a quello
+  mostrato nelle impostazioni. Succede tipicamente cambiando dominio o
+  passando da `http` a `https`: l'URI lo costruisce il server da
+  `NEXT_PUBLIC_APP_URL`.

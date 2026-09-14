@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AdminGoogleDriveSettingsCard } from "@/components/admin-google-drive-settings-card";
 import { PasswordInput } from "@/components/password-input";
 import { friendlyApiError } from "@/lib/api-error";
 import type { OrganizationSettingsRead, PaymentSettingsRead } from "@/lib/types";
@@ -134,6 +135,8 @@ export function AdminOrganizationSettingsPanel(
           )}
         </form>
       </div>
+
+      <AdminGoogleDriveSettingsCard />
 
       {isSuperAdmin && <AdminStripeSettingsCard organizationId={organizationId} />}
     </div>

@@ -211,6 +211,25 @@ def upload_document(*, file_bytes: bytes, content_type: str, key_prefix: str) ->
     return key
 
 
+def download_document(*, storage_key: str) -> bytes:
+    """Legge un oggetto del bucket privato **lato server**, senza passare da
+    un URL presigned.
+
+    È l'eccezione alla regola di `generate_presigned_document_url()`, e vale
+    la pena dire perché: un URL presigned serve a far arrivare un file a un
+    browser senza dargli le chiavi del bucket. Qui il file non deve arrivare
+    a nessun browser -- deve finire dentro uno zip o dentro una richiesta a
+    Google Drive che parte da questo stesso processo. Fare un giro via HTTP
+    firmato per riportarsi in memoria un oggetto che il processo può già
+    leggere sarebbe solo più lento e più fragile.
+
+    Nessun controllo di autorizzazione qui dentro: lo fa il chiamante, come
+    per ogni altra funzione di questo modulo."""
+    client = _get_client()
+    response = client.get_object(Bucket=settings.s3_bucket_documents, Key=storage_key)
+    return response["Body"].read()
+
+
 def generate_presigned_document_url(*, storage_key: str, expires_in_seconds: int = 300) -> str:
     """A time-limited, cryptographically signed URL good for exactly one
     object, expiring in `expires_in_seconds` (default 5 minutes) -- the only

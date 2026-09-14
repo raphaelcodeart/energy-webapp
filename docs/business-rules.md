@@ -923,6 +923,61 @@ See `database-model.md §7` for the table shape. Behavior:
   private bucket, presigned-URL-only access, never a public or guessable
   link.
 
+## Il fascicolo di un contratto (Session 48) {#contract-dossier}
+
+Un contratto non vive solo qui dentro: prima o poi la pratica va mandata a
+un fornitore, a un commercialista, a un legale. Fino a Session 48 l'unico
+modo era aprire gli allegati uno per uno dai link a scadenza, risalvarli a
+mano, e ricopiare i dati del cliente da tre schermate diverse.
+
+- **Il contenuto lo costruisce un solo modulo**, `contracts/dossier.py`:
+  tutti gli allegati del contratto più un PDF riassuntivo di contratto e
+  cliente. Due sbocchi -- uno zip scaricato dal browser
+  (`GET /contracts/{id}/dossier.zip`) o una cartella su Google Drive
+  (`POST /contracts/{id}/dossier/drive`) -- e un solo posto che decide cosa
+  ci finisce dentro, così le due strade non possono divergere.
+- **Nome**: `<nome cliente>-<id contratto>`, per l'archivio e per la
+  cartella. Il nome cliente è quello mostrato ovunque nel gestionale
+  (`customers/service.py::display_name_for`), l'id è l'UUID intero. Gli
+  accenti restano; spariscono solo i caratteri che romperebbero un percorso
+  (`/ \ : * ? " < > |`, i controlli), i punti e gli spazi finali (Windows li
+  taglierebbe comunque, e un nome tagliato da altri non è più quello scritto
+  nel database) e i nomi riservati DOS.
+- **Il PDF contiene tutto** quello che serve a chi legge la pratica senza
+  avere accesso al gestionale: intestatario, tipologia, codice fiscale e
+  P.IVA, dati societari, recapiti, indirizzi, punto di fornitura con POD/PDR
+  e matricola, prodotto, importi netto/IVA/lordo, modalità e stato del
+  pagamento, IBAN, promoter che ha attivato e promoter che ha portato il
+  cliente, e l'elenco degli allegati con il loro stato di verifica.
+- **Un allegato irrecuperabile non fa fallire il fascicolo.** Se un file non
+  si legge dal bucket (cancellato a mano, migrazione storage andata storta),
+  al suo posto entra un `.txt` che dice quale documento manca e perché. Il
+  resto del dossier serve comunque, e chi apre la cartella deve *leggere*
+  cosa non c'è invece di accorgersene contando i file.
+- **Permesso: `documents.review`**, non `documents.download`. Il secondo ce
+  l'ha anche il cliente per i propri documenti; qui si scarica l'intero
+  fascicolo di una pratica -- anagrafica, IBAN, riferimenti di pagamento --
+  ed è roba da amministrazione, cioè esattamente le stesse persone che quei
+  documenti li verificano uno per uno. Ogni download e ogni invio su Drive
+  finiscono nell'audit log (`contract.dossier_downloaded`,
+  `contract.dossier_sent_to_drive`).
+- **Google Drive** (`integrations/google_drive.py`): un amministratore
+  autorizza una volta il proprio account, e da lì in poi il pulsante
+  funziona per tutti gli amministratori dell'organizzazione. Lo scope è
+  `drive.file`, non `drive`: l'applicazione vede e tocca soltanto ciò che ha
+  creato lei, non può leggere né elencare il resto di quel Drive. Il refresh
+  token vive in `Organization.settings` con lo stesso trattamento delle
+  chiavi Stripe: non torna mai indietro da nessuna risposta.
+- **Premere due volte "Invia su Drive" non duplica niente**: se la cartella
+  esiste già viene riusata, e un file con lo stesso nome viene sostituito,
+  non affiancato. Il criterio è il nome, perché il nome è ciò che vede chi
+  apre la cartella.
+- L'upload è **resumable**, non multipart: Drive documenta il multipart fino
+  a 5 MB e un allegato qui può arrivare a 15 (`MAX_DOCUMENT_BYTES`).
+  Scegliere la strada che funziona solo per i file piccoli significa
+  aspettare la prima foto di bolletta fatta con un telefono recente per
+  scoprirlo.
+
 ## Password reset
 
 - `POST /auth/forgot-password` always returns success regardless of whether the
