@@ -468,7 +468,7 @@ senza rileggerlo tutto:
 
 ```bash
 # revision attesa dal codice (ultima migrazione nel repo)
-ls apps/api/alembic/versions/ | tail -1
+ls apps/api/alembic/versions/*.py | tail -1   # __pycache__ ordina dopo, va escluso
 # revision realmente applicata al database in esecuzione
 docker compose -f docker-compose.dev.yml exec -T postgres \
   psql -U lial -d lial_energy -tAc "SELECT version_num FROM alembic_version;"
