@@ -156,7 +156,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "customers",
     label: "Miei Clienti",
-    description: "Registra un cliente e attivagli un contratto",
+    description: "Registra e attiva contratti",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -166,7 +166,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "network",
     label: "Rete Commerciale",
-    description: "Vedi il tuo albero, fino a 12 livelli",
+    description: "Il tuo albero commerciale",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
@@ -176,7 +176,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "products",
     label: "Prodotti da Condividere",
-    description: "Condividi un'offerta col tuo link",
+    description: "Condividi col tuo link",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -186,7 +186,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "commissions",
     label: "Movimenti Provvigioni",
-    description: "Estratto conto dettagliato",
+    description: "Il tuo estratto conto",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 7h6m0 10v-3m-3 3v-6m-3 6v-1m6-13H9a2 2 0 00-2 2v14a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2z" />
@@ -196,7 +196,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "support",
     label: "Supporto",
-    description: "Hai bisogno di aiuto? Apri un ticket",
+    description: "Hai bisogno di aiuto?",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -206,7 +206,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "wallet",
     label: "Wallet",
-    description: "Saldo, storico, invia LialCash",
+    description: "Saldo e movimenti",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 12a2 2 0 00-2-2H7a2 2 0 00-2 2m16 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6m16 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v3m16 0h-4a1 1 0 00-1 1v0a1 1 0 001 1h4" />
@@ -216,7 +216,7 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
   {
     key: "cashback",
     label: "Riscatta Cashback",
-    description: "Trasforma una fattura partner in LialCash",
+    description: "Da fattura a LialCash",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
