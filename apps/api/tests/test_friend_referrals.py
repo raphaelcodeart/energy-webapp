@@ -1,4 +1,4 @@
-"""La rete segnalatori: un livello, nessuna provvigione, omaggio ogni 5 attivi.
+"""«Invita un amico»: un livello, nessuna provvigione, omaggio ogni 5 attivi.
 
 The rule, as stated: every customer -- promoter or not -- has a flat list of
 the people who signed up through their link. It is **separate from the
@@ -134,18 +134,18 @@ async def _activate_a_contract_for(db, organization_id, customer: Customer, prod
 
 @pytest.mark.asyncio
 async def test_a_plain_customers_link_puts_the_new_customer_under_their_own_promoter(db, organization_id):
-    """The core placement rule: a segnalatore who is not a promoter cannot
-    have a downline, so the person they invite joins the tree under the
-    segnalatore's OWN promoter -- while still appearing in the segnalatore's
-    own one-level list."""
+    """The core placement rule: an inviter who is not a promoter cannot have
+    a downline, so the person they invite joins the tree under the inviter's
+    OWN promoter -- while still appearing in the inviter's own one-level
+    list."""
     await _make_customer_role(db, organization_id)
     agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Anna")
 
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     friend_code = await friend_referrals_service.get_or_create_code(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
 
     invited_user = await _register_through(
@@ -153,12 +153,12 @@ async def test_a_plain_customers_link_puts_the_new_customer_under_their_own_prom
     )
     invited_customer = await _customer_of(db, organization_id, invited_user.id)
 
-    # Commercial attribution: the segnalatore's promoter, NOT the segnalatore.
+    # Commercial attribution: the inviter's promoter, NOT the inviter.
     assert await _agent_behind_attribution(db, organization_id, invited_customer.id) == agent.id
 
-    # And the segnalatore sees them in their own list.
+    # And the inviter sees them in their own list.
     referrals = await friend_referrals_service.list_my_referrals(
-        db, organization_id=organization_id, referrer_user_id=segnalatore_user.id
+        db, organization_id=organization_id, referrer_user_id=inviter_user.id
     )
     assert [r["state"] for r in referrals] == ["INVITED"]
     assert referrals[0]["source"] == "FRIEND_LINK"
@@ -220,11 +220,11 @@ async def test_an_unknown_code_is_still_refused(db, organization_id):
 async def test_a_referral_counts_only_once_their_contract_is_really_active(db, organization_id):
     await _make_customer_role(db, organization_id)
     agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Dario")
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     friend_code = await friend_referrals_service.get_or_create_code(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     invited_user = await _register_through(
         db, organization_id, friend_code.code, email=f"inv-{uuid.uuid4().hex[:6]}@example.com"
@@ -232,7 +232,7 @@ async def test_a_referral_counts_only_once_their_contract_is_really_active(db, o
     invited_customer = await _customer_of(db, organization_id, invited_user.id)
 
     summary = await friend_referrals_service.get_my_summary(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     assert summary["invited_total"] == 1
     assert summary["active_total"] == 0
@@ -240,7 +240,7 @@ async def test_a_referral_counts_only_once_their_contract_is_really_active(db, o
     await _activate_a_contract_for(db, organization_id, invited_customer, agent.id)
 
     summary = await friend_referrals_service.get_my_summary(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     assert summary["active_total"] == 1
     assert summary["referrals"][0]["state"] == "ACTIVE"
@@ -265,11 +265,11 @@ def test_the_milestone_maths():
 async def test_the_gift_can_be_requested_at_five_and_only_once(db, organization_id):
     await _make_customer_role(db, organization_id)
     agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Elena")
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     friend_code = await friend_referrals_service.get_or_create_code(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
 
     for i in range(5):
@@ -280,13 +280,13 @@ async def test_the_gift_can_be_requested_at_five_and_only_once(db, organization_
         await _activate_a_contract_for(db, organization_id, invited_customer, agent.id)
 
     summary = await friend_referrals_service.get_my_summary(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     assert summary["active_total"] == 5
     assert summary["claimable_milestone"] == 5
 
     first = await friend_referrals_service.request_reward(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     assert first.milestone == 5
     assert first.status == "REQUESTED"
@@ -294,13 +294,13 @@ async def test_the_gift_can_be_requested_at_five_and_only_once(db, organization_
     # No automatic wallet credit: the business chose to keep a human in the
     # loop, so this is a request, not a payout.
     summary = await friend_referrals_service.get_my_summary(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     assert summary["claimable_milestone"] is None
 
     with pytest.raises(friend_referrals_service.FriendReferralError):
         await friend_referrals_service.request_reward(
-            db, organization_id=organization_id, user_id=segnalatore_user.id
+            db, organization_id=organization_id, user_id=inviter_user.id
         )
 
 
@@ -308,33 +308,33 @@ async def test_the_gift_can_be_requested_at_five_and_only_once(db, organization_
 async def test_asking_before_reaching_five_is_refused(db, organization_id):
     await _make_customer_role(db, organization_id)
     _agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Fabio")
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     with pytest.raises(friend_referrals_service.FriendReferralError, match="5"):
         await friend_referrals_service.request_reward(
-            db, organization_id=organization_id, user_id=segnalatore_user.id
+            db, organization_id=organization_id, user_id=inviter_user.id
         )
 
 
 @pytest.mark.asyncio
 async def test_the_list_never_exposes_a_referred_customers_contact_details(db, organization_id):
-    """A segnalatore is not entitled to somebody's email or phone just because
-    they shared a link with them."""
+    """Whoever sent the invite is not entitled to somebody's email or phone
+    just because they shared a link with them."""
     await _make_customer_role(db, organization_id)
     _agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Gianna")
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     friend_code = await friend_referrals_service.get_or_create_code(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     await _register_through(
         db, organization_id, friend_code.code, email="segretissima@example.com"
     )
 
     referrals = await friend_referrals_service.list_my_referrals(
-        db, organization_id=organization_id, referrer_user_id=segnalatore_user.id
+        db, organization_id=organization_id, referrer_user_id=inviter_user.id
     )
     assert set(referrals[0]) == {"id", "display_name", "state", "source", "invited_at"}
 
@@ -380,17 +380,17 @@ async def test_the_code_is_stable_across_calls(db, organization_id):
 
 
 @pytest.mark.asyncio
-async def test_the_segnalatori_list_creates_no_commercial_attribution_of_its_own(db, organization_id):
+async def test_the_invite_list_creates_no_commercial_attribution_of_its_own(db, organization_id):
     """The whole point: this network pays nobody and places nobody. There must
     be exactly ONE CustomerAttribution per registered customer, the normal
     one, whichever link was used."""
     await _make_customer_role(db, organization_id)
     _agent, _agent_user, promoter_code = await _make_promoter(db, organization_id, name="Ivo")
-    segnalatore_user = await _register_through(
+    inviter_user = await _register_through(
         db, organization_id, promoter_code.code, email=f"seg-{uuid.uuid4().hex[:6]}@example.com"
     )
     friend_code = await friend_referrals_service.get_or_create_code(
-        db, organization_id=organization_id, user_id=segnalatore_user.id
+        db, organization_id=organization_id, user_id=inviter_user.id
     )
     invited_user = await _register_through(
         db, organization_id, friend_code.code, email=f"inv-{uuid.uuid4().hex[:6]}@example.com"

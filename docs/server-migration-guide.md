@@ -566,13 +566,14 @@ Prodotti importati ("Acquisti LialEnergy", plugin Session 34 -- catalogo
                     cashback: servono solo a SPENDERE LialCash, mai a
                     guadagnarne), imported_product_orders (specchio di
                     orders meno i campi cashback)
-Rete segnalatori (Session 39 -- rete a UN livello, staccata da quella
+"Invita un amico" (Session 39 -- rete a UN livello, staccata da quella
                     commerciale, nessuna provvigione):
                     friend_referral_codes (il link personale di chi ha un
                     login, distinto da promoter_codes che invece paga),
-                    friend_referrals (la lista piatta "chi ho segnalato"),
-                    friend_referral_reward_claims (le richieste di omaggio
-                    ogni 5 segnalati attivi, gestite a mano dallo staff)
+                    friend_referrals (la lista piatta "chi ho invitato"),
+                    friend_referral_reward_claims (le richieste di omaggio --
+                    una gift card da 25 euro ogni 5 invitati con contratto
+                    attivo, ripetibile, consegnata a mano dallo staff)
 Outbox:            domain_outbox
 Alembic:           alembic_version (gestita automaticamente, non toccare a mano)
 ```

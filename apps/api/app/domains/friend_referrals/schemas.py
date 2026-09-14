@@ -28,6 +28,9 @@ class FriendReferralSummaryRead(BaseModel):
     invited_total: int
     active_total: int
     reward_every: int
+    #: What the gift is, in the customer's words. Server-owned so the
+    #: dashboard never hardcodes it -- see models.py::REWARD_DESCRIPTION.
+    reward_description: str
     missing_for_next_reward: int
     claimable_milestone: int | None = None
     referrals: list[FriendReferralItemRead] = []

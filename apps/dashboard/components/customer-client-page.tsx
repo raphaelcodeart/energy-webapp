@@ -152,7 +152,7 @@ interface CustomerClientPageProps {
       contract-activation-wizard.tsx, which invalidates the same query key). */
   contracts: ContractRead[];
   email?: string;
-  /** Needed to build the customer's own "Segnala un amico" link, which
+  /** Needed to build the customer's own "Invita un amico" link, which
       carries ?org= exactly like a promoter's referral link does. */
   organizationId?: string;
 }
@@ -241,7 +241,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     key: "friend-referrals",
-    label: "Segnala un amico",
+    label: "Invita un amico",
     notificationTypes: ["FRIEND_REFERRAL_ACTIVATED", "FRIEND_REFERRAL_REWARD_HANDLED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

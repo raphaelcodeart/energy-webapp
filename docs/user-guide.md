@@ -182,6 +182,8 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
     incollarlo. Da computer, dove quel menu non esiste, il link viene copiato
     negli appunti come prima — il pulsante ti dice quale delle due cose è
     successa ("Link condiviso!" oppure "Link copiato!").
+- **Invita un amico** — la tua lista personale di invitati, separata dalla
+  rete commerciale (vedi sotto, vale identica anche per i clienti).
 - **Movimenti Provvigioni** — storico dei gettoni personali e delle differenze
   imprenditoriali maturate.
 - **Simulatore Provvigioni** — anteprima di quanto genererebbe un contratto
@@ -404,6 +406,38 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   poteva capitare che il contratto si attivasse comunque senza pagare
   nessuno, senza nessun avviso; è stato corretto (vedi
   `docs/paid-contract-commission-audit.md`).
+
+### "Invita un amico" (tutti: clienti e promoter)
+
+Ogni persona con un accesso — cliente o promoter — ha nella propria area una
+sezione **Invita un amico** con:
+
+- **il proprio link personale**, da condividere (dal telefono si apre
+  direttamente WhatsApp, Telegram, SMS…);
+- **la lista di chi si è iscritto con quel link**, con tre stati: *Iscritto*
+  (registrato, nessun contratto), *Contratto in corso*, *Attivo* (contratto
+  realmente in forza);
+- **il conteggio verso il premio**: ogni **5 amici invitati con un contratto
+  attivo** si può richiedere una **gift card da 25 euro**. Il premio si
+  ripete: vale a 5, a 10, a 15 e così via, non solo per i primi 5.
+
+Due cose importanti da capire:
+
+1. **Questa lista non è la rete commerciale e non paga provvigioni.** È una
+   lista piatta, a un livello solo. Dove finisce in rete la persona che si
+   iscrive non lo decide questa lista:
+   - se chi invita **è un promoter**, l'iscritto entra nel suo albero, come
+     sempre;
+   - se chi invita **è un cliente semplice**, l'iscritto entra sotto **il
+     promoter di quel cliente**.
+   In entrambi i casi l'iscritto compare comunque nella lista di chi lo ha
+   invitato.
+2. **La gift card non arriva in automatico.** Cliccando "Richiedi" parte una
+   richiesta all'amministrazione, che consegna il premio e lo segna; la nota
+   scritta dall'amministrazione compare nella tua lista richieste. Questo
+   permette di scegliere di volta in volta cosa dare.
+
+Dal lato amministrazione, le richieste si gestiscono in **Omaggi Inviti**.
 
 ## 5. Domande frequenti
 

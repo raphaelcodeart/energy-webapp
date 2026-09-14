@@ -208,7 +208,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     key: "friend-referral-claims",
-    label: "Omaggi Segnalatori",
+    label: "Omaggi Inviti",
     notificationTypes: ["FRIEND_REFERRAL_REWARD_REQUESTED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -581,7 +581,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                           )}
                           {c.first_referrer_name && (
                             <div className="text-[10px] text-slate-500 mt-1">
-                              Segnalato da {c.first_referrer_name}
+                              Invitato da {c.first_referrer_name}
                             </div>
                           )}
                         </td>
@@ -708,7 +708,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
         )}
         {activeTab === "friend-referral-claims" && (
           <div className="space-y-6">
-            <SectionBanner image="customers" alt="Omaggi Segnalatori" />
+            <SectionBanner image="customers" alt="Omaggi Inviti" />
             <AdminFriendReferralClaimsPanel />
           </div>
         )}

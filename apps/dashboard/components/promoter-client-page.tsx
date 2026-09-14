@@ -64,10 +64,10 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     // Separate from "Rete Commerciale" on purpose: that one is the tree that
-    // pays commissions, this one is the flat "chi ho segnalato" list every
+    // pays commissions, this one is the flat "chi ho invitato" list every
     // account has, promoter or not (see friend_referrals/models.py).
-    key: "segnalati",
-    label: "Segnala un amico",
+    key: "invita-amici",
+    label: "Invita un amico",
     notificationTypes: ["FRIEND_REFERRAL_ACTIVATED", "FRIEND_REFERRAL_REWARD_HANDLED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -226,11 +226,11 @@ const QUICK_LINKS: { key: string; label: string; description: string; icon: Reac
 ];
 
 const PROMOTER_VALID_TABS = [
-  "azienda", "network", "segnalati", "customers", "products", "commissions", "simulator", "support", "documentation", "wallet", "cashback",
+  "azienda", "network", "invita-amici", "customers", "products", "commissions", "simulator", "support", "documentation", "wallet", "cashback",
 ] as const;
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "segnalati" | "customers" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "invita-amici" | "customers" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
   const router = useRouter();
   const searchParams = useSearchParams();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
@@ -379,7 +379,7 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
             </div>
           )}
 
-          {activeTab === "segnalati" && (
+          {activeTab === "invita-amici" && (
             <div className="space-y-6">
               <FriendReferralsPanel organizationId={organizationId} />
             </div>

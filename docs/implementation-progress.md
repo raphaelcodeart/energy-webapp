@@ -4,7 +4,7 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
-## Session 39 — 2026-09-14 — Rete segnalatori (1 livello, separata) + etichetta LialCash
+## Session 39 — 2026-09-14 — "Invita un amico" (1 livello, separata) + etichetta LialCash
 
 - [x] **"LialCash" su una riga propria** sotto l'importo, in grassetto e più
   piccolo, come etichetta invece che come parte della frase. Nuovo
@@ -13,7 +13,7 @@ reality.
   LialCash in Contabilità. Il numero conserva dimensione e colore della cella,
   così ogni lista mantiene la sua enfasi (rosso/verde in uscita/entrata).
 
-- [x] **Rete segnalatori** (`friend_referrals`, nuovo dominio, migrazione
+- [x] **"Invita un amico"** (`friend_referrals`, nuovo dominio, migrazione
   `0036` / `c8f1a37d62be`): una rete a UN livello, che ogni account ha,
   **staccata da quella commerciale e senza provvigioni**. Tre tabelle nuove,
   **nessuna colonna aggiunta a tabelle esistenti**.
@@ -38,6 +38,23 @@ reality.
     Alesci (cliente semplice, il cui segnalatore è disattivato) iscrive sotto
     Alessandro, cioè lo sponsor attivo ereditato.
 
+- [x] **Rinominato da "Segnala" a "Invita un amico"** (stesso giorno, su
+  richiesta): in italiano *segnalare* ha una connotazione da delazione,
+  sbagliata per quello che è un invito. Rinominata ogni stringa visibile --
+  tab cliente e promoter, pannello, notifiche, schermata admin ("Omaggi
+  Inviti"), colonna "Invitato da" nei contratti, e anche l'etichetta
+  provvigionale "Bonus primo segnalatore" → "Bonus primo invito". Gli
+  identificatori interni restano l'inglese neutro `friend_referrals`; il
+  prefisso dei codici passa da `SEG-` a `INV-` e i codici già emessi
+  continuano a funzionare (la risoluzione confronta il codice intero, mai il
+  prefisso — verificato in produzione: link vecchio 200, inesistente 404).
+- [x] **L'omaggio è una gift card da 25 euro**, ripetibile a ogni multiplo di
+  5 e non solo ai primi 5 (era già così nel motore; ora è anche scritto).
+  Il testo vive in UN solo posto lato server
+  (`friend_referrals/models.py::REWARD_DESCRIPTION`) e viaggia via API fino
+  alla dashboard: compare in quattro punti e cambierà di sicuro, quindi non
+  è hardcodato in nessun componente React. Non è un importo su cui il codice
+  calcoli qualcosa — la consegna resta manuale.
 - [x] `docs/database-schema.sql` rigenerato: 62 tabelle, revision
   `c8f1a37d62be`.
 

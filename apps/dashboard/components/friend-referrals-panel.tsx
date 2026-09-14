@@ -27,7 +27,7 @@ const CLAIM_STATUS_LABELS: Record<string, string> = {
 
 async function fetchSummary(): Promise<FriendReferralSummaryRead> {
   const res = await fetch("/api/proxy/friend-referrals/me");
-  if (!res.ok) throw new Error("Impossibile caricare la tua rete segnalatori.");
+  if (!res.ok) throw new Error("Impossibile caricare i tuoi inviti.");
   return res.json();
 }
 
@@ -35,7 +35,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
 }
 
-/** "Segnala un amico": every account's own one-level referral list.
+/** "Invita un amico": every account's own one-level invite list.
  *
  * Deliberately NOT the commercial network. There are no commissions here and
  * no hierarchy -- it exists so somebody who is not a promoter can still see
@@ -87,7 +87,7 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
   }
 
   if (error) {
-    return <p className="text-sm text-rose-400">Impossibile caricare la tua rete segnalatori.</p>;
+    return <p className="text-sm text-rose-400">Impossibile caricare i tuoi inviti.</p>;
   }
   if (!data) {
     return <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 animate-pulse h-40" />;
@@ -100,11 +100,12 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
     <div className="space-y-6">
       {/* Link personale */}
       <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
-        <h3 className="text-lg font-semibold text-white light:text-slate-900">Segnala un amico</h3>
+        <h3 className="text-lg font-semibold text-white light:text-slate-900">Invita un amico</h3>
         <p className="text-xs text-slate-400 light:text-slate-500 mt-1 mb-4">
-          Condividi il tuo link: chi si iscrive da qui compare nella tua lista. Ogni{" "}
-          <strong>{data.reward_every} segnalati</strong> che attivano un contratto Lial Energy, puoi
-          richiedere un omaggio.
+          Condividi il tuo link: chi si iscrive da qui compare nella tua lista. <strong>Ogni{" "}
+          {data.reward_every} amici</strong> che attivano un contratto Lial Energy puoi richiedere{" "}
+          <strong>{data.reward_description}</strong> &mdash; non solo per i primi {data.reward_every}:
+          il premio si ripete a {data.reward_every * 2}, {data.reward_every * 3} e cosi via.
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <code className="flex-1 min-w-0 truncate rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-300 px-3 py-2.5 text-xs font-mono text-slate-300 light:text-slate-600">
@@ -138,7 +139,7 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
         <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
           <div>
             <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Segnalati con contratto attivo
+              Amici invitati con contratto attivo
             </p>
             <p className="text-3xl font-bold text-white light:text-slate-900 tabular-nums">
               {data.active_total}
@@ -151,12 +152,12 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
               disabled={claimLoading}
               className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg shadow-emerald-500/20 transition cursor-pointer disabled:opacity-50"
             >
-              {claimLoading ? "Invio..." : `Richiedi l'omaggio (${data.claimable_milestone} attivi)`}
+              {claimLoading ? "Invio..." : `Richiedi ${data.reward_description}`}
             </button>
           ) : (
             <p className="text-xs text-slate-400 light:text-slate-500">
-              Ne mancano <strong className="text-orange-400">{data.missing_for_next_reward}</strong> al
-              prossimo omaggio
+              Ne mancano <strong className="text-orange-400">{data.missing_for_next_reward}</strong> per{" "}
+              {data.reward_description}
             </p>
           )}
         </div>
@@ -180,7 +181,7 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
             {data.claims.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="text-slate-300 light:text-slate-600">
-                  Omaggio per {c.milestone} segnalati attivi
+                  Omaggio per {c.milestone} amici attivi
                 </span>
                 <div className="flex items-center gap-2">
                   {c.note && <span className="text-slate-500">{c.note}</span>}
@@ -205,11 +206,11 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
       {/* La lista */}
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
         <div className="px-5 pt-5 pb-3">
-          <h4 className="text-sm font-semibold text-white light:text-slate-900">I tuoi segnalati</h4>
+          <h4 className="text-sm font-semibold text-white light:text-slate-900">Gli amici che hai invitato</h4>
         </div>
         {data.referrals.length === 0 ? (
           <p className="text-center py-10 text-slate-500 text-sm">
-            Non hai ancora segnalato nessuno. Condividi il tuo link qui sopra.
+            Non hai ancora invitato nessuno. Condividi il tuo link qui sopra.
           </p>
         ) : (
           <>
@@ -229,7 +230,7 @@ export function FriendReferralsPanel({ organizationId }: { organizationId?: stri
               ))}
             </div>
             <div className="px-5 pb-4">
-              <Pagination {...pagination} label="segnalati" />
+              <Pagination {...pagination} label="amici invitati" />
             </div>
           </>
         )}

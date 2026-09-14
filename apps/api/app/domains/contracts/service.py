@@ -680,7 +680,7 @@ async def transition_contract(
         )
 
     if to_status == "ACTIVE":
-        # Tells whoever brought this customer in (the one-level "segnalatori"
+        # Tells whoever brought this customer in (the one-level "Invita un amico"
         # list, a separate thing from the commercial network -- see
         # friend_referrals/models.py) that they have just gone active, and
         # whether that unlocked a gift. Best-effort and after the commit: a

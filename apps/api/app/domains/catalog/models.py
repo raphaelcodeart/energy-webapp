@@ -20,7 +20,12 @@ class Product(UUIDPKMixin, TimestampMixin, Base):
     # leave energy_type null, since it has no meaning for them.
     product_type: Mapped[str] = mapped_column(String(32), default="ENERGY_CONTRACT")
     energy_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ELECTRICITY / GAS / DUAL_FUEL
-    customer_type: Mapped[str] = mapped_column(String(32))  # PRIVATE / SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE
+    # PRIVATE / BUSINESS / BOTH -- who this product may be sold to, and the
+    # ONE place that decides it (catalog/pricing.py reads it, both
+    # customer-facing contract paths enforce it). Legacy values
+    # (SOLE_PROPRIETOR / PMI / CONDOMINIUM / ENERGY_INTENSIVE) still parse and
+    # collapse onto BUSINESS; see normalize_product_customer_type.
+    customer_type: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE")
     # INTERNAL (Lial Energy's own supply -- bollette circolari, never
     # discountable in credits, bank transfer only) / DROPSHIPPING (imported
@@ -109,7 +114,7 @@ class ProductVersion(UUIDPKMixin, TimestampMixin, Base):
     # who merely filled the contract in, and never more than once per
     # contract. Configured per product version rather than keyed off a price
     # or a product id in a controller, so "il contratto BAR paga 25 euro in
-    # piu al primo segnalatore" is a value an admin sets, not a deploy.
+    # piu a chi ha portato il cliente" is a value an admin sets, not a deploy.
     # The normal recursive commission (commission_tokens above) is unaffected
     # and keeps being paid as it is today; this is an additional, separately
     # auditable movement.

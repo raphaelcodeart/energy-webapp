@@ -1000,7 +1000,7 @@ stays a real foreign key to its own table -- a single polymorphic
 cosmetic tidiness.
 
 
-## 16. Rete segnalatori (added Session 39)
+## 16. "Invita un amico" (added Session 39)
 
 Three tables that are **deliberately a parallel structure**, not an extension
 of the commercial network -- see `business-rules.md#friend-referrals` for the
@@ -1008,7 +1008,9 @@ rules. One level, no hierarchy, no commissions.
 
 ```
 friend_referral_codes
-  id, organization_id, user_id (UNIQUE), code (UNIQUE, "SEG-XXXXXXXX"),
+  id, organization_id, user_id (UNIQUE), code (UNIQUE, "INV-XXXXXXXX" --
+    codes issued before the Session 39 rename use "SEG-" and keep working,
+    since resolution matches the whole code, never the prefix),
   status, created_at
 
   -- Separate from promoter_codes on purpose. That table means "this agent
@@ -1037,8 +1039,11 @@ friend_referral_reward_claims
   UNIQUE (referrer_user_id, milestone)
 
   -- That UNIQUE is what makes "un omaggio ogni 5" exact: milestone 5 can be
-  -- requested once, ever, whatever the count does afterwards. Not an
-  -- automatic payout -- a human decides what the gift is.
+  -- requested once, ever, whatever the count does afterwards. Repeatable at
+  -- every multiple of 5, explicitly not only the first. Not an automatic
+  -- payout: the gift (today "una gift card da 25 euro", see
+  -- friend_referrals/models.py::REWARD_DESCRIPTION) is handed over by a
+  -- human, who records what was given in `note`.
 ```
 
 **This structure never decides who gets paid.** Where an invited customer

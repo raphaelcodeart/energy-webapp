@@ -167,7 +167,7 @@ export function CustomerProductsPanel({
     const result = await shareOrCopyLink({
       url: url.toString(),
       title: productName,
-      text: `Ti segnalo "${productName}" di Lial Energy:`,
+      text: `Ti consiglio "${productName}" di Lial Energy:`,
     });
     setSharedId({ id: productId, result });
     setTimeout(() => setSharedId(null), 2000);

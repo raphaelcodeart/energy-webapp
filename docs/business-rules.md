@@ -366,15 +366,25 @@ Per explicit request, a customer can now activate a Lial Energy (`category
     target for a manual click; the cascade happens server-side, so picking
     "APPROVED" there simply comes back already at `PAYMENT_PENDING`.
 
-## Rete segnalatori: un livello, staccata, senza provvigioni (Session 39) {#friend-referrals}
+## "Invita un amico": rete a un livello, staccata, senza provvigioni (Session 39) {#friend-referrals}
 
 A **second, completely separate** referral structure, added on explicit
 request: "non c'entra nulla con l'attuale rete, è una cosa staccata e separata
 che ogni cliente ha".
 
+- **Naming (Session 39, corrected same day)**: the feature is **"Invita un
+  amico"** everywhere a person can read it. The first pass used
+  "segnala/segnalatore", which the business rejected -- in Italian *segnalare*
+  carries a reporting-on-somebody connotation, wrong for what is meant to be
+  a warm invitation. Internal identifiers keep the neutral English
+  `friend_referrals`. The commission-side "Bonus primo segnalatore" label was
+  renamed for the same reason ("Bonus primo invito"); the stored
+  `movement_type` is unchanged.
 - **Who has one**: everyone with a login, promoter or not. Each gets a
-  personal invite code (`friend_referral_codes`, prefix `SEG-`), created
-  lazily the first time they open "Segnala un amico".
+  personal invite code (`friend_referral_codes`, prefix `INV-`), created
+  lazily the first time they open "Invita un amico". Codes issued before the
+  rename (prefix `SEG-`) keep working -- resolution is an exact match on the
+  whole code, never on the prefix.
 - **What it holds**: one flat level. `friend_referrals` records who signed up
   through whose link. No hierarchy, no closure table, **no commissions** --
   the whole thing could be dropped tomorrow without changing a single euro.
@@ -396,8 +406,14 @@ che ogni cliente ha".
   contracts at read time, never stored: a stored flag would need an event hook
   on every path that activates, renews or cancels, and the first one anybody
   forgot would leave the count permanently wrong.
-- **The gift, one every 5**: at 5, 10, 15 ... activated referrals the person
-  may request an "omaggio". Milestones are absolute, and
+- **The gift, one every 5**: at 5, 10, 15 ... activated invitees the person
+  may request **una gift card da 25 euro** -- explicitly *not only for the
+  first 5*, it repeats at every multiple. The wording of the gift lives in
+  ONE place, `friend_referrals/models.py::REWARD_DESCRIPTION`, and is sent to
+  the dashboard rather than written into a React component: it appears in
+  four places (panel, progress line, claim button, admin screen) and the
+  business will certainly revise it. Nothing is computed from it -- it is
+  copy, because the payout is manual. Milestones are absolute, and
   `uq_friend_referral_claim_user_milestone` makes each claimable exactly once,
   ever. Somebody who never claimed at 5 and is now at 12 is offered 5 first,
   then 10 — they are not silently skipped past what they earned.
@@ -406,10 +422,10 @@ che ogni cliente ha".
   admin dashboard), who mark it delivered or not and write a note the customer
   sees. That way the gift can be LialCash, a product or a voucher, decided
   case by case — nothing is minted automatically.
-- **Privacy**: the list shows a referred person's **name and state only** —
+- **Privacy**: the list shows an invited person's **name and state only** —
   never their email, phone or address. Sharing a link with somebody does not
   entitle you to their contact details.
-- **Notifications**: the referrer is told when one of their people goes
+- **Notifications**: the inviter is told when one of their people goes
   active, and whether that unlocked a gift (`FRIEND_REFERRAL_ACTIVATED`);
   staff are told about a request (`FRIEND_REFERRAL_REWARD_REQUESTED`); the
   requester is told the outcome (`FRIEND_REFERRAL_REWARD_HANDLED`).

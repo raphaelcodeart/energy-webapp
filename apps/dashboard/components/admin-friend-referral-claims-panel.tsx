@@ -35,7 +35,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("it-IT", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-/** "Omaggi Segnalatori": the requests customers send when they hit a
+/** "Omaggi Inviti": the requests customers send when they hit a
  *  multiple of 5 activated referrals.
  *
  *  Deliberately NOT an automatic payout -- the business chose to keep a human
@@ -80,11 +80,13 @@ export function AdminFriendReferralClaimsPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold text-white light:text-slate-900">Omaggi Segnalatori</h3>
+        <h3 className="text-lg font-semibold text-white light:text-slate-900">Omaggi Invita un amico</h3>
         <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
-          Richieste inviate da chi ha raggiunto 5, 10, 15… persone segnalate con un contratto
-          <strong> attivo</strong>. L&apos;omaggio non viene accreditato in automatico: decidete voi cosa dare
-          e lo segnate qui. La nota che scrivete viene mostrata al cliente.
+          Richieste inviate da chi ha raggiunto 5, 10, 15… amici invitati con un contratto
+          <strong> attivo</strong>. Il premio previsto è una <strong>gift card da 25 euro</strong>, e si
+          ripete a ogni multiplo di 5 &mdash; non solo per i primi 5. Non viene accreditato in
+          automatico: decidete voi cosa consegnare e lo segnate qui, e la nota che scrivete viene
+          mostrata al cliente.
         </p>
       </div>
 
@@ -127,7 +129,7 @@ export function AdminFriendReferralClaimsPanel() {
                       {STATUS_LABELS[c.status] ?? c.status}
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-orange-500/10 text-orange-400 border-orange-500/20">
-                      {c.milestone} segnalati attivi
+                      {c.milestone} amici attivi
                     </span>
                   </div>
                   <p className="text-xs text-slate-500">
@@ -160,7 +162,7 @@ export function AdminFriendReferralClaimsPanel() {
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       maxLength={500}
-                      placeholder="Es. Buono spesa da 20 euro inviato via email"
+                      placeholder="Es. Gift card da 25 euro inviata via email"
                       className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
                     />
                   </div>

@@ -29,7 +29,8 @@ RULE_VERSION = "2026.1-placeholder"  # see docs/open-questions.md #1
 # paid alongside (never instead of) the ordinary recursive commission. It is
 # configured per product version (ProductVersion.first_referrer_bonus_enabled
 # / first_referrer_bonus_cents), never keyed off a price or a product id in
-# code -- "il contratto BAR paga 25 euro in piu al primo segnalatore" has to
+# code -- "il contratto BAR paga 25 euro in piu a chi ha portato il
+# cliente" has to
 # be a value an admin can set, and a different value tomorrow, without a
 # deploy.
 FIRST_REFERRER_BONUS_MOVEMENT_TYPE = "FIRST_REFERRER_BONUS"
@@ -366,6 +367,6 @@ async def _maybe_add_first_referrer_bonus(
         await notifications_service.notify_user(
             db, organization_id=organization_id, user_id=referrer.user_id,
             type_="COMMISSION_EARNED", entity_type="contract", entity_id=contract.id,
-            title=f"Bonus primo segnalatore: {amount_cents / 100:.2f} EUR",
+            title=f"Bonus primo invito: {amount_cents / 100:.2f} EUR",
             body="Bonus riconosciuto al promoter che ha portato questo cliente in Lial Energy.",
         )

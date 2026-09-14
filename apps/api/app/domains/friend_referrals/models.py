@@ -1,4 +1,4 @@
-"""La "rete segnalatori": una rete a UN livello, staccata da quella commerciale.
+"""La rete "Invita un amico": una rete a UN livello, staccata da quella commerciale.
 
 Deliberately a parallel structure, not an extension of the commercial network
 -- the business was explicit that "non c'entra nulla con l'attuale rete, e'
@@ -31,9 +31,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TimestampMixin, UUIDPKMixin
 
-#: How many activated referrals earn one gift. "un omaggio ogni 5 attivati" --
-#: repeatable: 5, 10, 15 ... each is its own separately claimable milestone.
+#: How many activated invitees earn one gift. Repeatable -- 5, 10, 15 ... is
+#: each its own separately claimable milestone, explicitly "non solo alle
+#: prime 5".
 REWARD_EVERY = 5
+
+#: What the gift actually is, in the customer's own words. Kept here, on the
+#: server, and sent to the dashboard rather than written into a React
+#: component: it is shown in at least four places (the panel, the progress
+#: line, the claim button, the admin screen), and a value the business will
+#: certainly revise should live in exactly one of them. Nothing is credited
+#: automatically -- see FriendReferralRewardClaim below -- so this is copy,
+#: not an amount any code computes with.
+REWARD_DESCRIPTION = "una gift card da 25 euro"
 
 #: A referred customer counts as "attivo" only once one of their contracts is
 #: genuinely in force. RENEWED is included because a renewed contract is still
@@ -52,7 +62,7 @@ CLAIM_STATUSES = ("REQUESTED", "FULFILLED", "REJECTED")
 
 class FriendReferralCode(UUIDPKMixin, TimestampMixin, Base):
     """One personal invite code per login, created lazily the first time
-    somebody opens "Segnala un amico".
+    somebody opens "Invita un amico".
 
     Separate from `promoter_codes` on purpose. That table means "this agent
     earns commissions on what comes through here" and is wired into

@@ -229,13 +229,13 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
     #
     #   1. a PROMOTER link  -> exactly as before: the customer joins that
     #      promoter's tree and that promoter earns on them.
-    #   2. a SEGNALATORE link (friend_referral_codes) -> the customer is
+    #   2. an INVITE link (friend_referral_codes) -> the customer is
     #      attributed to the referrer's OWN promoter, because a plain customer
     #      earns nothing and cannot have a downline. See
     #      friend_referrals/service.py::promoter_code_for_referrer.
     #
     # Either way the new customer ALSO lands in the referrer's one-level
-    # "segnalati" list, which is purely informational -- it never affects
+    # "invitati" list, which is purely informational -- it never affects
     # where they sit in the commercial tree or who gets paid.
     friend_code = None
     promoter_code = await referral_service.get_active_promoter_code(
@@ -251,7 +251,7 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
             db, organization_id=organization_id, user_id=friend_code.user_id
         )
         if promoter_code is None:
-            # The segnalatore's own promoter chain has no active agent left,
+            # The inviter's own promoter chain has no active agent left,
             # so there is nobody to attribute this registration to. Refuse
             # rather than create a customer nobody owns -- the same invariant
             # invite-only registration exists to protect.
@@ -319,7 +319,7 @@ async def register_with_referral(db: AsyncSession, *, organization_id: uuid.UUID
         )
     )
 
-    # The one-level segnalatori list. For a promoter link the referrer is the
+    # The one-level invite list. For a promoter link the referrer is the
     # agent's own login (a promoter with no user account simply records
     # nothing -- there is no list for them to look at). Never raises: this is
     # an informational list, and a problem here must not fail a registration

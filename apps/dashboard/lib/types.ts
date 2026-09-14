@@ -665,7 +665,7 @@ export type InvoiceRedemptionRead = {
 };
 
 
-// --- Rete segnalatori (Session 39) -----------------------------------------
+// --- "Invita un amico" (Session 39) ----------------------------------------
 // A one-level list every account has, deliberately separate from the
 // commercial network: no hierarchy, no commissions. See
 // apps/api/app/domains/friend_referrals/models.py.
@@ -694,6 +694,9 @@ export type FriendReferralSummaryRead = {
   invited_total: number;
   active_total: number;
   reward_every: number;
+  /** What the gift is, in the customer's words -- server-owned, never
+      hardcoded here (see friend_referrals/models.py::REWARD_DESCRIPTION). */
+  reward_description: string;
   missing_for_next_reward: number;
   claimable_milestone: number | null;
   referrals: FriendReferralItemRead[];

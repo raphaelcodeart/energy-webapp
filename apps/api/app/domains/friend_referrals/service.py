@@ -13,6 +13,7 @@ from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.friend_referrals.models import (
     ACTIVE_CONTRACT_STATUSES,
+    REWARD_DESCRIPTION,
     REWARD_EVERY,
     FriendReferral,
     FriendReferralCode,
@@ -23,9 +24,11 @@ from app.domains.users.models import User
 
 logger = logging.getLogger(__name__)
 
-#: Prefix so a segnalatore link is recognisably not a promoter code when it
-#: turns up in a support conversation or a log line.
-CODE_PREFIX = "SEG"
+#: Prefix so an invite link is recognisably not a promoter code when it turns
+#: up in a support conversation or a log line. Codes issued before this was
+#: renamed (prefix "SEG") keep working: resolution is an exact match on the
+#: whole code, never on the prefix.
+CODE_PREFIX = "INV"
 
 
 class FriendReferralError(Exception):
@@ -94,9 +97,9 @@ async def promoter_code_for_referrer(db: AsyncSession, *, organization_id: uuid.
     """Which promoter the person invited through THIS user's friend link must
     be attributed to, for commissions.
 
-    The business rule, verbatim: "se il segnalatore non è anche un promoter
-    automaticamente il cliente va sotto il promoter di quella persona
-    segnalatore; se invece è un promoter va nel suo albero personale".
+    The business rule, verbatim: "se chi invita non è anche un promoter
+    automaticamente il cliente va sotto il promoter di quella persona; se
+    invece è un promoter va nel suo albero personale".
 
     So:
       - referrer is an ACTIVE promoter -> their own promoter code
@@ -216,7 +219,7 @@ async def list_my_referrals(
       IN_PROGRESS  -- has a contract, not in force yet
       ACTIVE       -- has a contract genuinely in force; counts towards the gift
 
-    Names only, deliberately: a segnalatore is not entitled to the email,
+    Names only, deliberately: whoever sent the invite is not entitled to the email,
     phone or address of somebody just because they shared a link with them.
     """
     rows = await _referred_customer_rows(
@@ -298,6 +301,7 @@ async def get_my_summary(
         "invited_total": len(referrals),
         "active_total": active_count,
         "reward_every": REWARD_EVERY,
+        "reward_description": REWARD_DESCRIPTION,
         # How many more activations until the NEXT gift -- 0 when one is
         # already claimable.
         "missing_for_next_reward": 0 if claimable else (REWARD_EVERY - (active_count % REWARD_EVERY)),
@@ -349,7 +353,7 @@ async def request_reward(
     milestone = summary["claimable_milestone"]
     if milestone is None:
         raise FriendReferralError(
-            f"Non hai ancora raggiunto {REWARD_EVERY} segnalati con un contratto attivo."
+            f"Non hai ancora raggiunto {REWARD_EVERY} amici invitati con un contratto attivo."
         )
 
     claim = FriendReferralRewardClaim(
@@ -384,8 +388,11 @@ async def request_reward(
         db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
         type_="FRIEND_REFERRAL_REWARD_REQUESTED", entity_type="friend_referral_reward_claim",
         entity_id=claim.id,
-        title="Richiesta omaggio segnalatori",
-        body=f"Un utente ha raggiunto {milestone} segnalati attivi e chiede l'omaggio.",
+        title="Richiesta omaggio Invita un amico",
+        body=(
+            f"Un utente ha raggiunto {milestone} amici invitati con un contratto attivo "
+            f"e chiede {REWARD_DESCRIPTION}."
+        ),
         exclude_user_id=user_id,
     )
     await db.commit()
@@ -416,12 +423,14 @@ async def notify_referrer_of_activation(
             db, organization_id=organization_id, user_id=referral.referrer_user_id
         )
         if summary["claimable_milestone"] is not None:
-            title = f"Hai raggiunto {summary['claimable_milestone']} segnalati attivi!"
-            body = "Puoi richiedere il tuo omaggio dalla sezione Segnala un amico."
-        else:
-            title = "Un tuo segnalato ha attivato un contratto"
+            title = f"Hai raggiunto {summary['claimable_milestone']} amici invitati attivi!"
             body = (
-                f"Segnalati attivi: {summary['active_total']}. "
+                f"Puoi richiedere {REWARD_DESCRIPTION} dalla sezione «Invita un amico»."
+            )
+        else:
+            title = "Un amico che hai invitato ha attivato un contratto"
+            body = (
+                f"Amici invitati con contratto attivo: {summary['active_total']}. "
                 f"Ne mancano {summary['missing_for_next_reward']} al prossimo omaggio."
             )
         await notifications_service.notify_user(
@@ -523,7 +532,7 @@ async def handle_claim(
         type_="FRIEND_REFERRAL_REWARD_HANDLED", entity_type="friend_referral_reward_claim",
         entity_id=claim.id,
         title=(
-            f"Omaggio segnalatori ({claim.milestone} attivi): "
+            f"Omaggio Invita un amico ({claim.milestone} attivi): "
             + ("consegnato" if status == "FULFILLED" else "richiesta non accolta")
         ),
         body=note,

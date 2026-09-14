@@ -104,10 +104,10 @@ async def resolve_promoter_link(
         db, organization_id=_uuid.UUID(organization_id), code=code
     )
     if promoter_code is None:
-        # Not a promoter code -- it may be an ordinary customer's "segnala un
+        # Not a promoter code -- it may be an ordinary customer's "invita un
         # amico" link (friend_referral_codes), which lands on this same
         # public page. Resolved here, with no click tracking and no
-        # attribution cookie: the segnalatori list is informational and the
+        # attribution cookie: the invite list is informational and the
         # commercial attribution for this registration is decided at signup
         # from the referrer's OWN promoter, not from a cookie. See
         # friend_referrals/models.py.

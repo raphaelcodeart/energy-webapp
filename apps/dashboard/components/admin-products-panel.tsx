@@ -307,7 +307,7 @@ function ProductFormFields({
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">
-              Bonus primo segnalatore
+              Bonus a chi porta il cliente
             </label>
             <label className="flex items-center gap-2.5 text-xs text-slate-300 light:text-slate-600 cursor-pointer">
               <input
@@ -316,7 +316,7 @@ function ProductFormFields({
                 onChange={(e) => onChange({ firstReferrerBonusEnabled: e.target.checked })}
                 className="w-4 h-4 rounded border-white/20 accent-orange-500"
               />
-              Riconosci un bonus extra al primo promoter che ha segnalato il cliente
+              Riconosci un bonus extra al primo promoter che ha portato il cliente
             </label>
             {form.firstReferrerBonusEnabled && (
               <div className="flex items-center gap-2 pt-1">

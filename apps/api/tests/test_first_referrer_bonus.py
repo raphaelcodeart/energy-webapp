@@ -1,4 +1,4 @@
-"""Bonus al PRIMO promoter che ha segnalato il cliente.
+"""Bonus al PRIMO promoter che ha portato il cliente.
 
 The rule, stated by the business: on top of the commission the plan already
 pays, a product can carry an extra one-off bonus -- 25 EUR on the "BAR /
