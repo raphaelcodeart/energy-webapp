@@ -15,9 +15,17 @@ reality.
   classe `.mob-btn`: `.nav-btn` lì non andava bene, impone un font-size da
   barra dentro un menu a schermo intero). Rimossa la regola `.nav-login`,
   ormai senza utilizzatori.
-- [x] Gli altri "Inizia Ora" della pagina (schede dei piani, sezioni, footer)
-  restano: quelli portano davvero al modulo contatti, ed è ciò che devono
-  fare.
+- [x] Poi, su richiesta: **ogni** "Inizia Ora" e "Accedi" della pagina porta
+  allo stesso posto, il login. Erano sette link sparsi che scorrevano a
+  `#contatti` (le tre schede dei piani, la fascia "Unisciti alla community",
+  la voce di footer) oppure aprivano il client di posta. Adesso puntano tutti
+  a `app.lialenergy.it/login`.
+- [x] Effetto collaterale da non lasciare passare: quel `mailto:` era
+  **l'unico recapito dell'intera pagina**. Trasformandolo in un pulsante di
+  login il sito sarebbe rimasto senza un modo per scrivere all'azienda, così
+  la voce di footer che si chiama "Contatti" — che prima scorreva a una
+  sezione che di recapiti non ne ha mai avuti — ora è lei a portare a
+  `info@lialenergy.it`.
 
 ## Session 46 — 2026-09-14 — Ricostruire il progetto per un'altra azienda, davvero
 
