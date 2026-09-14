@@ -10,6 +10,9 @@ class DocumentRead(BaseModel):
     id: uuid.UUID
     contract_id: uuid.UUID
     document_type: str
+    #: Only ever set for an OTHER attachment -- the label its uploader gave
+    #: it. None for every slot document, which is named by its type.
+    description: str | None = None
     original_filename: str
     content_type: str
     size_bytes: int
@@ -42,17 +45,25 @@ class DocumentReviewRequest(BaseModel):
 
 
 class RequiredDocumentStatus(BaseModel):
-    """One row per required document type for a contract -- whether it's been
-    uploaded yet and, if so, its current review status. Not a Document row
-    itself: a type can be "required but not uploaded" (document is None)."""
+    """One row per document slot on a contract -- whether it's been uploaded
+    yet and, if so, its current review status. Not a Document row itself: a
+    slot can be "expected but not uploaded" (document is None)."""
 
     document_type: str
+    #: False for a slot that is offered but does not hold the contract back
+    #: (the visura of a ditta individuale). Defaulted to True so an older
+    #: client that ignores the field keeps reading every row as required,
+    #: which is the safe direction to be wrong in.
+    required: bool = True
     document: DocumentRead | None = None
 
 
 class ContractDocumentsRead(BaseModel):
     contract_id: uuid.UUID
     required: list[RequiredDocumentStatus]
+    #: Free-form attachments, oldest first -- each one labelled by whoever
+    #: uploaded it. Never gates the contract.
+    extra: list[DocumentRead] = []
 
 
 class DocumentTypeInfo(BaseModel):
@@ -65,6 +76,7 @@ DOCUMENT_TYPE_LABELS = {
     "FISCAL_CODE": "Codice fiscale",
     "UTILITY_BILL": "Fattura luce/gas",
     "CHAMBER_OF_COMMERCE": "Visura camerale",
+    "OTHER": "Documento aggiuntivo",
 }
 
 assert set(DOCUMENT_TYPE_LABELS) == DOCUMENT_TYPES

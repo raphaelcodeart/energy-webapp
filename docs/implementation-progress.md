@@ -4,6 +4,53 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 45 — 2026-09-14 — Documenti allegati aggiuntivi, e il contratto a schermo intero
+
+Tre cose chieste insieme, sulla stessa schermata.
+
+- [x] **Allegati aggiuntivi.** Oltre alle caselle fisse, chiunque possa
+  caricare su un contratto può aggiungere quanti documenti servono, di tipo
+  `OTHER`. Il form **chiede prima cosa stai allegando** e solo dopo apre il
+  selettore del file: senza quell'etichetta la coda di verifica
+  dell'amministratore sarebbe una lista di righe che dicono tutte "Documento
+  aggiuntivo". La descrizione è obbligatoria per `OTHER` e **ignorata** per
+  gli altri tipi — una casella è già nominata dal suo tipo, e accettare
+  un'etichetta dal chiamante permetterebbe a un file di finire nella casella
+  "Documento d'identità" chiamandosi altro. Gli allegati si **accumulano**
+  (il secondo non sostituisce il primo, a differenza di un secondo
+  caricamento nella stessa casella) e non bloccano mai il contratto.
+  Migrazione `0039` (`documents.description`, nullable).
+- [x] **Visura camerale: già c'era, ma non per tutti.** Era — ed è —
+  obbligatoria per `COMPANY` e `CONDOMINIUM`. Il caso scoperto guardando il
+  codice è un altro: una **partita IVA / ditta individuale**
+  (`SOLE_PROPRIETOR`) non la vedeva nemmeno. Ora la casella le viene
+  **proposta ma non imposta** (`required: false`): è un'azienda ai fini IVA,
+  ma un professionista con partita IVA non è iscritto al Registro Imprese e
+  una visura non ce l'ha. Obbligarla avrebbe bloccato proprio chi non può
+  produrla; nasconderla lasciava senza posto chi invece ce l'ha.
+- [x] **Niente più popup.** L'attivazione di un contratto e il suo
+  completamento ora occupano **tutto lo schermo** (`full-screen-panel.tsx`):
+  una colonna sola, una sola barra di scorrimento, intestazione fissa con il
+  "torna indietro" sempre raggiungibile, Esc per chiudere, e la pagina sotto
+  che non scorre più dietro (due scrollbar su un telefono sono il modo più
+  rapido per far credere che il modulo si sia bloccato).
+- [x] **La scheda del contratto dice una cosa sola.** Finché un contratto è
+  in attivazione non mostra più documenti e pagamento impilati: mostra un
+  riquadro con *cosa manca davvero* ("Mancano 2 documenti", "Documenti in
+  verifica", "Scegli come pagare") e un pulsante che apre il tutto a schermo
+  intero. Il conteggio esce dalla **stessa query** dell'elenco documenti, così
+  scheda ed elenco non possono contraddirsi. Un contratto concluso (o
+  respinto) torna all'elenco inline: lì è uno storico, non un compito.
+- [x] Ogni casella non ancora caricata spiega **cosa vuole** ("Una bolletta
+  recente della fornitura da attivare o cambiare"), e in cima all'elenco c'è
+  una riga sola con quante ne mancano — prima l'unico modo di saperlo era
+  leggere quattro etichette di stato e contare.
+- [x] 9 test nuovi (305 totali, verdi): l'etichetta obbligatoria e ripulita,
+  il rifiuto di quella troppo lunga, una casella che non può ri-etichettarsi,
+  gli allegati che si accumulano, un documento la cui casella è sparita che
+  resta comunque visibile, e la ditta individuale che arriva in revisione
+  senza visura.
+
 ## Session 44 — 2026-09-14 — Pagamento del contratto: unica, 3 rate, 12 rate
 
 La Fase B. Solo per i contratti: il checkout dello Shop è un flusso separato e

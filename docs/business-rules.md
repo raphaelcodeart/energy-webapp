@@ -448,7 +448,7 @@ Per explicit request, a customer can now activate a Lial Energy (`category
     target for a manual click; the cascade happens server-side, so picking
     "APPROVED" there simply comes back already at `PAYMENT_PENDING`.
 
-## Condivisione dei link: bottoni per app, non solo copia (Session 41) {#share-buttons}
+## Condivisione dei link: bottoni per app, non solo copia (Session 45) {#share-buttons}
 
 Every place a link is shared — the promoter's personal link, "Invita un
 amico", a single product a promoter recommends, and the personal link an
@@ -880,9 +880,32 @@ See `database-model.md §7` for the table shape. Behavior:
   layer, not read from the pre-existing `product_versions.required_documents`
   jsonb column -- that column has never actually been populated or wired to
   any behavior, so treating it as configurable today would be pretending.
-- `GET /contracts/{id}/documents` always returns one row per *required* type
-  for that customer's kind, with `document: null` when nothing has been
-  uploaded yet -- "missing" is a first-class, visible state, not silence.
+- A `SOLE_PROPRIETOR` (ditta individuale / partita IVA) is **offered** the
+  `CHAMBER_OF_COMMERCE` slot but is never blocked by it
+  (`CHAMBER_OF_COMMERCE_OPTIONAL_KINDS`, added Session 45). They are a
+  business for VAT (`catalog/pricing.py`), but a professionista with a
+  partita IVA is not in the Registro Imprese and has no visura to give:
+  demanding one would strand exactly the customers who cannot produce it,
+  while hiding the slot would leave the ones who can with nowhere to put it.
+  The slot carries `required: false`, and the auto-advance to `UNDER_REVIEW`
+  gates only on the required ones.
+- Beyond the fixed slots, anyone who can upload to a contract can attach
+  **extra documents** of type `OTHER` (added Session 45), each carrying a
+  `description` its uploader writes ("Carta d'identità retro", "Delega
+  firmata", "Contratto di locazione"). The description is mandatory for
+  `OTHER` and ignored for every other type: a slot document is already named
+  by its type, and accepting a caller-supplied label there would let a file
+  land in the identity slot calling itself something else. Extra documents
+  accumulate -- a second one does not supersede the first, unlike a second
+  upload into the same slot -- and never gate the contract.
+- `GET /contracts/{id}/documents` returns one row per *slot* for that
+  customer's kind -- each with `required`, and with `document: null` when
+  nothing has been uploaded yet, so "missing" is a first-class, visible
+  state, not silence -- plus an `extra` array holding every attachment no
+  slot accounts for. That second list also catches a document whose slot has
+  since disappeared (a visura uploaded while the customer was registered as
+  a company, later corrected to `PRIVATE`): the file is still in the bucket
+  either way, and a documents list must never quietly hide one.
 - Either the customer (their own contract only) or staff can upload a
   document; only staff can review (approve/reject with a note). This covers
   both the normal flow (customer uploads, admin reviews) and the exception

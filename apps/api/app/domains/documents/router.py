@@ -18,6 +18,7 @@ from app.domains.documents.schemas import (
     DocumentRead,
     DocumentReviewRequest,
     DocumentUrlRead,
+    RequiredDocumentStatus,
 )
 from app.domains.support.service import actor_role_for
 from app.domains.users.models import User
@@ -98,6 +99,7 @@ async def _document_read(db: AsyncSession, document: Document) -> dict:
         "id": document.id,
         "contract_id": document.contract_id,
         "document_type": document.document_type,
+        "description": document.description,
         "original_filename": document.original_filename,
         "content_type": document.content_type,
         "size_bytes": document.size_bytes,
@@ -122,6 +124,9 @@ async def _document_read(db: AsyncSession, document: Document) -> dict:
 async def upload_contract_document(
     contract_id: uuid.UUID,
     document_type: str = Form(...),
+    #: Required when document_type is OTHER ("cosa stai allegando?"),
+    #: ignored otherwise -- the service is what enforces both halves.
+    description: str | None = Form(None),
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_permission("documents.upload")),
     db: AsyncSession = Depends(get_db),
@@ -137,6 +142,7 @@ async def upload_contract_document(
             organization_id=current_user.organization_id,
             contract_id=contract_id,
             document_type=document_type,
+            description=description,
             file_bytes=file_bytes,
             content_type=file.content_type or "",
             original_filename=file.filename or "documento",
@@ -167,9 +173,18 @@ async def get_contract_documents(
     )
     required = []
     for row in rows:
-        doc_read = await _document_read(db, row["document"]) if row["document"] is not None else None
-        required.append({"document_type": row["document_type"], "document": doc_read})
-    return ContractDocumentsRead(contract_id=contract_id, required=required)
+        doc_read = DocumentRead(**(await _document_read(db, row["document"]))) if row["document"] is not None else None
+        required.append(
+            RequiredDocumentStatus(
+                document_type=row["document_type"], required=row["required"], document=doc_read
+            )
+        )
+
+    extra_docs = await documents_service.get_extra_documents_for_contract(
+        db, organization_id=current_user.organization_id, contract=contract, customer_kind=customer_kind
+    )
+    extra = [DocumentRead(**(await _document_read(db, doc))) for doc in extra_docs]
+    return ContractDocumentsRead(contract_id=contract_id, required=required, extra=extra)
 
 
 @router.get("/documents/{document_id}/url", response_model=DocumentUrlRead)

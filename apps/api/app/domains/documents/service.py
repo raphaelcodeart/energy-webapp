@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -8,7 +9,13 @@ from app.core.storage import generate_presigned_document_url
 from app.core.storage import upload_document as storage_upload_document
 from app.domains.audit import service as audit_service
 from app.domains.contracts.models import Contract
-from app.domains.documents.models import DOCUMENT_TYPES, Document
+from app.domains.documents.models import (
+    DOCUMENT_TYPE_OTHER,
+    DOCUMENT_TYPES,
+    MAX_DOCUMENT_DESCRIPTION_LENGTH,
+    MIN_DOCUMENT_DESCRIPTION_LENGTH,
+    Document,
+)
 
 # Every contract needs these three regardless of customer type -- a company
 # additionally needs its chamber-of-commerce registration. Kept as a plain
@@ -18,17 +25,61 @@ from app.domains.documents.models import DOCUMENT_TYPES, Document
 # pretending it's configurable today.
 BASE_REQUIRED_DOCUMENT_TYPES = ["IDENTITY", "FISCAL_CODE", "UTILITY_BILL"]
 COMPANY_LIKE_KINDS = {"COMPANY", "CONDOMINIUM"}
+# A ditta individuale / libero professionista is a business for VAT
+# (catalog/pricing.py) but is NOT always in the Registro Imprese -- a
+# professionista with a partita IVA has no visura camerale at all. So the
+# slot is OFFERED to them rather than demanded: shown in the list, clearly
+# marked optional, and never blocking the contract from moving on. Making it
+# mandatory would strand exactly the customers who cannot produce it.
+CHAMBER_OF_COMMERCE_OPTIONAL_KINDS = {"SOLE_PROPRIETOR"}
 
 
 class DocumentValidationError(Exception):
     pass
 
 
-def required_document_types_for(customer_kind: str) -> list[str]:
-    types = list(BASE_REQUIRED_DOCUMENT_TYPES)
+@dataclass(frozen=True)
+class DocumentSlot:
+    """One named place to upload, on this contract, for this customer kind."""
+
+    document_type: str
+    #: False for a slot that is shown and accepted but does not hold the
+    #: contract back -- see CHAMBER_OF_COMMERCE_OPTIONAL_KINDS.
+    required: bool
+
+
+def document_slots_for(customer_kind: str) -> list[DocumentSlot]:
+    slots = [DocumentSlot(document_type=t, required=True) for t in BASE_REQUIRED_DOCUMENT_TYPES]
     if customer_kind in COMPANY_LIKE_KINDS:
-        types.append("CHAMBER_OF_COMMERCE")
-    return types
+        slots.append(DocumentSlot(document_type="CHAMBER_OF_COMMERCE", required=True))
+    elif customer_kind in CHAMBER_OF_COMMERCE_OPTIONAL_KINDS:
+        slots.append(DocumentSlot(document_type="CHAMBER_OF_COMMERCE", required=False))
+    return slots
+
+
+def required_document_types_for(customer_kind: str) -> list[str]:
+    """Only the types that actually block the contract. Everything that is
+    merely offered (optional slots, extra attachments) is deliberately not
+    here: this is the list `_maybe_advance_to_under_review` gates on."""
+    return [slot.document_type for slot in document_slots_for(customer_kind) if slot.required]
+
+
+def normalize_document_description(description: str | None) -> str:
+    """The label an uploader gives an extra attachment. Whitespace is
+    collapsed so "  Delega    firmata " and "Delega firmata" are the same
+    string in the admin's list, and the length is bounded on the way in
+    rather than truncated on the way out."""
+    cleaned = " ".join((description or "").split())
+    if len(cleaned) < MIN_DOCUMENT_DESCRIPTION_LENGTH:
+        raise DocumentValidationError(
+            "Indica di che documento si tratta (almeno "
+            f"{MIN_DOCUMENT_DESCRIPTION_LENGTH} caratteri)."
+        )
+    if len(cleaned) > MAX_DOCUMENT_DESCRIPTION_LENGTH:
+        raise DocumentValidationError(
+            f"La descrizione del documento non può superare i {MAX_DOCUMENT_DESCRIPTION_LENGTH} caratteri."
+        )
+    return cleaned
 
 
 async def upload_document(
@@ -42,9 +93,16 @@ async def upload_document(
     original_filename: str,
     actor_user_id: uuid.UUID,
     actor_role: str,
+    description: str | None = None,
 ) -> Document:
     if document_type not in DOCUMENT_TYPES:
         raise DocumentValidationError(f"document_type must be one of {sorted(DOCUMENT_TYPES)}")
+
+    # Only an extra attachment carries a label, and it must carry one:
+    # a slot document is already named by its type, and accepting a
+    # caller-supplied label there would let "Documento d'identità" arrive
+    # calling itself something else.
+    description = normalize_document_description(description) if document_type == DOCUMENT_TYPE_OTHER else None
 
     storage_key = storage_upload_document(
         file_bytes=file_bytes, content_type=content_type, key_prefix=f"documents/{contract_id}"
@@ -54,6 +112,7 @@ async def upload_document(
         organization_id=organization_id,
         contract_id=contract_id,
         document_type=document_type,
+        description=description,
         original_filename=original_filename,
         storage_key=storage_key,
         content_type=content_type,
@@ -66,7 +125,11 @@ async def upload_document(
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
         action="document.uploaded", entity_type="document", entity_id=str(contract_id),
-        new_value={"document_type": document_type, "uploaded_by_role": actor_role},
+        new_value={
+            "document_type": document_type,
+            "uploaded_by_role": actor_role,
+            **({"description": description} if description else {}),
+        },
     )
     await db.commit()
     await db.refresh(document)
@@ -101,7 +164,10 @@ async def _maybe_advance_to_under_review(
     rows = await get_contract_documents_status(
         db, organization_id=organization_id, contract=contract, customer_kind=customer_kind
     )
-    if not all(row["document"] is not None for row in rows):
+    # Only the required slots gate the advance -- an offered-but-optional
+    # one (and any extra attachment) must never be the reason a contract
+    # sits waiting for a document nobody actually needs.
+    if not all(row["document"] is not None for row in rows if row["required"]):
         return
 
     if contract.status == "SUBMITTED":
@@ -130,19 +196,42 @@ async def list_documents_for_contract(
 async def get_contract_documents_status(
     db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, customer_kind: str
 ) -> list[dict]:
-    """One row per required document type -- the latest (by created_at)
-    document of that type, or None if it hasn't been uploaded yet. A
-    rejected document doesn't disappear -- if a newer one of the same type
-    was uploaded after it, that newer one is what's shown; the rejected one
-    stays in the full list (list_documents_for_contract) as history."""
+    """One row per document slot -- the latest (by created_at) document of
+    that type, or None if it hasn't been uploaded yet, plus whether the slot
+    is required or merely offered. A rejected document doesn't disappear --
+    if a newer one of the same type was uploaded after it, that newer one is
+    what's shown; the rejected one stays in the full list
+    (list_documents_for_contract) as history."""
     docs = await list_documents_for_contract(db, organization_id=organization_id, contract_id=contract.id)
     latest_by_type: dict[str, Document] = {}
     for doc in docs:  # already newest-first
         if doc.document_type not in latest_by_type:
             latest_by_type[doc.document_type] = doc
 
-    required_types = required_document_types_for(customer_kind)
-    return [{"document_type": t, "document": latest_by_type.get(t)} for t in required_types]
+    return [
+        {
+            "document_type": slot.document_type,
+            "required": slot.required,
+            "document": latest_by_type.get(slot.document_type),
+        }
+        for slot in document_slots_for(customer_kind)
+    ]
+
+
+async def get_extra_documents_for_contract(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, customer_kind: str
+) -> list[Document]:
+    """Everything attached to this contract that no slot accounts for.
+
+    That is every OTHER attachment (all of them, oldest first -- unlike a
+    slot, a second extra document does not supersede the first), and also
+    any document whose type simply has no slot for this customer kind --
+    a visura uploaded back when the customer was registered as a company,
+    say. Those would otherwise vanish from the screen while still sitting in
+    the bucket, which is the one thing a documents list must not do."""
+    slot_types = {slot.document_type for slot in document_slots_for(customer_kind)}
+    docs = await list_documents_for_contract(db, organization_id=organization_id, contract_id=contract.id)
+    return [doc for doc in reversed(docs) if doc.document_type not in slot_types]
 
 
 async def get_document(db: AsyncSession, *, organization_id: uuid.UUID, document_id: uuid.UUID) -> Document | None:

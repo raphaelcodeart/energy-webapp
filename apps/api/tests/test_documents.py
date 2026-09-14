@@ -74,6 +74,142 @@ def test_required_document_types_for_company_customer():
     assert set(types) == {"IDENTITY", "FISCAL_CODE", "UTILITY_BILL", "CHAMBER_OF_COMMERCE"}
 
 
+def test_a_ditta_individuale_is_offered_the_visura_without_being_blocked_by_it():
+    """A partita IVA is a business for VAT but is not necessarily in the
+    Registro Imprese -- a professionista has no visura to give. The slot is
+    shown so whoever does have one can attach it, and required=False so
+    whoever doesn't is not stuck forever."""
+    slots = {s.document_type: s.required for s in documents_service.document_slots_for("SOLE_PROPRIETOR")}
+    assert slots["CHAMBER_OF_COMMERCE"] is False
+    assert "CHAMBER_OF_COMMERCE" not in documents_service.required_document_types_for("SOLE_PROPRIETOR")
+
+
+def test_a_private_customer_is_not_even_offered_the_visura():
+    slots = [s.document_type for s in documents_service.document_slots_for("PRIVATE")]
+    assert "CHAMBER_OF_COMMERCE" not in slots
+
+
+# --- Allegati aggiuntivi -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_extra_attachment_must_say_what_it_is(db, organization_id):
+    """The whole point of the open slot is that somebody names the thing --
+    an unlabelled "Documento aggiuntivo" is no better than no slot at all."""
+    contract, customer, actor_user_id = await _make_contract(db, organization_id)
+    for bad in (None, "", "   ", "ok"):
+        with pytest.raises(documents_service.DocumentValidationError):
+            await documents_service.upload_document(
+                db, organization_id=organization_id, contract_id=contract.id, document_type="OTHER",
+                description=bad, file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+                original_filename="x.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+            )
+
+
+@pytest.mark.asyncio
+async def test_an_extra_attachment_keeps_a_tidied_up_version_of_its_label(db, organization_id):
+    contract, customer, actor_user_id = await _make_contract(db, organization_id)
+    document = await documents_service.upload_document(
+        db, organization_id=organization_id, contract_id=contract.id, document_type="OTHER",
+        description="  Delega    firmata\n", file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+        original_filename="delega.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+    )
+    assert document.description == "Delega firmata"
+
+
+@pytest.mark.asyncio
+async def test_a_label_longer_than_the_column_is_refused_rather_than_truncated(db, organization_id):
+    contract, customer, actor_user_id = await _make_contract(db, organization_id)
+    with pytest.raises(documents_service.DocumentValidationError):
+        await documents_service.upload_document(
+            db, organization_id=organization_id, contract_id=contract.id, document_type="OTHER",
+            description="x" * 121, file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+            original_filename="x.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_slot_document_can_never_relabel_itself(db, organization_id):
+    """Accepting a caller-supplied label on IDENTITY would let a document
+    arrive in the identity slot calling itself something else."""
+    contract, customer, actor_user_id = await _make_contract(db, organization_id)
+    document = await documents_service.upload_document(
+        db, organization_id=organization_id, contract_id=contract.id, document_type="IDENTITY",
+        description="In realtà è la bolletta", file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+        original_filename="id.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+    )
+    assert document.description is None
+
+
+@pytest.mark.asyncio
+async def test_extra_attachments_accumulate_instead_of_replacing_each_other(db, organization_id):
+    """A second identity document supersedes the first; a second attachment
+    is a second attachment."""
+    contract, customer, actor_user_id = await _make_contract(db, organization_id)
+    for label in ("Carta d'identità retro", "Contratto di locazione"):
+        await documents_service.upload_document(
+            db, organization_id=organization_id, contract_id=contract.id, document_type="OTHER",
+            description=label, file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+            original_filename="x.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+        )
+
+    extra = await documents_service.get_extra_documents_for_contract(
+        db, organization_id=organization_id, contract=contract, customer_kind="PRIVATE"
+    )
+    assert [d.description for d in extra] == ["Carta d'identità retro", "Contratto di locazione"]
+
+    rows = await documents_service.get_contract_documents_status(
+        db, organization_id=organization_id, contract=contract, customer_kind="PRIVATE"
+    )
+    assert all(row["document"] is None for row in rows), "un allegato extra non riempie una casella richiesta"
+
+
+@pytest.mark.asyncio
+async def test_a_document_whose_slot_disappeared_is_still_shown(db, organization_id):
+    """A visura uploaded while the customer was registered as a company must
+    not silently vanish from the screen if they are later corrected to
+    PRIVATE -- the file is still in the bucket either way."""
+    contract, customer, actor_user_id = await _make_contract(db, organization_id, customer_kind="COMPANY")
+    await documents_service.upload_document(
+        db, organization_id=organization_id, contract_id=contract.id, document_type="CHAMBER_OF_COMMERCE",
+        file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+        original_filename="visura.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+    )
+    extra = await documents_service.get_extra_documents_for_contract(
+        db, organization_id=organization_id, contract=contract, customer_kind="PRIVATE"
+    )
+    assert [d.document_type for d in extra] == ["CHAMBER_OF_COMMERCE"]
+
+
+@pytest.mark.asyncio
+async def test_an_optional_slot_and_an_extra_attachment_do_not_hold_the_contract_back(db, organization_id):
+    """The three required documents are enough to send a ditta individuale's
+    contract to review, visura or no visura."""
+    contract, customer, actor_user_id = await _make_contract(db, organization_id, customer_kind="SOLE_PROPRIETOR")
+    contract = await contract_service.transition_contract(
+        db, organization_id=organization_id, contract=contract, to_status="SUBMITTED",
+        actor_user_id=actor_user_id, reason=None, notes=None, correlation_id=str(uuid.uuid4()),
+    )
+
+    await documents_service.upload_document(
+        db, organization_id=organization_id, contract_id=contract.id, document_type="OTHER",
+        description="Contratto di locazione", file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+        original_filename="x.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+    )
+    refreshed = await db.get(type(contract), contract.id)
+    assert refreshed.status == "SUBMITTED", "un allegato extra da solo non manda nulla in revisione"
+
+    for doc_type in documents_service.required_document_types_for("SOLE_PROPRIETOR"):
+        await documents_service.upload_document(
+            db, organization_id=organization_id, contract_id=contract.id, document_type=doc_type,
+            file_bytes=b"%PDF-1.4\nx", content_type="application/pdf",
+            original_filename=f"{doc_type}.pdf", actor_user_id=actor_user_id, actor_role="CUSTOMER",
+        )
+
+    refreshed = await db.get(type(contract), contract.id)
+    assert refreshed.status == "UNDER_REVIEW"
+
+
 @pytest.mark.asyncio
 async def test_upload_document_and_read_back(db, organization_id):
     contract, customer, actor_user_id = await _make_contract(db, organization_id)

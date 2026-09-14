@@ -379,9 +379,13 @@ contract_events
 documents (added Session 14 -- sensitive contract paperwork; see
   security-model.md for the private-storage design this table backs)
   id, organization_id, contract_id,
-  document_type (IDENTITY/FISCAL_CODE/UTILITY_BILL/CHAMBER_OF_COMMERCE --
-    the last one only required for COMPANY/CONDOMINIUM customers, see
-    business-rules.md),
+  document_type (IDENTITY/FISCAL_CODE/UTILITY_BILL/CHAMBER_OF_COMMERCE/OTHER
+    -- CHAMBER_OF_COMMERCE required for COMPANY/CONDOMINIUM and merely
+    offered to SOLE_PROPRIETOR; OTHER is the open slot for extra
+    attachments, added Session 45 -- see business-rules.md),
+  description nullable (Session 45 -- what the uploader called an OTHER
+    attachment; always NULL for the four fixed types, which are named by
+    their type),
   original_filename, storage_key (opaque, unique -- the MinIO object key in
     the private `lial-documents` bucket, never a URL),
   content_type, size_bytes,

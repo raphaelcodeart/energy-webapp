@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AccountingPanel } from "@/components/accounting-panel";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
-import { ContractPaymentPanel } from "@/components/contract-payment-panel";
+import {
+  ACTIONABLE_CONTRACT_STATUSES,
+  ContractCompletionCard,
+} from "@/components/contract-completion-screen";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
 import { WelcomeBonusCard } from "@/components/welcome-bonus-card";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
@@ -560,25 +563,28 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
                       <IbanEditor contractId={c.id} initialIban={c.iban} />
                     </div>
 
-                    {/* Documents required for this contract -- upload-only for the
-                        customer (review controls are staff-only, see admin-client-page.tsx) */}
-                    <div className="mb-6">
-                      <h5 className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider mb-3">
-                        Documenti Richiesti
-                      </h5>
-                      <ContractDocumentsPanel contractId={c.id} />
-                    </div>
-
-                    {/* The payment step. Only rendered once the contract has
-                        actually reached it -- the panel explains what is
-                        still missing for any earlier state rather than
-                        appearing out of nowhere when it is ready. */}
-                    {c.status === "PAYMENT_PENDING" && (
+                    {/* A contract still going through activation gets one
+                        call to action instead of two stacked panels: what
+                        is left to do, and a button that opens documents and
+                        payment together on a full screen. A finished (or
+                        refused) one keeps the plain inline list, which is
+                        then a record rather than a task. */}
+                    {ACTIONABLE_CONTRACT_STATUSES.has(c.status) ? (
+                      <div className="mb-6">
+                        <ContractCompletionCard
+                          contractId={c.id}
+                          status={c.status}
+                          productName={
+                            c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "Contratto"
+                          }
+                        />
+                      </div>
+                    ) : (
                       <div className="mb-6">
                         <h5 className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider mb-3">
-                          Pagamento
+                          Documenti
                         </h5>
-                        <ContractPaymentPanel contractId={c.id} />
+                        <ContractDocumentsPanel contractId={c.id} />
                       </div>
                     )}
 

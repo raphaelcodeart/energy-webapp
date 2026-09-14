@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 7U3q74accQNvh3WR5Lt0aZKpb7g8M6PDmTLCrpziyFVyDUiYSSRdOkMSOenVuXA
+\restrict Z5NAdfZCVs92iVxRBtoBIXpeXVsyLq4RUsTQtX4HNraNZJO4aTH7ZGrE4BoGjIL
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -457,7 +457,8 @@ CREATE TABLE public.documents (
     reviewed_at timestamp with time zone,
     review_note character varying(1000),
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    description character varying(120)
 );
 
 
@@ -4008,5 +4009,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 7U3q74accQNvh3WR5Lt0aZKpb7g8M6PDmTLCrpziyFVyDUiYSSRdOkMSOenVuXA
+\unrestrict Z5NAdfZCVs92iVxRBtoBIXpeXVsyLq4RUsTQtX4HNraNZJO4aTH7ZGrE4BoGjIL
 

@@ -77,12 +77,23 @@ italiano, prodotto acquistato mostrato per nome non per codice tecnico, punto
 di fornitura mostrato con un nome comprensibile — es. "Energia elettrica - Via
 Roma 12, Milano" — non solo il codice POD/PDR, e data di scadenza/rinnovo ben
 in evidenza, colorata in ambra quando manca meno di 30 giorni). Ogni contratto
-mostra anche il proprio **IBAN per l'addebito** (modificabile in linea) e i
-**documenti richiesti** (carta d'identità, codice fiscale, bolletta luce/gas,
-e per aziende/condomini anche la visura camerale): per ciascuno vedi se manca,
-è in attesa di verifica o è già stato approvato, e puoi caricare/sostituire il
-file direttamente da qui — se l'amministrazione segnala "documenti mancanti"
-su un contratto, è qui che li aggiungi. **Supporto & Assistenza** — qui puoi
+mostra anche il proprio **IBAN per l'addebito** (modificabile in linea).
+
+Finché un contratto è in corso di attivazione, la scheda non mostra più
+l'elenco dei documenti in mezzo a tutto il resto: mostra **un solo riquadro**
+che dice cosa manca davvero ("Mancano 2 documenti", "Documenti in verifica",
+"Scegli come pagare") e un pulsante che apre il contratto **a schermo intero**
+— stessa schermata larga dell'attivazione, non più una finestrella. Lì dentro
+trovi, uno sotto l'altro, i **documenti richiesti** (carta d'identità, codice
+fiscale, bolletta luce/gas, e per aziende/condomini anche la visura camerale;
+per le partite IVA la visura è proposta ma **facoltativa**, perché un
+professionista non ne ha una) e il **pagamento**. Per ciascun documento vedi
+se manca, è in attesa di verifica o è già approvato, e lo carichi o sostituisci
+da lì. In fondo c'è **"Aggiungi un altro documento"**: ti chiede prima *cosa*
+stai allegando (es. "Carta d'identità retro", "Delega firmata", "Contratto di
+locazione") e poi ti fa scegliere il file — così puoi allegare tutto quello che
+serve anche se non rientra nelle caselle previste. Quello che carichi resta
+salvato: puoi chiudere e riprendere quando vuoi. **Supporto & Assistenza** — qui puoi
 aprire un ticket vero (non solo un modulo che scompare): resta visibile nella
 tua area finché non viene risolto, e vedi le risposte dell'amministrazione
 direttamente nella conversazione.

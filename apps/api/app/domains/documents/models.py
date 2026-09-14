@@ -7,16 +7,28 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TimestampMixin, UUIDPKMixin
 
-DOCUMENT_TYPES = {"IDENTITY", "FISCAL_CODE", "UTILITY_BILL", "CHAMBER_OF_COMMERCE"}
+#: "OTHER" is the open slot: anything that has to be attached beyond the
+#: fixed list -- the back of an ID, a lease, a delega, a visura a private
+#: customer was asked for by hand. It is the only type that carries a
+#: `description`, because it is the only one whose label the uploader has to
+#: supply: without it an admin would open a review queue full of rows that
+#: all read "Altro documento".
+DOCUMENT_TYPE_OTHER = "OTHER"
+DOCUMENT_TYPES = {"IDENTITY", "FISCAL_CODE", "UTILITY_BILL", "CHAMBER_OF_COMMERCE", DOCUMENT_TYPE_OTHER}
 DOCUMENT_STATUSES = {"PENDING_REVIEW", "APPROVED", "REJECTED"}
 ALLOWED_DOCUMENT_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 MAX_DOCUMENT_BYTES = 15 * 1024 * 1024  # 15 MB -- a phone photo of a bill/ID, not a video
+MIN_DOCUMENT_DESCRIPTION_LENGTH = 3
+#: Long enough for "Visura camerale aggiornata a settembre 2026", short
+#: enough to stay on one line in the admin's review list.
+MAX_DOCUMENT_DESCRIPTION_LENGTH = 120
 
 
 class Document(UUIDPKMixin, TimestampMixin, Base):
     """A sensitive customer document attached to a contract (identity, fiscal
-    code, utility bill, or -- for companies -- chamber of commerce
-    registration). Stored in the PRIVATE "lial-documents" bucket, never the
+    code, utility bill, for companies the chamber of commerce registration,
+    or any extra attachment the uploader labels themselves -- see
+    DOCUMENT_TYPE_OTHER). Stored in the PRIVATE "lial-documents" bucket, never the
     public "lial-media" one used for profile/product photos -- see
     core/storage.py and security-model.md §Documents. Access is only ever via
     a short-lived presigned URL issued after an authorization check; nothing
@@ -29,6 +41,11 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     )
     contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id"), index=True)
     document_type: Mapped[str] = mapped_column(String(32))
+    #: What the uploader said this is. Only ever set for DOCUMENT_TYPE_OTHER
+    #: -- every other type already has a fixed label
+    #: (schemas.py::DOCUMENT_TYPE_LABELS), and letting an uploader relabel
+    #: "Documento d'identità" would make the required-document check lie.
+    description: Mapped[str | None] = mapped_column(String(MAX_DOCUMENT_DESCRIPTION_LENGTH), nullable=True)
     original_filename: Mapped[str] = mapped_column(String(255))
     # Opaque key inside the private bucket -- never handed to a browser as-is,
     # only ever used server-side to mint a presigned GET URL on demand.
