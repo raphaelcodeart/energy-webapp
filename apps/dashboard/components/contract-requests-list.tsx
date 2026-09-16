@@ -111,6 +111,11 @@ export function ContractRequestsList({
                       Bozza
                     </span>
                   )}
+                  {r.activated_by_promoter_name && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/10 text-sky-400 border-sky-500/20">
+                      {mode === "customer" ? `Preparata dal tuo promoter ${r.activated_by_promoter_name}` : `Compilata da ${r.activated_by_promoter_name}`}
+                    </span>
+                  )}
                   <span className="text-[11px] text-slate-500">
                     {formatDate(r.submitted_at ?? r.created_at)} · {r.points_total} POD
                     {r.payment_plans.length > 0 && ` · ${r.payment_plans.map((p) => PAYMENT_PLAN_LABELS[p] ?? p).join(", ")}`}

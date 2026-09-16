@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict hH0OaEl8gEdcKDZWWexLup8zvKD6GL4qsafHSh2M9df3dYMdsDu8n7GfaQ4FBHL
+\restrict AR1IndEjwK7mGj8eGZpn3eqdAp4FRg3ChCENiZIHYqkTRkhptuhKlgHc75vR6CA
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -4380,5 +4380,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict hH0OaEl8gEdcKDZWWexLup8zvKD6GL4qsafHSh2M9df3dYMdsDu8n7GfaQ4FBHL
+\unrestrict AR1IndEjwK7mGj8eGZpn3eqdAp4FRg3ChCENiZIHYqkTRkhptuhKlgHc75vR6CA
 

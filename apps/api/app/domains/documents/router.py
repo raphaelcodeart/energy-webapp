@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.core.deps import CurrentUser, require_permission
 from app.core.rate_limit import rate_limit
 from app.core.storage import UploadValidationError
-from app.domains.contracts.models import Contract, ContractAttribution
+from app.domains.contracts.models import Contract, ContractAttribution, ContractRequest
 from app.domains.customers.models import Company, Customer, CustomerProfile
 from app.domains.customers.service import display_name_for
 from app.domains.documents import service as documents_service
@@ -49,31 +49,39 @@ async def _resolve_own_agent_id(db: AsyncSession, *, organization_id: uuid.UUID,
 
 async def _assert_contract_document_access(
     db: AsyncSession, *, current_user: CurrentUser, contract: Contract, actor_role: str
-) -> None:
-    """A customer may only touch documents on THEIR OWN contract. A promoter
-    (Session 36's "Miei Clienti" CRM -- network/service.py::
-    create_contract_for_recruited_customer) may only touch documents on a
-    contract THEY are the producer of -- never any contract in the org,
-    unlike staff (anyone whose actor_role resolves to ADMIN -- see
-    support/service.py's same classification used for tickets), who may
-    touch any contract's documents in the organization."""
-    if actor_role == "CUSTOMER":
-        own_customer_id = await _resolve_own_customer_id(
-            db, organization_id=current_user.organization_id, user_id=current_user.user_id
-        )
-        if own_customer_id is None or contract.customer_id != own_customer_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
-        return
-    if actor_role == "PROMOTER":
-        own_agent_id = await _resolve_own_agent_id(
-            db, organization_id=current_user.organization_id, user_id=current_user.user_id
-        )
+) -> str:
+    """Who may touch a contract's documents, and as what -- the role the
+    upload is recorded under.
+
+    - the customer the contract belongs to (as CUSTOMER);
+    - a promoter who produced the contract, or who filled in its pratica for
+      the customer (as PROMOTER) -- "Miei Clienti", Sessions 36 and 52;
+    - staff, anyone holding neither of those roles (as ADMIN).
+
+    Both relationships are checked whatever the token's first role is: a
+    promoter who joined through "Lavora con noi" keeps the CUSTOMER role, and
+    reading only that one refused them their own customers' documents."""
+    if "CUSTOMER" not in current_user.roles and "PROMOTER" not in current_user.roles:
+        return actor_role
+    own_customer_id = await _resolve_own_customer_id(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
+    if own_customer_id is not None and contract.customer_id == own_customer_id:
+        return "CUSTOMER"
+    own_agent_id = await _resolve_own_agent_id(
+        db, organization_id=current_user.organization_id, user_id=current_user.user_id
+    )
+    if own_agent_id is not None:
         attribution = (
             await db.get(ContractAttribution, contract.contract_attribution_id)
             if contract.contract_attribution_id is not None else None
         )
-        if own_agent_id is None or attribution is None or attribution.producer_agent_id != own_agent_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
+        request = await db.get(ContractRequest, contract.contract_request_id)
+        if (attribution is not None and attribution.producer_agent_id == own_agent_id) or (
+            request is not None and request.activated_by_promoter_id == own_agent_id
+        ):
+            return "PROMOTER"
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this contract's documents")
 
 
 async def _document_read(db: AsyncSession, document: Document) -> dict:
@@ -133,8 +141,9 @@ async def upload_contract_document(
     db: AsyncSession = Depends(get_db),
 ) -> DocumentRead:
     contract = await _get_org_scoped_contract(db, organization_id=current_user.organization_id, contract_id=contract_id)
-    actor_role = actor_role_for(current_user.roles)
-    await _assert_contract_document_access(db, current_user=current_user, contract=contract, actor_role=actor_role)
+    actor_role = await _assert_contract_document_access(
+        db, current_user=current_user, contract=contract, actor_role=actor_role_for(current_user.roles)
+    )
 
     file_bytes = await file.read()
     try:

@@ -111,8 +111,13 @@ Tutto viene salvato mentre compili: una pratica lasciata a metà resta in
 elenco come **Bozza** con **"Riprendi"**. Nella lista ogni pratica mostra cosa
 manca ("Da pagare", "Mancano documenti per 2 POD", "7/10 attivi") e, aperta,
 l'elenco dei suoi POD con stato, contratto, rate, IBAN e documenti. Il
-catalogo resta sotto, in **"Scopri i pacchetti"**: "Attiva Contratto" su un
-pacchetto apre una pratica con quel contratto già scelto per tutti i POD.
+catalogo resta sotto, in **"Scopri i pacchetti"** (Session 55): ogni pacchetto
+ha il pulsante **Dettagli** per leggerlo; da lì "Attiva nuovo contratto" apre
+la stessa pratica, con quel contratto già scelto per tutti i POD. Se la
+pratica te l'ha preparata il tuo promoter, la trovi con la dicitura
+**"Preparata dal tuo promoter …"**, ricevi una notifica e un'email, e devi solo
+controllarla e pagare. Per ogni documento puoi **caricare un file** o premere
+**Foto** per fotografarlo con il telefono.
 
 **Come funzionava prima (Session 49), ancora valido per i contratti già
 aperti.** L'attivazione di un singolo contratto si faceva in tre passaggi a schermo intero.
@@ -249,10 +254,14 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   che HAI guadagnato tu specificamente da quel contratto** (diversa dalla
   provvigione totale pagata a tutta la filiera, perché nel piano multilivello
   ogni persona nella catena prende una quota diversa).
-- **Miei Clienti → Attiva nuovo contratto** (Session 52) — apre per il tuo
+- **Miei Clienti → Attiva nuovo contratto** (Sessions 52–55) — apre per il tuo
   cliente la stessa pratica di attivazione che vede lui: dati e "quanti POD
-  hai?", documenti d'identità, contratto per ogni POD, invio. **Il pagamento lo
-  fa il cliente** dal suo account ("I miei Contratti" → "Paga"). Il pulsante
+  hai?", documenti d'identità (file o **foto** col telefono), contratto per ogni
+  POD, invio. Funziona per un cliente già registrato e per uno nuovo: **"+ Nuovo
+  Cliente" → "Registra e apri la pratica"** apre la pratica subito dopo la
+  registrazione. La pratica risulta **compilata da te**, ma è del cliente: lui
+  riceve notifica ed email e **il pagamento lo fa lui** dal suo account ("I
+  miei Contratti" → "Paga"). Il pulsante
   **Pratiche** accanto a ogni cliente mostra tutte le sue pratiche — anche
   quelle che ha compilato da solo — con cosa manca a ciascuna; una bozza si
   riprende da lì. Ogni punto è un contratto a sé anche per le tue provvigioni.

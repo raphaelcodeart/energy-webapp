@@ -721,3 +721,100 @@ async def test_a_paid_contract_shows_in_accounting_with_its_instalments(db, orga
     assert detail["instalments"][0]["status"] == "PAID"
     assert detail["instalments"][0]["paid_at"] is not None
     assert any(e["label"].startswith("Prossima rata 2/12") for e in detail["timeline"])
+
+
+# --- Session 55: il promoter compila per il cliente ----------------------------------
+
+
+async def _promoter_and_customer(db, organization_id):
+    """A promoter with a login, who is ALSO a customer (joined through "Lavora
+    con noi"), and a customer of their own attributed to their referral code."""
+    from app.core.security import hash_password
+    from app.domains.users.models import User
+
+    db.add(Role(organization_id=organization_id, code="CUSTOMER", name="Customer"))
+    await db.commit()
+    promoter_user = User(
+        organization_id=organization_id, email=f"promo-{uuid.uuid4().hex[:6]}@example.demo",
+        password_hash=hash_password("irrelevant"),
+    )
+    db.add(promoter_user)
+    await db.commit()
+    agent = await network_service.create_agent(
+        db, organization_id=organization_id, first_name="Paola", last_name="Promoter",
+        promoter_code=f"REF-{uuid.uuid4().hex[:8]}", parent_agent_id=None, user_id=promoter_user.id,
+    )
+    code = await referral_service.get_or_create_promoter_code(db, organization_id=organization_id, agent_id=agent.id)
+    customer_user = await auth_service.register_with_referral(
+        db, organization_id=organization_id,
+        payload=RegisterRequest(
+            organization_id=str(organization_id), referral_code=code.code,
+            email=f"cliente-{uuid.uuid4().hex[:6]}@example.demo", password="correct-horse-battery-staple",
+            kind="PRIVATE", first_name="Carla", last_name="Cliente", accept_privacy=True,
+        ),
+    )
+    customer = (await db.execute(select(Customer).where(Customer.user_id == customer_user.id))).scalar_one()
+    return promoter_user, agent, customer_user, customer
+
+
+@pytest.mark.asyncio
+async def test_a_promoter_who_is_also_a_customer_can_handle_their_customers_documents(db, organization_id):
+    """"Lavora con noi" keeps the CUSTOMER role, and the document check used to
+    read only the first role of the token: the promoter was refused the
+    documents of the very contracts they had just filled in."""
+    from fastapi import HTTPException
+
+    from app.core.deps import CurrentUser
+    from app.domains.documents.router import _assert_contract_document_access
+
+    promoter_user, agent, customer_user, customer = await _promoter_and_customer(db, organization_id)
+    luce = await _package(db, organization_id, name="Luce", energy_type="ELECTRICITY", price_cents=100_00)
+    request = await requests_service.create_request(
+        db, organization_id=organization_id, customer_id=customer.id,
+        holder=requests_service.HolderData(
+            first_name="Carla", last_name="Cliente", email="carla@example.demo", pec=None, iban=None, address=ADDRESS,
+        ),
+        actor_user_id=promoter_user.id, actor_role="PROMOTER", promoter_agent_id=agent.id,
+        points_count=2, product_version_id=luce.id,
+    )
+    contract, _ = await requests_service.list_points(db, request=request)
+    assert contract.activated_by_promoter_id == agent.id
+
+    as_promoter = CurrentUser(user_id=promoter_user.id, organization_id=organization_id, roles=["CUSTOMER", "PROMOTER"])
+    assert await _assert_contract_document_access(
+        db, current_user=as_promoter, contract=contract, actor_role="CUSTOMER"
+    ) == "PROMOTER"
+    as_customer = CurrentUser(user_id=customer_user.id, organization_id=organization_id, roles=["CUSTOMER"])
+    assert await _assert_contract_document_access(
+        db, current_user=as_customer, contract=contract, actor_role="CUSTOMER"
+    ) == "CUSTOMER"
+
+    stranger_user, _ = await _customer_without_role(db, organization_id)
+    as_stranger = CurrentUser(user_id=stranger_user.id, organization_id=organization_id, roles=["CUSTOMER"])
+    with pytest.raises(HTTPException):
+        await _assert_contract_document_access(db, current_user=as_stranger, contract=contract, actor_role="CUSTOMER")
+
+
+@pytest.mark.asyncio
+async def test_the_customer_is_told_when_their_promoter_sends_a_pratica(db, organization_id):
+    from app.domains.notifications.models import Notification
+
+    promoter_user, agent, customer_user, customer = await _promoter_and_customer(db, organization_id)
+    luce = await _package(db, organization_id, name="Luce", energy_type="ELECTRICITY", price_cents=100_00)
+    request = await requests_service.create_request(
+        db, organization_id=organization_id, customer_id=customer.id,
+        holder=requests_service.HolderData(
+            first_name="Carla", last_name="Cliente", email="carla@example.demo", pec=None, iban=None, address=ADDRESS,
+        ),
+        actor_user_id=promoter_user.id, actor_role="PROMOTER", promoter_agent_id=agent.id,
+        points_count=1, product_version_id=luce.id,
+    )
+    await requests_service.submit_request(db, request=request, actor_user_id=promoter_user.id)
+
+    notes = list((await db.execute(
+        select(Notification).where(Notification.recipient_user_id == customer_user.id)
+    )).scalars())
+    assert any("Paola Promoter" in (n.body or "") for n in notes)
+    [summary] = await requests_service.summaries(db, [request])
+    assert summary["activated_by_promoter_name"] == "Paola Promoter"
+    assert summary["customer_id"] == customer.id

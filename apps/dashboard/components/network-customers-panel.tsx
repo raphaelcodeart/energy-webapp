@@ -78,9 +78,13 @@ export function NetworkCustomersPanel() {
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
+      const created = (await res.json()) as CustomerRead;
       setShowCreate(false);
       setEmail(""); setPhone(""); setFirstName(""); setLastName(""); setCompanyName(""); setFiscalCode(""); setVatNumber("");
       await queryClient.invalidateQueries({ queryKey: ["network", "customers", "mine"] });
+      // Registering a customer is almost always the first half of activating
+      // their contracts (Session 55): the pratica opens straight away.
+      setWizard({ customer: created, target: "new" });
     } catch (err: any) {
       setCreateError(err.message || "Impossibile registrare il cliente.");
     } finally {
@@ -99,8 +103,9 @@ export function NetworkCustomersPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-slate-400 light:text-slate-500">
-          Registra un nuovo cliente e attivagli subito un contratto -- come un piccolo CRM personale. Il cliente entra
-          in automatico nella tua rete, riceve un&apos;email per impostare la password, e trova già tutto pronto al primo accesso.
+          Registra un nuovo cliente o scegline uno già registrato e apri per lui una pratica con uno o più POD: dati,
+          documenti (anche fotografati) e contratto per ogni POD. Risulterà compilata da te, ma resta tutta del cliente:
+          lui la trova in “I miei Contratti”, riceve un avviso e completa il pagamento.
         </p>
         <button
           onClick={() => { setShowCreate(!showCreate); setCreateError(null); }}
@@ -173,7 +178,7 @@ export function NetworkCustomersPanel() {
 
             <button type="submit" disabled={createLoading}
               className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
-              {createLoading ? "Registrazione..." : "Registra Cliente"}
+              {createLoading ? "Registrazione..." : "Registra e apri la pratica"}
             </button>
             {createError && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{createError}</div>
@@ -211,7 +216,7 @@ export function NetworkCustomersPanel() {
                 </button>
                 <button
                   onClick={() => setWizard({ customer: c, target: "new" })}
-                  className="px-4 py-2 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition cursor-pointer"
                 >
                   Attiva nuovo contratto
                 </button>

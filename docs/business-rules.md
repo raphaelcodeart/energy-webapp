@@ -477,6 +477,33 @@ l'ultima voce, o l'abbonamento era di quel contratto soltanto, annulla
 l'abbonamento. Segna `billing_stopped_at`. Il rimborso di quanto già incassato
 resta una decisione umana sul pannello Stripe.
 
+### Il catalogo è una vetrina; il promoter compila per il cliente (Session 55)
+
+- **Si attiva solo con la pratica.** In "I miei Contratti" e in Home i pacchetti
+  Lial Energy hanno il pulsante **Dettagli**, non più "Attiva Contratto": si
+  leggono, e il popup porta a "Attiva nuovo contratto", cioè la stessa pratica
+  del pulsante in alto (con quel pacchetto già scelto per ogni POD).
+- **Il promoter fa la stessa procedura al posto del cliente**, da "Miei
+  Clienti": per un cliente appena registrato (la pratica si apre subito dopo
+  la registrazione) o per uno già esistente. La pratica e ogni contratto
+  registrano `activated_by_promoter_id` e `created_by_role = PROMOTER` —
+  "compilata da X" lo vedono cliente, promoter e amministrazione — ma **tutto
+  appartiene al cliente**: `customer_id`, documenti, pagamento.
+- All'invio di una pratica compilata da un promoter il cliente riceve una
+  **notifica** e un'**email** ("I tuoi contratti sono pronti") con il link a
+  "I miei Contratti", dove controlla e **paga lui**. L'email è best-effort,
+  dopo il commit.
+- **Documenti: file o foto.** Ogni casella e gli allegati aggiuntivi hanno,
+  oltre a "Carica", un pulsante **Foto** che apre direttamente la fotocamera
+  del telefono (`capture="environment"`, JPG/PNG), per il cliente e per il
+  promoter.
+- **Accesso ai documenti di un contratto** (`documents/router.py::
+  _assert_contract_document_access`): il cliente del contratto; il promoter
+  che ne è produttore **o** che ha compilato la sua pratica; lo staff. Si
+  controllano **entrambe** le relazioni qualunque sia il primo ruolo nel
+  token: un promoter entrato con "Lavora con noi" mantiene il ruolo CUSTOMER e
+  prima veniva rifiutato sui documenti dei propri clienti.
+
 ### Chi può fare cosa (`/contract-requests`)
 
 - **Cliente**: le proprie pratiche, tutto compreso il pagamento.

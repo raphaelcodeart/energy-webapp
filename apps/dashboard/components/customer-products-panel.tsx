@@ -138,6 +138,10 @@ export function CustomerProductsPanel({
   const [detailTarget, setDetailTarget] = useState<ProductCatalogRead | null>(null);
   const [activationTarget, setActivationTarget] = useState<ProductCatalogRead | null>(null);
 
+  // "I miei Contratti" and Home show only the Lial Energy packages: a
+  // showcase since Session 55 -- activation happens only through the pratica.
+  const contractsOnly = !referralCode && visibleCategories.length === 1 && visibleCategories[0] === "INTERNAL";
+
   const visibleTabs: { key: ShopTab; label: string }[] = [
     ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
     ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
@@ -189,11 +193,15 @@ export function CustomerProductsPanel({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-white light:text-slate-900">Prodotti & Servizi</h3>
+        <h3 className="text-lg font-semibold text-white light:text-slate-900">
+          {contractsOnly ? "I pacchetti Lial Energy" : "Prodotti & Servizi"}
+        </h3>
         <p className="text-xs text-slate-400 light:text-slate-500">
           {referralCode
             ? "Condividi un'offerta con un cliente: il link lo porta dritto alla registrazione, già associato a te."
-            : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
+            : contractsOnly
+              ? "Apri “Dettagli” per leggere ogni pacchetto. Per attivarli usa “Attiva nuovo contratto”: una pratica può contenere uno o più POD."
+              : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
         </p>
       </div>
 
@@ -310,7 +318,10 @@ export function CustomerProductsPanel({
               ? (p.energy_type ? ENERGY_LABELS[p.energy_type] ?? p.energy_type : "Energia")
               : PRODUCT_TYPE_LABELS[p.product_type] ?? p.product_type;
             const purchasable = !referralCode && p.category !== "INTERNAL";
-            const activatable = !referralCode && p.category === "INTERNAL" && p.product_type === "ENERGY_CONTRACT";
+            // A Lial Energy package opens its details (Session 55): it is
+            // read here, and activated through "Attiva nuovo contratto".
+            const readable = p.category === "INTERNAL";
+            const openable = purchasable || readable;
             const maxCreditCents = Math.round((v.base_price_cents * v.credit_discount_percentage) / 100);
             return (
               <div
@@ -320,9 +331,9 @@ export function CustomerProductsPanel({
               >
                 <button
                   type="button"
-                  onClick={() => purchasable && setDetailTarget(p)}
-                  disabled={!purchasable}
-                  className={`relative block w-full h-48 overflow-hidden ${purchasable ? "cursor-pointer" : "cursor-default"}`}
+                  onClick={() => openable && setDetailTarget(p)}
+                  disabled={!openable}
+                  className={`relative block w-full h-48 overflow-hidden ${openable ? "cursor-pointer" : "cursor-default"}`}
                 >
                   <ProductThumbnail
                     imageUrl={v.image_url}
@@ -353,8 +364,8 @@ export function CustomerProductsPanel({
                 </button>
                 <div className="p-5">
                   <h4
-                    onClick={() => purchasable && setDetailTarget(p)}
-                    className={`text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug ${purchasable ? "cursor-pointer hover:text-orange-400 transition" : ""}`}
+                    onClick={() => openable && setDetailTarget(p)}
+                    className={`text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug ${openable ? "cursor-pointer hover:text-orange-400 transition" : ""}`}
                   >
                     {v.name}
                   </h4>
@@ -427,15 +438,15 @@ export function CustomerProductsPanel({
                       Vedi dettagli e acquista
                     </button>
                   )}
-                  {activatable && (
+                  {readable && (
                     <button
-                      onClick={() => setActivationTarget(p)}
-                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                      onClick={() => setDetailTarget(p)}
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 light:hover:bg-slate-900/10 border border-white/10 light:border-slate-300 text-white light:text-slate-800 text-xs font-bold transition-all duration-200 cursor-pointer active:scale-[0.98]"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Attiva Contratto
+                      Dettagli
                     </button>
                   )}
                 </div>
@@ -448,10 +459,22 @@ export function CustomerProductsPanel({
       {detailTarget && (
         <ProductDetailModal
           product={detailTarget}
+          customerKind={detailTarget.category === "INTERNAL" ? customerKind : undefined}
+          ctaLabel={
+            detailTarget.category !== "INTERNAL"
+              ? "Acquista ora"
+              : referralCode
+                ? "Chiudi"
+                : "Attiva nuovo contratto"
+          }
           onClose={() => setDetailTarget(null)}
           onBuy={(versionId, name) => {
+            const target = detailTarget;
             setDetailTarget(null);
-            setCheckoutTarget({ versionId, name });
+            if (target.category !== "INTERNAL") setCheckoutTarget({ versionId, name });
+            // The same pratica as the button at the top of "I miei
+            // Contratti", with this package already chosen for every POD.
+            else if (!referralCode) setActivationTarget(target);
           }}
         />
       )}

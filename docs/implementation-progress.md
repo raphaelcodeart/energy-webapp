@@ -4,6 +4,30 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 55 — 2026-09-16 — Catalogo solo in lettura, il promoter compila la pratica per il cliente, documenti con foto
+
+Richiesta dell'utente: in "I miei Contratti" il catalogo con "Attiva Contratto"
+sul singolo pacchetto non ha più senso — diventa "Dettagli" e l'attivazione
+passa solo dalla pratica. Lo stesso sistema lo deve avere il promoter per i
+suoi clienti, nuovi o già registrati, segnando che l'ha fatto lui ma lasciando
+tutto al cliente, che poi trova i contratti e paga. Documenti caricabili come
+file o fotografati.
+
+- [x] Catalogo: "Dettagli" al posto di "Attiva Contratto"; il popup del
+  pacchetto porta alla pratica. Testi della sezione aggiornati.
+- [x] Promoter: "Registra e apri la pratica" apre subito la pratica per il
+  cliente appena registrato; "Attiva nuovo contratto" in evidenza per quelli
+  esistenti. Badge "Compilata da…" / "Preparata dal tuo promoter…".
+- [x] All'invio di una pratica del promoter: notifica ed email al cliente.
+- [x] Pulsante **Foto** (fotocamera del telefono) su ogni documento e sugli
+  allegati aggiuntivi.
+- [x] **Difetto trovato**: un promoter che è anche cliente ("Lavora con noi")
+  veniva rifiutato sui documenti dei contratti dei propri clienti, perché il
+  controllo leggeva solo il primo ruolo del token. Ora si verificano entrambe
+  le relazioni, compreso "ha compilato la pratica".
+- [x] Test: 2 nuovi. Suite completa verde.
+- Nessuna modifica allo schema del database.
+
 ## Session 54 — 2026-09-16 — Contabilità: totali, rate dei contratti, dettaglio collegato di ogni movimento
 
 Richiesta dell'utente: nella pagina Contabilità togliere il sottotitolo
