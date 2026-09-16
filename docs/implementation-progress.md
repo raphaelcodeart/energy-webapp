@@ -4,6 +4,22 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 58 — 2026-09-16 — Documentazione riallineata
+
+Su richiesta dell'utente: documentazione aggiornata e struttura del database
+rigenerata per il repository.
+
+- [x] `server-migration-guide.md`: dump allineato alla revision `d5a1b3c9e472`
+  (migrazione 0043), 67 tabelle, le due tabelle delle pratiche nell'elenco per
+  dominio, e gli **eventi del webhook Stripe da abilitare** nella
+  configurazione di un server nuovo.
+- [x] `open-questions.md`: aggiunti i punti ancora aperti — eventi `invoice.*`
+  del webhook Stripe, pacchetto gas registrato come luce, IVA nei prezzi dello
+  Shop, controllo dello stesso POD senza codice.
+- [x] `docs/database-schema.sql` rigenerato con `scripts/dump-schema.sh`
+  (nessuna modifica di schema da 0043: il diff è solo il token casuale di
+  `pg_dump`).
+
 ## Session 57 — 2026-09-16 — Documenti: "Visualizza" apre un popup, non una nuova scheda
 
 Richiesta dell'utente: cliccando "Visualizza" su un documento caricato (es.

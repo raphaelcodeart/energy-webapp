@@ -165,6 +165,39 @@ deleted because "possiamo usare Klarna?" is the kind of question that comes
 back, and the answer — that the requirement never actually needed it — is
 worth keeping.
 
+## 13. Eventi del webhook Stripe per le rate — DA FARE SUL PANNELLO STRIPE (Session 51)
+
+L'endpoint webhook registrato su Stripe ha abilitato **solo**
+`checkout.session.completed`. Vanno aggiunti `invoice.paid` e
+`invoice.payment_failed`: senza, dalla 2ª rata in poi Stripe addebita la carta
+ma l'app non registra la rata (niente cashback, niente provvigioni per rata,
+nessun avviso di addebito fallito). Il codice è pronto; manca solo la
+configurazione, che non è stata cambiata da qui senza conferma. Vedi
+`server-migration-guide.md` §11.
+
+## 14. Il pacchetto "GAS Energia Circolare con cash back" è registrato come luce (Session 52)
+
+Codice prodotto `LUCE-STD-COPY`, `energy_type = ELECTRICITY`: sembra la copia
+di un pacchetto luce rinominata senza cambiare il tipo. Dalla Session 53 è il
+pacchetto scelto a decidere se un POD è luce o gas, quindi un POD con questo
+pacchetto risulta **luce**. Correzione da Prodotti → tipo energia Gas, se è
+davvero un pacchetto gas. I contratti già aperti restano invariati.
+
+## 15. Prezzi dello Shop: IVA inclusa o esclusa? (Session 51)
+
+Scheda e dettaglio prodotto dello Shop mostrano "+ IVA 22% (totale)", ma
+l'ordine addebita il prezzo di listino senza aggiungere IVA. Serve una
+decisione: il prezzo dello Shop è IVA inclusa (e va tolta la dicitura) o IVA
+esclusa (e va aggiunta al checkout)?
+
+## 16. Stesso POD in due contratti (Session 53)
+
+Il codice POD/PDR non si chiede più nella pratica (richiesta esplicita), quindi
+il sistema non può accorgersi se lo stesso punto reale viene attivato due
+volte: il controllo passa alla verifica della bolletta da parte
+dell'amministrazione. Se diventa un problema, si può chiedere il codice come
+campo **facoltativo** al momento della verifica documenti.
+
 ---
 
 When `Allegato_A_Piano_Carriera_Regolamento_Provvigionale.pdf` (or an equivalent

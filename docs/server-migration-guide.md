@@ -484,9 +484,9 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (**rigenerato 2026-09-16, allineato alla revision
-Alembic `b3e8f1a6c257` / migrazione `0041_contract_commission_plan_and_instalments`**;
+Alembic `d5a1b3c9e472` / migrazione `0043_contract_request_address`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **65 tabelle** con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **67 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -541,7 +541,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 65 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 67 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -578,7 +578,15 @@ Contratti:         contracts (ha anche activated_at/expires_at/iban, email
                     del contratto -- bucket privato lial-documents),
                     contract_commission_plans (anteprima provvigioni
                     accettata, Session 50), contract_instalments (rate
-                    del cliente e quote di provvigione rilasciate)
+                    del cliente e quote di provvigione rilasciate),
+                    contract_requests (la pratica di attivazione: N POD
+                    = N contratti con dati, indirizzo, documenti comuni e
+                    pagamento unico, Sessions 52-53; ogni contratto ha
+                    contract_request_id, e un documento appartiene a un
+                    contratto OPPURE a una pratica),
+                    contract_request_checkouts (ogni Checkout Stripe
+                    aperto per una pratica, con i contratti e gli importi
+                    congelati)
 Supporto:          tickets, ticket_messages
 Provvigioni:       ranks, agent_rank_history, commission_plan_versions,
                     commission_rule_versions, commission_calculations,
@@ -1243,6 +1251,15 @@ normale, vedi §4.4 scenario C. Poi, in Impostazioni organizzazione:
   `pk_test` sono le chiavi di *prova*; con quelle il pulsante "Paga con
   carta" è visibile ai clienti ma nessun pagamento è reale. Prima di aprire
   al pubblico, chiavi live.
+  Sul pannello Stripe, l'endpoint webhook
+  `https://<dominio>/api/payments/stripe/webhook/<organization_id>` deve avere
+  abilitati **tutti e tre** gli eventi: `checkout.session.completed` (primo
+  pagamento), `invoice.paid` e `invoice.payment_failed` (le rate successive dei
+  contratti a 3 o 12 rate). Con il solo primo evento Stripe addebita le rate
+  ma l'app non le vede: niente cashback, niente provvigioni per rata, nessun
+  avviso di rata fallita (trovato così in Session 51). Nessuna versione API
+  fissata sull'endpoint: il codice legge sia la forma vecchia sia quella
+  "basil/dahlia" delle fatture.
 - **IBAN aziendale** e intestatario, per i pagamenti a bonifico.
 - **Google Drive** — facoltativo, serve solo al pulsante "Invia su Drive"
   sul fascicolo di un contratto. Vedi §13.
