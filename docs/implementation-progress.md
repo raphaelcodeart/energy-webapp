@@ -4,6 +4,32 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 59 — 2026-09-16 — Cashback dei contratti a rate: intero alla prima rata oppure rata per rata, a scelta dell'amministratore
+
+Richiesta dell'utente: per semplificare, con un contratto pagato a 3 o 12 rate
+riconoscere l'intero cashback già alla prima rata, in un'unica ricarica; e
+rendere la scelta amministrabile in Impostazioni (intero subito, oppure una
+ricarica a ogni rata incassata). Dettagli in
+`business-rules.md#instalment-cashback`.
+
+- [x] Impostazione dell'organizzazione `contract_instalment_cashback_mode`
+  (`PER_INSTALMENT` predefinito, `UPFRONT`), nessuna modifica di schema: vive
+  nel JSONB `organizations.settings`. Scheda nuova in Impostazioni.
+- [x] Cashback anticipato: alla prima rata l'intero importo, con la stessa
+  chiave del pagamento unico; il registro del wallet, non l'impostazione,
+  impedisce che quel contratto riceva poi anche il cashback per rata.
+- [x] **Difetti trovati nel farlo**: una rata confermata a mano
+  dall'amministratore non dava cashback; e la chiave per rata era la fattura
+  Stripe, quindi una rata fallita, confermata a mano e poi riaddebitata da
+  Stripe sulla stessa fattura avrebbe dato cashback due volte. Ora la chiave è
+  il numero della rata e la conferma manuale accredita. In produzione non
+  c'era ancora nessun cashback per rata, quindi nessun dato da migrare.
+- [x] Schermata di pagamento: il testo sul cashback segue l'impostazione.
+  Istruzioni del webhook in Impostazioni corrette con i tre eventi necessari.
+- [x] Test: 3 nuovi (anticipato, cambio d'impostazione senza doppioni, rata
+  confermata a mano e poi riaddebitata), 2 aggiornati per il nuovo campo. Suite
+  completa verde (374).
+
 ## Session 58 — 2026-09-16 — Documentazione riallineata
 
 Su richiesta dell'utente: documentazione aggiornata e struttura del database

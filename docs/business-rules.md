@@ -366,6 +366,40 @@ times, **each slice when that instalment has really been paid**.
   same invoice then finds it already paid. `UNIQUE (contract_id, number)` and
   `UNIQUE stripe_invoice_id` make a double release impossible.
 
+## Cashback dei contratti pagati a rate: intero in anticipo o rata per rata (Session 59) {#instalment-cashback}
+
+Il cashback LialCash di un contratto Lial Energy (percentuale del prodotto sul
+totale IVA inclusa, Session 49) arriva **tutto subito** se il contratto è
+pagato in unica soluzione. Per 3 o 12 rate lo decide l'amministratore in
+**Impostazioni → Cashback dei contratti pagati a rate**
+(`organizations.settings.contract_instalment_cashback_mode`):
+
+- `PER_INSTALMENT` — **predefinito**, la regola dalla Session 49: una parte a
+  ogni rata incassata (Stripe o confermata a mano), così chi smette di pagare
+  non ha ricevuto il cashback delle rate mancanti.
+- `UPFRONT` — alla **prima rata** il cliente riceve in un'unica ricarica il
+  cashback dell'**intero contratto**, e nulla sulle rate successive. Rischio
+  accettato scegliendola: se il cliente smette di pagare, il cashback è già
+  stato dato (respingere o interrompere il contratto non lo storna da solo).
+
+Regole che valgono in entrambi i casi (`contracts/service.py::
+credit_contract_instalment_cashback`):
+
+- **La scelta si applica al pagamento della prima rata e vale per tutta la vita
+  del contratto.** Un contratto già accreditato in anticipo (riga di wallet con
+  chiave `contract-cashback:<contratto>`, la stessa del pagamento unico) non
+  riceve mai il cashback per rata, anche se l'impostazione viene cambiata dopo.
+- La chiave di idempotenza per rata è il **numero della rata**
+  (`contract-cashback:<contratto>:rata-<n>`), non la fattura Stripe: una rata
+  fallita, confermata a mano dall'amministratore e poi riaddebitata con
+  successo da Stripe sulla stessa fattura dà cashback una volta sola.
+- **Una rata confermata a mano** dall'amministratore (bonifico, carta
+  sistemata al telefono) dà il suo cashback come una incassata da Stripe:
+  prima non ne dava nessuno.
+- Nessun cashback su un contratto respinto o cessato.
+- La schermata di pagamento del cliente dice come arriverà il cashback, secondo
+  l'impostazione.
+
 ## La pratica di attivazione (Session 52) {#contract-request}
 
 **Regola, detta dal business:** un cliente con 10 POD firma **10 contratti** —

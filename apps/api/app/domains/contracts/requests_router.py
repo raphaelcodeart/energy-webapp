@@ -421,6 +421,9 @@ async def get_payment_options(
         ],
         points_paid=sum(1 for c in points if c.paid_at is not None),
         cashback_total_cents=await requests_service.cashback_total_cents(db, points=payable),
+        cashback_mode=await organizations_service.get_contract_instalment_cashback_mode(
+            db, organization_id=current_user.organization_id
+        ),
     )
 
 

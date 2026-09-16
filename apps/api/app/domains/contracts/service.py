@@ -923,10 +923,11 @@ async def credit_contract_cashback(
 
     This function credits the WHOLE contract at once, which is right for a
     single payment (card or confirmed bank transfer). An instalment plan is
-    skipped here: it earns its credit one instalment at a time, as each is
-    actually collected (credit_contract_instalment_cashback) -- business
-    decision, Session 49, so a customer who stops paying after the first
-    month has not already been handed the whole year in LialCash.
+    skipped here and handled by credit_contract_instalment_cashback, as the
+    administrator chose: a slice with every instalment collected (Session
+    49, the default -- a customer who stops paying after the first month has
+    not been handed the whole year), or the whole amount in advance at the
+    first instalment (Session 59).
 
     Exactly-once is enforced twice over: `contracts.cashback_credited_at` as
     the readable guard, and a deterministic wallet idempotency key against
@@ -967,33 +968,64 @@ async def credit_contract_cashback(
 
 
 async def credit_contract_instalment_cashback(
-    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, instalment_ref: str
+    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, instalment_number: int
 ) -> None:
-    """The LialCash one collected instalment earns: the contract's cashback
-    percentage applied to that instalment, so the credits add up to the
-    same total a single payment would have earned once every instalment is
-    in.
+    """The LialCash one collected instalment earns, on a contract paid in 3
+    or 12 instalments -- in the way the administrator chose in Impostazioni
+    (organizations/service.py::get_contract_instalment_cashback_mode):
 
-    `instalment_ref` makes the idempotency key: "first" for the payment
-    taken at checkout, the Stripe invoice id for every later one -- a
-    redelivered invoice.paid can never credit the same month twice. The
-    amount is the plan's own instalment, not whatever the invoice happened
-    to say, so a proration or a manual invoice on the subscription can
-    never inflate it. Never raises, same as credit_contract_cashback."""
+    - PER_INSTALMENT: the cashback percentage applied to that instalment, so
+      the credits add up to what a single payment would have earned once
+      every instalment is in;
+    - UPFRONT: at the first instalment, the whole contract's cashback in one
+      credit (the same amount and the same idempotency key as a single
+      payment), and nothing for the instalments after it.
+
+    The choice is read when the first instalment is paid and holds for the
+    contract's whole life: a contract credited in advance is never credited
+    again per instalment, whatever the setting says later -- the ledger row
+    of the advance is what decides, not the setting.
+
+    The idempotency key is the instalment NUMBER, not the Stripe invoice: the
+    same month confirmed by hand by an administrator and later collected by a
+    Stripe retry of the same invoice is still one month. The amount is the
+    plan's own instalment, never whatever the invoice said. Never raises."""
     from app.domains.contracts import payment_plans
+    from app.domains.organizations import service as organizations_service
+    from app.domains.wallets.models import WalletTransaction
 
     plan = payment_plans.plan_by_key(contract.payment_plan)
     if plan is None or plan.instalments <= 1 or not contract.gross_amount_cents:
         return
+    if contract.status in ("REJECTED", "CANCELLED"):
+        return
     version = await db.get(ProductVersion, contract.product_version_id)
     if version is None:
         return
-    instalment_cents = payment_plans.breakdown_for(plan, contract.gross_amount_cents).instalment_cents
-    amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=instalment_cents)
+    code = str(contract.id)[:8].upper()
+    upfront_key = f"contract-cashback:{contract.id}"
+
+    if instalment_number == 1 and (
+        await organizations_service.get_contract_instalment_cashback_mode(db, organization_id=organization_id)
+        == organizations_service.CASHBACK_UPFRONT
+    ):
+        amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=contract.gross_amount_cents)
+        idempotency_key = upfront_key
+        note = f"Cashback contratto {code} (intero, anticipato alla prima rata)"
+    else:
+        already_in_advance = (
+            await db.execute(select(WalletTransaction.id).where(WalletTransaction.idempotency_key == upfront_key))
+        ).first()
+        if already_in_advance is not None:
+            return
+        instalment_cents = payment_plans.breakdown_for(plan, contract.gross_amount_cents).instalment_cents
+        amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=instalment_cents)
+        idempotency_key = f"contract-cashback:{contract.id}:rata-{instalment_number}"
+        note = f"Cashback contratto {code} (rata {instalment_number} di {plan.instalments})"
+
     credited = await _credit_contract_lialcash(
         db, organization_id=organization_id, contract=contract, amount_cents=amount_cents,
-        actor_user_id=None, idempotency_key=f"contract-cashback:{contract.id}:{instalment_ref}",
-        note=f"Cashback rata contratto {str(contract.id)[:8].upper()}",
+        actor_user_id=None, idempotency_key=idempotency_key, note=note,
     )
     if credited and contract.cashback_credited_at is None:
         # Only "a credit has started", on an instalment plan -- never read as
@@ -1304,14 +1336,16 @@ async def record_subscription_invoice(
     if paid:
         for contract, cents in targets:
             if is_later_month and contract.status not in ("REJECTED", "CANCELLED"):
-                await credit_contract_instalment_cashback(
-                    db, organization_id=organization_id, contract=contract, instalment_ref=invoice_id
-                )
                 # The same month's slice of the commissions: released at once
                 # on an active contract, held until activation otherwise.
-                await instalments_service.record_payment(
+                row = await instalments_service.record_payment(
                     db, contract=contract, source=instalments_service.SOURCE_STRIPE_INVOICE, invoice_id=invoice_id,
                 )
+                if row is not None:
+                    await db.commit()
+                    await credit_contract_instalment_cashback(
+                        db, organization_id=organization_id, contract=contract, instalment_number=row.number
+                    )
             await audit_service.record(
                 db, organization_id=organization_id, actor_user_id=None,
                 action="contract.instalment_paid", entity_type="contract", entity_id=str(contract.id),

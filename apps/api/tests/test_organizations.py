@@ -19,6 +19,7 @@ async def test_get_settings_defaults_to_none_when_nothing_set(db, organization_i
         "bank_account_holder": None,
         "bank_transfer_instructions": None,
         "admin_notification_email": None,
+        "contract_instalment_cashback_mode": None,
     }
 
 
@@ -39,6 +40,7 @@ async def test_update_settings_merges_and_partial_update_preserves_the_rest(db, 
         "bank_account_holder": "Lial Energy Srl",
         "bank_transfer_instructions": None,
         "admin_notification_email": None,
+        "contract_instalment_cashback_mode": None,
     }
 
     # Omitting a field (exclude_unset) leaves it exactly as it was.

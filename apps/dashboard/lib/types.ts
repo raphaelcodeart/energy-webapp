@@ -163,6 +163,8 @@ export type ContractRequestPaymentOptionsRead = {
   options: ContractRequestPaymentOptionRead[];
   points_paid: number;
   cashback_total_cents: number;
+  /** On an instalment plan: a slice per instalment, or all at the first. */
+  cashback_mode: "PER_INSTALMENT" | "UPFRONT";
 };
 
 export type ContractStatusHistoryRead = {
@@ -636,6 +638,8 @@ export type OrganizationSettingsRead = {
   bank_iban: string | null;
   bank_account_holder: string | null;
   bank_transfer_instructions: string | null;
+  /** PER_INSTALMENT (default) / UPFRONT -- Session 59. */
+  contract_instalment_cashback_mode: "PER_INSTALMENT" | "UPFRONT" | null;
 };
 
 export type PaymentSettingsRead = {

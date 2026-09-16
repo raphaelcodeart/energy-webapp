@@ -743,9 +743,9 @@ async def apply_checkout(
             db, organization_id=checkout.organization_id, contract=contract,
             stripe_invoice_id=stripe_invoice_id, notify_staff=False,
         )
-        if plan is not None and plan.instalments > 1 and contract.status not in ("REJECTED", "CANCELLED"):
+        if plan is not None and plan.instalments > 1:
             await contracts_service.credit_contract_instalment_cashback(
-                db, organization_id=checkout.organization_id, contract=contract, instalment_ref="first"
+                db, organization_id=checkout.organization_id, contract=contract, instalment_number=1
             )
         paid.append(contract)
 

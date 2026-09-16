@@ -824,3 +824,98 @@ async def test_the_customer_is_told_when_their_promoter_sends_a_pratica(db, orga
     [summary] = await requests_service.summaries(db, [request])
     assert summary["activated_by_promoter_name"] == "Paola Promoter"
     assert summary["customer_id"] == customer.id
+
+
+# --- Session 59: cashback dei contratti a rate, intero in anticipo o rata per rata ---------
+
+
+async def _set_cashback_mode(db, organization_id, mode: str) -> None:
+    from app.domains.organizations.models import Organization
+
+    org = await db.get(Organization, organization_id)
+    org.settings = {**(org.settings or {}), "contract_instalment_cashback_mode": mode}
+    await db.commit()
+
+
+async def _pay_first_instalment_of_12(db, organization_id, monkeypatch):
+    user, customer, request, contracts = await _sent_pratica(db, organization_id)
+    items = {str(c.id): f"si_cb_{i}" for i, c in enumerate(contracts)}
+    lines = [
+        {"id": f"il_{i}", "amount": amount, "parent": {"subscription_item_details": {"subscription_item": f"si_cb_{i}"}}}
+        for i, amount in enumerate((10_00, 20_00, 5_00))
+    ]
+    _fake_stripe(monkeypatch, created=[], item_ids=items, lines=lines)
+    await payments_service.create_checkout_session_for_request(
+        db, organization_id=organization_id, request=request, plan_key=payment_plans.PLAN_MONTHLY_12,
+        actor_user_id=user.id, success_url="https://x/ok", cancel_url="https://x/ko",
+    )
+    await _webhook(db, organization_id, {
+        "id": "evt_cb_first", "type": "checkout.session.completed",
+        "data": {"object": {"id": "cs_pratica_1", "subscription": "sub_cb", "invoice": "in_cb_1",
+                            "metadata": {"kind": "contract_request"}}},
+    })
+    return user, contracts
+
+
+async def _second_month(db, organization_id, event_id="evt_cb_2"):
+    await _webhook(db, organization_id, {"id": event_id, "type": "invoice.paid", "data": {"object": {
+        "id": "in_cb_2", "billing_reason": "subscription_cycle", "amount_paid": 35_00,
+        "parent": {"subscription_details": {"subscription": "sub_cb"}},
+    }}})
+
+
+async def _credits(db, contract):
+    return sorted((await db.execute(
+        select(WalletTransaction.amount_cents).where(WalletTransaction.reference_contract_id == contract.id)
+    )).scalars())
+
+
+@pytest.mark.asyncio
+async def test_upfront_mode_credits_the_whole_cashback_at_the_first_instalment_and_nothing_after(
+    db, organization_id, monkeypatch
+):
+    await _configure_stripe(db, organization_id)
+    await _set_cashback_mode(db, organization_id, "UPFRONT")
+    _user, contracts = await _pay_first_instalment_of_12(db, organization_id, monkeypatch)
+    # Luce A: 120,00 with 100% cashback -- all of it, at once.
+    assert await _credits(db, contracts[0]) == [120_00]
+
+    await _second_month(db, organization_id)
+    assert await _credits(db, contracts[0]) == [120_00], "nessun altro accredito sulle rate successive"
+
+
+@pytest.mark.asyncio
+async def test_a_contract_credited_in_advance_is_not_credited_again_if_the_setting_changes(
+    db, organization_id, monkeypatch
+):
+    await _configure_stripe(db, organization_id)
+    await _set_cashback_mode(db, organization_id, "UPFRONT")
+    _user, contracts = await _pay_first_instalment_of_12(db, organization_id, monkeypatch)
+    await _set_cashback_mode(db, organization_id, "PER_INSTALMENT")
+    await _second_month(db, organization_id)
+    assert await _credits(db, contracts[0]) == [120_00]
+
+
+@pytest.mark.asyncio
+async def test_a_month_confirmed_by_hand_and_then_collected_by_stripe_earns_cashback_once(
+    db, organization_id, monkeypatch
+):
+    from app.domains.contracts import instalments as instalments_service
+
+    await _configure_stripe(db, organization_id)
+    user, contracts = await _pay_first_instalment_of_12(db, organization_id, monkeypatch)
+    assert await _credits(db, contracts[0]) == [10_00], "per rata è il comportamento predefinito"
+
+    # Stripe fails month 2, the customer pays it by transfer and an
+    # administrator confirms it; then Stripe's own retry of that same invoice
+    # goes through too.
+    await _webhook(db, organization_id, {"id": "evt_cb_2_failed", "type": "invoice.payment_failed", "data": {"object": {
+        "id": "in_cb_2", "billing_reason": "subscription_cycle", "amount_due": 35_00,
+        "parent": {"subscription_details": {"subscription": "sub_cb"}},
+    }}})
+    await instalments_service.confirm_manually(db, contract=contracts[0], number=2, actor_user_id=user.id)
+    await contracts_service.credit_contract_instalment_cashback(
+        db, organization_id=organization_id, contract=contracts[0], instalment_number=2
+    )
+    await _second_month(db, organization_id)
+    assert await _credits(db, contracts[0]) == [10_00, 10_00]

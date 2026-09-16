@@ -329,6 +329,12 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   contratto dall'addebito mensile, gli altri continuano). **"Approva i N
   contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e li
   approva tutti in un colpo, ognuno con la sua anteprima salvata.
+- **Impostazioni → Cashback dei contratti pagati a rate** (Session 59) — per i
+  contratti in 3 o 12 rate scegli se il cliente riceve il cashback **una parte a
+  ogni rata pagata** (predefinito) oppure **tutto subito, alla prima rata**, in
+  un'unica ricarica LialCash. La scelta vale per ogni contratto da quando paga
+  la prima rata: cambiarla dopo non accredita mai due volte lo stesso
+  contratto. Il pagamento in unica soluzione riceve sempre tutto subito.
 - **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), prodotto e
   punto di fornitura con nome comprensibile, colonna **Origine** (vedi sotto),
   colonna **Importo** con netto / IVA / totale, colonna scadenza/rinnovo colorata

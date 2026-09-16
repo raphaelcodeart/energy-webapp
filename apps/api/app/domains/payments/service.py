@@ -681,10 +681,9 @@ async def _handle_contract_checkout(
             customer_id=str(getattr(session, "customer", "") or "") or None,
         )
         if plan is not None and plan.instalments > 1:
-            if contract.status not in ("REJECTED", "CANCELLED"):
-                await contracts_service.credit_contract_instalment_cashback(
-                    db, organization_id=organization_id, contract=contract, instalment_ref="first"
-                )
+            await contracts_service.credit_contract_instalment_cashback(
+                db, organization_id=organization_id, contract=contract, instalment_number=1
+            )
             try:
                 await _stop_subscription_after_last_instalment(
                     secret_key=secret_key,

@@ -5,10 +5,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.organizations.models import Organization
 from app.domains.organizations.schemas import OrganizationSettingsUpdate, PaymentSettingsUpdate
 
-SETTINGS_KEYS = ("bank_iban", "bank_account_holder", "bank_transfer_instructions", "admin_notification_email")
+SETTINGS_KEYS = (
+    "bank_iban", "bank_account_holder", "bank_transfer_instructions", "admin_notification_email",
+    "contract_instalment_cashback_mode",
+)
 PAYMENT_SETTINGS_KEYS = ("stripe_publishable_key", "stripe_secret_key", "stripe_webhook_secret")
 
 DEFAULT_ADMIN_NOTIFICATION_EMAIL = "info@lialenergy.it"
+
+#: How a contract paid in 3 or 12 instalments earns its LialCash cashback
+#: (Session 59), chosen by the administrator in Impostazioni:
+#:   PER_INSTALMENT -- a slice with every instalment actually collected
+#:                     (the rule since Session 49, and the default);
+#:   UPFRONT        -- the whole contract's cashback at once, as soon as the
+#:                     first instalment is paid.
+CASHBACK_PER_INSTALMENT = "PER_INSTALMENT"
+CASHBACK_UPFRONT = "UPFRONT"
+CONTRACT_INSTALMENT_CASHBACK_MODES = frozenset({CASHBACK_PER_INSTALMENT, CASHBACK_UPFRONT})
+
+
+async def get_contract_instalment_cashback_mode(db: AsyncSession, *, organization_id: uuid.UUID) -> str:
+    org = await db.get(Organization, organization_id)
+    mode = (org.settings or {}).get("contract_instalment_cashback_mode") if org is not None else None
+    return mode if mode in CONTRACT_INSTALMENT_CASHBACK_MODES else CASHBACK_PER_INSTALMENT
 
 
 async def get_settings(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:

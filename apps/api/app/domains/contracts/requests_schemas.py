@@ -195,6 +195,9 @@ class ContractRequestPaymentOptionsRead(BaseModel):
     points_paid: int
     #: What the customer earns in LialCash across these contracts.
     cashback_total_cents: int
+    #: PER_INSTALMENT / UPFRONT -- on an instalment plan, whether that
+    #: cashback arrives a slice per instalment or all at the first one.
+    cashback_mode: str = "PER_INSTALMENT"
 
 
 class ContractRequestCheckoutRequest(BaseModel):

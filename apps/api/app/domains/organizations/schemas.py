@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -36,6 +37,9 @@ class OrganizationSettingsRead(BaseModel):
     # (docs/business-rules.md) when unset -- see
     # organizations/service.py::get_admin_notification_email.
     admin_notification_email: str | None
+    #: PER_INSTALMENT (default) / UPFRONT -- how a contract paid in
+    #: instalments earns its cashback; see organizations/service.py.
+    contract_instalment_cashback_mode: str | None = None
 
 
 class OrganizationSettingsUpdate(BaseModel):
@@ -43,6 +47,7 @@ class OrganizationSettingsUpdate(BaseModel):
     bank_account_holder: str | None = Field(default=None, max_length=255)
     bank_transfer_instructions: str | None = Field(default=None, max_length=2000)
     admin_notification_email: str | None = Field(default=None, max_length=255)
+    contract_instalment_cashback_mode: Literal["PER_INSTALMENT", "UPFRONT"] | None = None
 
     @field_validator("admin_notification_email", mode="before")
     @classmethod

@@ -124,7 +124,9 @@ export function ContractRequestPaymentPanel({ requestId }: { requestId: string }
             Ricevi in cashback: {lialCash(data.cashback_total_cents)}
           </p>
           <p className="text-[10px] text-slate-400 light:text-slate-500 mt-0.5">
-            Accreditato in automatico sul tuo wallet appena paghi — con le rate, a ogni rata pagata.
+            {data.cashback_mode === "UPFRONT"
+              ? "Accreditato per intero sul tuo wallet appena paghi — anche a rate, già alla prima rata."
+              : "Accreditato in automatico sul tuo wallet appena paghi — con le rate, una parte a ogni rata pagata."}
           </p>
         </div>
       )}

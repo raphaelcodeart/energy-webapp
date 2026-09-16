@@ -478,6 +478,12 @@ async def confirm_instalment_manually(
         new_value={"instalment_number": number},
     )
     await db.commit()
+    # A month paid by other means earns its cashback like one Stripe
+    # collected -- until Session 59 it earned none. Keyed by the instalment
+    # number, so a later Stripe retry of the same month cannot credit it twice.
+    await contract_service.credit_contract_instalment_cashback(
+        db, organization_id=current_user.organization_id, contract=contract, instalment_number=row.number
+    )
     return {"number": row.number, "status": row.status}
 
 
