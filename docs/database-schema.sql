@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 1JRkPRCDdkJHCLP3OSTr83kutUeL7ZoO1dLek7zVymOiRalEZuTAEU3ND6c8Xlm
+\restrict hH0OaEl8gEdcKDZWWexLup8zvKD6GL4qsafHSh2M9df3dYMdsDu8n7GfaQ4FBHL
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -355,6 +355,56 @@ CREATE TABLE public.contract_instalments (
 
 
 --
+-- Name: contract_request_checkouts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.contract_request_checkouts (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    contract_request_id uuid NOT NULL,
+    stripe_checkout_session_id character varying(255) NOT NULL,
+    payment_plan character varying(16) NOT NULL,
+    lines jsonb NOT NULL,
+    total_cents bigint NOT NULL,
+    instalment_cents bigint NOT NULL,
+    created_by_user_id uuid,
+    completed_at timestamp with time zone,
+    stripe_subscription_id character varying(255),
+    stripe_customer_id character varying(255),
+    outcome character varying(255),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: contract_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.contract_requests (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_id uuid NOT NULL,
+    status character varying(16) NOT NULL,
+    holder_first_name character varying(128),
+    holder_last_name character varying(128),
+    email character varying(320),
+    pec character varying(320),
+    iban character varying(34),
+    created_by_user_id uuid,
+    created_by_role character varying(32),
+    activated_by_promoter_id uuid,
+    submitted_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone,
+    street character varying(255),
+    city character varying(128),
+    province character varying(8),
+    postal_code character varying(16)
+);
+
+
+--
 -- Name: contract_status_history; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -379,7 +429,7 @@ CREATE TABLE public.contracts (
     organization_id uuid NOT NULL,
     customer_id uuid NOT NULL,
     supply_point_id uuid NOT NULL,
-    product_version_id uuid NOT NULL,
+    product_version_id uuid,
     contract_attribution_id uuid,
     network_snapshot_id uuid,
     status character varying(32) NOT NULL,
@@ -414,7 +464,11 @@ CREATE TABLE public.contracts (
     terms_accepted_user_agent character varying(500),
     holder_first_name character varying(128),
     holder_last_name character varying(128),
-    pec character varying(320)
+    pec character varying(320),
+    contract_request_id uuid NOT NULL,
+    stripe_subscription_item_id character varying(255),
+    billing_stopped_at timestamp with time zone,
+    CONSTRAINT ck_contracts_product_required CHECK (((product_version_id IS NOT NULL) OR ((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'CANCELLED'::character varying])::text[]))))
 );
 
 
@@ -489,7 +543,7 @@ CREATE TABLE public.documentation_posts (
 
 CREATE TABLE public.documents (
     organization_id uuid NOT NULL,
-    contract_id uuid NOT NULL,
+    contract_id uuid,
     document_type character varying(32) NOT NULL,
     original_filename character varying(255) NOT NULL,
     storage_key character varying(500) NOT NULL,
@@ -503,7 +557,9 @@ CREATE TABLE public.documents (
     review_note character varying(1000),
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
-    description character varying(120)
+    description character varying(120),
+    contract_request_id uuid,
+    CONSTRAINT ck_documents_one_owner CHECK ((num_nonnulls(contract_id, contract_request_id) = 1))
 );
 
 
@@ -1071,7 +1127,7 @@ CREATE TABLE public.supply_points (
     organization_id uuid NOT NULL,
     customer_id uuid NOT NULL,
     label character varying(255),
-    energy_type character varying(16) NOT NULL,
+    energy_type character varying(16),
     pod_code character varying(32),
     pdr_code character varying(32),
     meter_number character varying(64),
@@ -1345,6 +1401,22 @@ ALTER TABLE ONLY public.contract_events
 
 ALTER TABLE ONLY public.contract_instalments
     ADD CONSTRAINT pk_contract_instalments PRIMARY KEY (id);
+
+
+--
+-- Name: contract_request_checkouts pk_contract_request_checkouts; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_request_checkouts
+    ADD CONSTRAINT pk_contract_request_checkouts PRIMARY KEY (id);
+
+
+--
+-- Name: contract_requests pk_contract_requests; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT pk_contract_requests PRIMARY KEY (id);
 
 
 --
@@ -1748,6 +1820,14 @@ ALTER TABLE ONLY public.contract_commission_plans
 
 
 --
+-- Name: contract_instalments uq_contract_instalments_contract_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT uq_contract_instalments_contract_id UNIQUE (contract_id, stripe_invoice_id);
+
+
+--
 -- Name: contract_instalments uq_contract_instalments_contract_number; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1756,11 +1836,11 @@ ALTER TABLE ONLY public.contract_instalments
 
 
 --
--- Name: contract_instalments uq_contract_instalments_stripe_invoice_id; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: contract_request_checkouts uq_contract_request_checkouts_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.contract_instalments
-    ADD CONSTRAINT uq_contract_instalments_stripe_invoice_id UNIQUE (stripe_invoice_id);
+ALTER TABLE ONLY public.contract_request_checkouts
+    ADD CONSTRAINT uq_contract_request_checkouts_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
 
 
 --
@@ -1769,6 +1849,14 @@ ALTER TABLE ONLY public.contract_instalments
 
 ALTER TABLE ONLY public.contracts
     ADD CONSTRAINT uq_contracts_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
+
+
+--
+-- Name: contracts uq_contracts_stripe_subscription_item_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT uq_contracts_stripe_subscription_item_id UNIQUE (stripe_subscription_item_id);
 
 
 --
@@ -2115,10 +2203,52 @@ CREATE INDEX ix_contract_instalments_organization_id ON public.contract_instalme
 
 
 --
+-- Name: ix_contract_request_checkouts_contract_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_request_checkouts_contract_request_id ON public.contract_request_checkouts USING btree (contract_request_id);
+
+
+--
+-- Name: ix_contract_request_checkouts_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_request_checkouts_organization_id ON public.contract_request_checkouts USING btree (organization_id);
+
+
+--
+-- Name: ix_contract_requests_customer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_requests_customer_id ON public.contract_requests USING btree (customer_id);
+
+
+--
+-- Name: ix_contract_requests_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_requests_organization_id ON public.contract_requests USING btree (organization_id);
+
+
+--
+-- Name: ix_contract_requests_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_requests_status ON public.contract_requests USING btree (status);
+
+
+--
 -- Name: ix_contract_status_history_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contract_status_history_contract_id ON public.contract_status_history USING btree (contract_id);
+
+
+--
+-- Name: ix_contracts_contract_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contracts_contract_request_id ON public.contracts USING btree (contract_request_id);
 
 
 --
@@ -2189,6 +2319,13 @@ CREATE INDEX ix_documentation_posts_status ON public.documentation_posts USING b
 --
 
 CREATE INDEX ix_documents_contract_id ON public.documents USING btree (contract_id);
+
+
+--
+-- Name: ix_documents_contract_request_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_documents_contract_request_id ON public.documents USING btree (contract_request_id);
 
 
 --
@@ -3200,6 +3337,62 @@ ALTER TABLE ONLY public.contract_instalments
 
 
 --
+-- Name: contract_request_checkouts fk_contract_request_checkouts_contract_request_id_contr_9532; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_request_checkouts
+    ADD CONSTRAINT fk_contract_request_checkouts_contract_request_id_contr_9532 FOREIGN KEY (contract_request_id) REFERENCES public.contract_requests(id);
+
+
+--
+-- Name: contract_request_checkouts fk_contract_request_checkouts_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_request_checkouts
+    ADD CONSTRAINT fk_contract_request_checkouts_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: contract_request_checkouts fk_contract_request_checkouts_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_request_checkouts
+    ADD CONSTRAINT fk_contract_request_checkouts_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: contract_requests fk_contract_requests_activated_by_promoter_id_agent_profiles; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT fk_contract_requests_activated_by_promoter_id_agent_profiles FOREIGN KEY (activated_by_promoter_id) REFERENCES public.agent_profiles(id);
+
+
+--
+-- Name: contract_requests fk_contract_requests_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT fk_contract_requests_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: contract_requests fk_contract_requests_customer_id_customers; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT fk_contract_requests_customer_id_customers FOREIGN KEY (customer_id) REFERENCES public.customers(id);
+
+
+--
+-- Name: contract_requests fk_contract_requests_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT fk_contract_requests_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: contract_status_history fk_contract_status_history_actor_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3229,6 +3422,14 @@ ALTER TABLE ONLY public.contracts
 
 ALTER TABLE ONLY public.contracts
     ADD CONSTRAINT fk_contracts_contract_attribution_id_contract_attributions FOREIGN KEY (contract_attribution_id) REFERENCES public.contract_attributions(id);
+
+
+--
+-- Name: contracts fk_contracts_contract_request_id_contract_requests; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT fk_contracts_contract_request_id_contract_requests FOREIGN KEY (contract_request_id) REFERENCES public.contract_requests(id);
 
 
 --
@@ -3373,6 +3574,14 @@ ALTER TABLE ONLY public.documentation_posts
 
 ALTER TABLE ONLY public.documents
     ADD CONSTRAINT fk_documents_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: documents fk_documents_contract_request_id_contract_requests; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT fk_documents_contract_request_id_contract_requests FOREIGN KEY (contract_request_id) REFERENCES public.contract_requests(id);
 
 
 --
@@ -4171,5 +4380,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 1JRkPRCDdkJHCLP3OSTr83kutUeL7ZoO1dLek7zVymOiRalEZuTAEU3ND6c8Xlm
+\unrestrict hH0OaEl8gEdcKDZWWexLup8zvKD6GL4qsafHSh2M9df3dYMdsDu8n7GfaQ4FBHL
 

@@ -19,6 +19,7 @@ from app.domains.catalog.router import router as catalog_router
 from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.commissions.router import router as commissions_router
 from app.domains.contracts import models as _contracts_models  # noqa: F401
+from app.domains.contracts.requests_router import router as contract_requests_router
 from app.domains.contracts.router import router as contracts_router
 from app.domains.customers import models as _customers_models  # noqa: F401
 from app.domains.customers.router import router as customers_router
@@ -83,6 +84,7 @@ app.include_router(network_router, prefix="/api")
 app.include_router(referral_router, prefix="/api")
 app.include_router(referral_authenticated_router, prefix="/api")
 app.include_router(contracts_router, prefix="/api")
+app.include_router(contract_requests_router, prefix="/api")
 app.include_router(commissions_router, prefix="/api")
 app.include_router(customers_router, prefix="/api")
 app.include_router(catalog_router, prefix="/api")

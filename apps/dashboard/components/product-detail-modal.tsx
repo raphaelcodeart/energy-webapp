@@ -2,7 +2,7 @@
 
 import type { ProductCatalogRead } from "@/lib/types";
 import { ProductThumbnail } from "@/components/product-thumbnail";
-import { isRecurringProductType } from "@/lib/product-audience";
+import { computePrice, isRecurringProductType } from "@/lib/product-audience";
 
 const BILLING_LABELS: Record<string, string> = {
   MONTHLY: "/mese",
@@ -22,20 +22,30 @@ function lialCash(cents: number): string {
 
 /** Full product page shown before checkout -- an e-commerce shopping cart
     never sends the buyer straight from a grid card to payment, it shows the
-    product page first. Only ever opened for DROPSHIPPING/PARTNER products
-    (see customer-products-panel.tsx's `purchasable` guard); INTERNAL (Lial
-    Energy contracts) never gets this treatment -- those become a real
-    Contract, not an order, see business-rules.md. */
+    product page first.
+
+    Also the "Anteprima" of a Lial Energy package while configuring a point
+    of a pratica (Session 52): there `customerKind` is known, the price is
+    the canone times the months of the contract, VAT only for a business,
+    and the button chooses the package instead of buying it. */
 export function ProductDetailModal({
   product,
   onClose,
   onBuy,
+  ctaLabel = "Acquista ora",
+  customerKind,
 }: {
   product: ProductCatalogRead;
   onClose: () => void;
   onBuy: (versionId: string, name: string) => void;
+  ctaLabel?: string;
+  customerKind?: string | null;
 }) {
   const v = product.current_version!;
+  const isContract = product.category === "INTERNAL";
+  const contractPrice = computePrice(v.contract_net_amount_cents, v.vat_percentage, customerKind ?? null, {
+    assumeBusinessWhenUnknown: false,
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
@@ -65,6 +75,35 @@ export function ProductDetailModal({
             )}
           </div>
 
+          {isContract ? (
+            <div className="flex flex-wrap items-end gap-6 p-5 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
+              <div>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Canone</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
+                  <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
+                </div>
+                {v.contract_billing_periods > 1 && (
+                  <p className="text-[11px] text-slate-400 light:text-slate-500 mt-0.5">
+                    × {v.contract_billing_periods} = {euro(contractPrice.netCents)}
+                    {v.contract_duration_months ? ` per ${v.contract_duration_months} mesi` : ""}
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  {contractPrice.vatCents > 0
+                    ? `+ IVA ${contractPrice.vatRate}% = ${euro(contractPrice.grossCents)} totale`
+                    : "IVA non applicata"}
+                </p>
+              </div>
+              {v.contract_cashback_percentage > 0 && (
+                <div className="pl-6 border-l border-white/10 light:border-slate-300">
+                  <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">Cashback</p>
+                  <p className="text-3xl font-extrabold text-emerald-400 tabular-nums">{v.contract_cashback_percentage}%</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">in LialCash, a ogni pagamento</p>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="flex flex-wrap items-end gap-6 p-5 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200">
             <div>
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
@@ -93,6 +132,7 @@ export function ProductDetailModal({
               </div>
             )}
           </div>
+          )}
 
           <button
             onClick={() => onBuy(v.id, v.name)}
@@ -101,7 +141,7 @@ export function ProductDetailModal({
             <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z" />
             </svg>
-            Acquista ora
+            {ctaLabel}
           </button>
         </div>
       </div>

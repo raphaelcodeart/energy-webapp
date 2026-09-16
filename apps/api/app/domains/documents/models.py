@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,11 +35,22 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     here is ever a public, guessable, or search-engine-indexable URL."""
 
     __tablename__ = "documents"
+    __table_args__ = (CheckConstraint("num_nonnulls(contract_id, contract_request_id) = 1", name="one_owner"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
     )
-    contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id"), index=True)
+    #: Exactly one of these two is set. A document of the pratica (Session
+    #: 52) -- identity, fiscal code, visura, or one bill listing every point
+    #: -- is uploaded once and counts for every contract in it; a document of
+    #: a contract belongs to that supply point alone (its own bill, a photo of
+    #: its meter). See documents/service.py::get_contract_documents_status.
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id"), index=True, nullable=True
+    )
+    contract_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contract_requests.id"), index=True, nullable=True
+    )
     document_type: Mapped[str] = mapped_column(String(32))
     #: What the uploader said this is. Only ever set for DOCUMENT_TYPE_OTHER
     #: -- every other type already has a fixed label

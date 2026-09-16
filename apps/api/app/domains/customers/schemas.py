@@ -105,7 +105,7 @@ class SupplyPointRead(BaseModel):
 
     id: uuid.UUID
     label: str | None
-    energy_type: str
+    energy_type: str | None
     pod_code: str | None
     pdr_code: str | None
     meter_number: str | None

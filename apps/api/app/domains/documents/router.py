@@ -98,6 +98,7 @@ async def _document_read(db: AsyncSession, document: Document) -> dict:
     return {
         "id": document.id,
         "contract_id": document.contract_id,
+        "contract_request_id": document.contract_request_id,
         "document_type": document.document_type,
         "description": document.description,
         "original_filename": document.original_filename,
@@ -197,11 +198,17 @@ async def get_document_url(
     if document is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
 
-    contract = await _get_org_scoped_contract(
-        db, organization_id=current_user.organization_id, contract_id=document.contract_id
-    )
-    actor_role = actor_role_for(current_user.roles)
-    await _assert_contract_document_access(db, current_user=current_user, contract=contract, actor_role=actor_role)
+    if document.contract_id is None:
+        # A document of a pratica: whoever may open the pratica may open it.
+        from app.domains.contracts.requests_router import _load as load_request
+
+        await load_request(db, current_user, document.contract_request_id)
+    else:
+        contract = await _get_org_scoped_contract(
+            db, organization_id=current_user.organization_id, contract_id=document.contract_id
+        )
+        actor_role = actor_role_for(current_user.roles)
+        await _assert_contract_document_access(db, current_user=current_user, contract=contract, actor_role=actor_role)
 
     url = await documents_service.get_presigned_url_for_document(document)
     return DocumentUrlRead(url=url, expires_in_seconds=PRESIGNED_URL_TTL_SECONDS)

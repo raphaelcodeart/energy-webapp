@@ -5,11 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AccountingPanel } from "@/components/accounting-panel";
 import { AppShell, type NavItem } from "@/components/app-shell";
-import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
-import {
-  ACTIONABLE_CONTRACT_STATUSES,
-  ContractCompletionCard,
-} from "@/components/contract-completion-screen";
+import { ContractRequestWizard } from "@/components/contract-request-wizard";
+import { ContractRequestsList, type WizardTarget } from "@/components/contract-requests-list";
 import { DashboardWalletStats } from "@/components/dashboard-wallet-stats";
 import { WelcomeBonusCard } from "@/components/welcome-bonus-card";
 import { CustomerOrdersPanel } from "@/components/customer-orders-panel";
@@ -21,8 +18,7 @@ import { SectionBanner } from "@/components/section-banner";
 import { SupportTicketsPanel } from "@/components/support-tickets-panel";
 import { WalletPanel } from "@/components/wallet-panel";
 import { InvoiceRedemptionPanel } from "@/components/invoice-redemption-panel";
-import { friendlyApiError } from "@/lib/api-error";
-import type { ContractRead, ProductCatalogRead } from "@/lib/types";
+import type { ContractRead, CustomerRead } from "@/lib/types";
 
 /** Shared "you just came back from Stripe Checkout" banner -- used by both
     the "I miei Ordini" and "Riscatta Cashback" tabs (see the useEffect in
@@ -72,114 +68,23 @@ function PaymentReturnBanner({
   );
 }
 
-function IbanEditor({ contractId, initialIban }: { contractId: string; initialIban: string | null }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(initialIban ?? "");
-  const [saved, setSaved] = useState(initialIban);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/proxy/contracts/${contractId}/iban`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ iban: value.replace(/\s/g, "").toUpperCase() }),
-      });
-      if (!res.ok) throw new Error(await friendlyApiError(res));
-      setSaved(value.replace(/\s/g, "").toUpperCase());
-      setEditing(false);
-    } catch {
-      setError("IBAN non valido. Controlla il formato inserito.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!editing) {
-    return (
-      <div>
-        <span className="text-xs text-slate-500">IBAN per Addebito</span>
-        <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-xs text-slate-300 light:text-slate-600 font-mono">{saved ?? "Non impostato"}</p>
-          <button
-            onClick={() => { setValue(saved ?? ""); setEditing(true); }}
-            className="text-[10px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer"
-          >
-            {saved ? "Modifica" : "Aggiungi"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <span className="text-xs text-slate-500">IBAN per Addebito</span>
-      <div className="flex items-center gap-2 mt-0.5">
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="IT00A0000000000000000000000"
-          className="w-full rounded-lg glass-input px-2 py-1 text-xs uppercase focus:border-orange-500"
-        />
-        <button onClick={handleSave} disabled={saving} className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer disabled:opacity-50">
-          {saving ? "..." : "Salva"}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-[10px] font-semibold text-slate-500 hover:text-slate-400 cursor-pointer">
-          Annulla
-        </button>
-      </div>
-      {error && <p className="text-[10px] text-rose-400 mt-1">{error}</p>}
-    </div>
-  );
-}
-
-async function fetchProductsForLookup(): Promise<ProductCatalogRead[]> {
-  const res = await fetch("/api/proxy/products");
-  if (!res.ok) throw new Error("Impossibile caricare i prodotti.");
-  return res.json();
-}
-
-async function fetchMyContracts(): Promise<ContractRead[]> {
-  const res = await fetch("/api/proxy/contracts/mine");
-  if (!res.ok) throw new Error("Impossibile caricare i contratti.");
+async function fetchMyCustomerRecord(): Promise<CustomerRead | null> {
+  const res = await fetch("/api/proxy/customers/me");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Impossibile caricare la tua anagrafica.");
   return res.json();
 }
 
 interface CustomerClientPageProps {
-  /** Server-fetched at page load, used only as useQuery's initialData below
-      for a fast first paint -- the live client-side query is what actually
-      keeps this current (e.g. right after activating a contract via
-      contract-activation-wizard.tsx, which invalidates the same query key). */
+  /** Server-fetched at page load. No longer rendered directly: since
+      Session 52 contracts are shown inside their pratiche
+      (contract-requests-list.tsx), which load themselves. */
   contracts: ContractRead[];
   email?: string;
   /** Needed to build the customer's own "Invita un amico" link, which
       carries ?org= exactly like a promoter's referral link does. */
   organizationId?: string;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Bozza",
-  SUBMITTED: "Inviata",
-  DOCUMENTS_PENDING: "Documenti mancanti",
-  UNDER_REVIEW: "In revisione",
-  APPROVED: "Approvata",
-  PAYMENT_PENDING: "In attesa di pagamento",
-  PAID: "Pagata",
-  ACTIVATION_PENDING: "In attivazione",
-  ACTIVE: "Attiva",
-  SUSPENDED: "Sospesa",
-  CANCELLED: "Cessata",
-  EXPIRED: "Scaduta",
-  RENEWED: "Rinnovata",
-  REJECTED: "Respinta",
-};
-
-// Steps for the contract tracker
-const STEPS = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "ACTIVE"];
 
 const NAV_ITEMS: NavItem[] = [
   {
@@ -194,15 +99,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10" />
-      </svg>
-    ),
-  },
-  {
-    key: "activate-contract",
-    label: "Attiva Contratto",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
     ),
   },
@@ -308,6 +204,16 @@ const NAV_ITEMS: NavItem[] = [
     admin Panoramica. */
 const HOME_QUICK_LINKS: { key: string; label: string; description: string; icon: React.ReactNode }[] = [
   {
+    key: "contracts",
+    label: "Contratti",
+    description: "Attiva luce e gas",
+    icon: (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
+  {
     key: "products",
     label: "Shop",
     description: "Acquista prodotti",
@@ -369,14 +275,14 @@ const HOME_QUICK_LINKS: { key: string; label: string; description: string; icon:
   },
 ];
 
-export function CustomerClientPage({ contracts: initialContracts, email, organizationId }: CustomerClientPageProps) {
+export function CustomerClientPage({ email, organizationId }: CustomerClientPageProps) {
   // "lial-contracts" is the customer's home -- matches the Shop's old default
   // landing tab, back when Lial Energy contracts were its first category
   // (see NAV_ITEMS ordering below).
-  const [activeTab, setActiveTab] = useState<"lial-contracts" | "activate-contract" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "friend-referrals" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
-  // Lazy initializer: Date.now() runs once at mount, not on every render --
-  // the sanctioned way to capture an impure value for use during render.
-  const [nowMs] = useState(() => Date.now());
+  const [activeTab, setActiveTab] = useState<"lial-contracts" | "contracts" | "products" | "orders" | "support" | "promoter-application" | "friend-referrals" | "documentation" | "wallet" | "cashback" | "accounting">("lial-contracts");
+  // "Attiva nuovo contratto" / "Riprendi" / "Paga": the pratica wizard,
+  // opened over whichever tab the customer is on.
+  const [wizard, setWizard] = useState<WizardTarget | "new" | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -405,8 +311,16 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
     // ?payment=) just switches tab -- only a Stripe Checkout return
     // (?payment=success|cancelled, always paired with tab=orders|cashback)
     // also shows the payment banner and refetches.
-    if (isValidTab) setActiveTab(tab as typeof activeTab);
-    const queryKey = tab === "cashback" ? ["invoice-redemptions", "mine"] : ["customer", "orders"];
+    // "activate-contract" was its own tab until Session 52; old links and
+    // emails still point at it.
+    if (tab === "activate-contract") setActiveTab("contracts");
+    else if (isValidTab) setActiveTab(tab as typeof activeTab);
+    const queryKey =
+      tab === "cashback"
+        ? ["invoice-redemptions", "mine"]
+        : tab === "contracts"
+          ? ["contract-requests"]
+          : ["customer", "orders"];
     if (payment === "success" || payment === "cancelled") {
       setPaymentBanner(payment);
       queryClient.invalidateQueries({ queryKey });
@@ -425,45 +339,10 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { data: contracts = initialContracts } = useQuery({
-    queryKey: ["customer", "contracts", "mine"],
-    queryFn: fetchMyContracts,
-    initialData: initialContracts,
+  const { data: myCustomer } = useQuery({
+    queryKey: ["customer", "me", "record"],
+    queryFn: fetchMyCustomerRecord,
   });
-  const { data: productsForLookup } = useQuery({
-    queryKey: ["customer", "products", "lookup"],
-    queryFn: fetchProductsForLookup,
-  });
-  const productNameByVersionId = new Map(
-    (productsForLookup ?? [])
-      .filter((p) => p.current_version)
-      .map((p) => [p.current_version!.id, p.current_version!.name])
-  );
-
-  // Determine current step index in the contract pipeline
-  const getStepIndex = (status: string) => {
-    const idx = STEPS.indexOf(status.toUpperCase());
-    if (idx !== -1) return idx;
-
-    // Heuristics for intermediate statuses
-    if (status === "DOCUMENTS_PENDING") return 2; // Under review step
-    if (status === "PAYMENT_PENDING" || status === "PAID" || status === "ACTIVATION_PENDING") return 3; // Approved step
-    return -1;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toUpperCase()) {
-      case "ACTIVE":
-        return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
-      case "REJECTED":
-      case "CANCELLED":
-        return "text-rose-400 bg-rose-500/10 border-rose-500/20";
-      case "DRAFT":
-        return "text-slate-400 light:text-slate-500 bg-slate-500/10 light:bg-slate-200/50 border-slate-500/20 light:border-slate-300";
-      default:
-        return "text-amber-400 bg-amber-500/10 border-amber-500/20";
-    }
-  };
 
   return (
     <AppShell
@@ -473,196 +352,46 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
       activeKey={activeTab}
       onNavigate={(key) => setActiveTab(key as typeof activeTab)}
       headerTitle="La mia Area Cliente"
-      headerSubtitle="Visualizza lo stato dei tuoi contratti di fornitura luce/gas e richiedi assistenza."
+      // Not on Contabilità (Session 54): the page has its own heading, and the
+      // space goes to the totals.
+      headerSubtitle={
+        activeTab === "accounting"
+          ? undefined
+          : "Visualizza lo stato dei tuoi contratti di fornitura luce/gas e richiedi assistenza."
+      }
     >
       {activeTab === "contracts" && (
         <div className="space-y-6">
           <SectionBanner image="energy" alt="I miei Contratti" />
-          {contracts.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center border-white/5 light:border-slate-200">
-              <svg className="w-12 h-12 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h3 className="text-lg font-semibold text-white light:text-slate-900">Nessun contratto attivo</h3>
-              <p className="text-sm text-slate-500 mt-2">
-                Non abbiamo trovato nessun contratto di fornitura associato a questa utenza.
+          <PaymentReturnBanner
+            state={paymentBanner}
+            onDismiss={() => setPaymentBanner(null)}
+            successBody="La pratica si aggiorna a “Pagato” appena Stripe conferma, di solito in pochi secondi. Ogni contratto si attiva quando i suoi documenti sono approvati."
+            cancelledBody="Nessun addebito. Puoi pagare quando vuoi con il pulsante “Paga” della pratica."
+          />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl border border-orange-500/25 bg-gradient-to-br from-orange-500/10 to-transparent">
+            <div>
+              <h3 className="text-base font-bold text-white light:text-slate-900">Le tue pratiche di attivazione</h3>
+              <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
+                Una pratica può contenere uno o più punti di fornitura (POD luce, PDR gas): ogni punto è un contratto a sé,
+                con il suo pacchetto. Dati, documenti e pagamento li gestisci una volta sola.
               </p>
-              <button
-                onClick={() => setActiveTab("activate-contract")}
-                className="mt-5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer"
-              >
-                Attiva un contratto
-              </button>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {contracts.map((c) => {
-                const stepIndex = getStepIndex(c.status);
-                const isRejected = c.status === "REJECTED";
-                const isCancelled = c.status === "CANCELLED";
-
-                return (
-                  <div
-                    key={c.id}
-                    className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 relative overflow-hidden"
-                  >
-                    {/* Side Glowing Marker */}
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${
-                      isRejected || isCancelled
-                        ? "from-rose-500 to-red-600"
-                        : c.status === "ACTIVE"
-                          ? "from-emerald-400 to-amber-500"
-                          : "from-amber-400 to-orange-500"
-                    }`} />
-
-                    {/* Header details */}
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Offerta</p>
-                        <h4 className="text-base text-white light:text-slate-900 font-semibold">
-                          {c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "Contratto"}
-                        </h4>
-                        <p className="font-mono text-[10px] text-slate-500 mt-0.5">{c.id}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(c.status)}`}>
-                          {STATUS_LABELS[c.status] ?? c.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Info grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 mb-6 text-sm">
-                      <div>
-                        <span className="text-xs text-slate-500">Prodotto</span>
-                        <p className="text-xs text-slate-300 light:text-slate-600 mt-0.5">
-                          {c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">Punto di Fornitura</span>
-                        <p className="text-xs text-slate-300 light:text-slate-600 mt-0.5">
-                          {c.supply_point_label ?? "Punto di fornitura"}
-                        </p>
-                        <p className="font-mono text-[10px] text-slate-500">{c.supply_point_id}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-slate-500">Scadenza / Rinnovo</span>
-                        {c.expires_at ? (
-                          <p className={`text-xs mt-0.5 font-semibold ${
-                            new Date(c.expires_at).getTime() - nowMs < 30 * 24 * 60 * 60 * 1000
-                              ? "text-amber-400"
-                              : "text-slate-300 light:text-slate-600"
-                          }`}>
-                            {new Date(c.expires_at).toLocaleDateString("it-IT")}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-slate-500 mt-0.5">—</p>
-                        )}
-                      </div>
-                      <IbanEditor contractId={c.id} initialIban={c.iban} />
-                    </div>
-
-                    {/* A contract still going through activation gets one
-                        call to action instead of two stacked panels: what
-                        is left to do, and a button that opens documents and
-                        payment together on a full screen. A finished (or
-                        refused) one keeps the plain inline list, which is
-                        then a record rather than a task. */}
-                    {ACTIONABLE_CONTRACT_STATUSES.has(c.status) ? (
-                      <div className="mb-6">
-                        <ContractCompletionCard
-                          contractId={c.id}
-                          status={c.status}
-                          productName={
-                            c.product_name ?? productNameByVersionId.get(c.product_version_id) ?? "Contratto"
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div className="mb-6">
-                        <h5 className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider mb-3">
-                          Documenti
-                        </h5>
-                        <ContractDocumentsPanel contractId={c.id} />
-                      </div>
-                    )}
-
-                    {/* Visual Stepper */}
-                    {!isRejected && !isCancelled && stepIndex !== -1 && (
-                      <div className="mt-4">
-                        <h5 className="text-xs font-semibold text-slate-400 light:text-slate-500 uppercase tracking-wider mb-4">Avanzamento Attivazione</h5>
-                        <div className="relative">
-                          {/* Connector Line */}
-                          <div className="absolute top-4 left-4 right-4 h-0.5 bg-slate-800 light:bg-slate-100 -z-10" />
-                          <div
-                            className="absolute top-4 left-4 h-0.5 bg-gradient-to-r from-orange-500 to-amber-400 -z-10 transition-all duration-500"
-                            style={{ width: `${(stepIndex / (STEPS.length - 1)) * 100}%` }}
-                          />
-
-                          <div className="flex justify-between items-center text-center">
-                            {STEPS.map((step, idx) => {
-                              const isCompleted = idx <= stepIndex;
-                              const isActive = idx === stepIndex;
-
-                              return (
-                                <div key={step} className="flex flex-col items-center">
-                                  <div
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
-                                      isActive
-                                        ? "bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-600/30 scale-110"
-                                        : isCompleted
-                                          ? "bg-slate-900 light:bg-white border-amber-500 text-amber-400"
-                                          : "bg-slate-950 light:bg-white border-slate-800 light:border-slate-200 text-slate-600"
-                                    }`}
-                                  >
-                                    {isCompleted && !isActive ? (
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    ) : (
-                                      idx + 1
-                                    )}
-                                  </div>
-                                  <span className={`text-[10px] font-semibold mt-2 ${isActive ? "text-orange-400" : isCompleted ? "text-slate-300 light:text-slate-600" : "text-slate-600"}`}>
-                                    {STATUS_LABELS[step] ?? step}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {isRejected && (
-                      <div className="flex gap-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-                        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <span className="font-semibold block">Attivazione Rifiutata</span>
-                          <span className="text-xs text-slate-400 light:text-slate-500">Questo contratto non è stato approvato dagli operatori. Contatta il supporto per maggiori dettagli.</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {isCancelled && (
-                      <div className="flex gap-3 p-4 rounded-xl bg-slate-800 light:bg-slate-100 border border-slate-700 light:border-slate-300 text-slate-300 light:text-slate-600 text-sm">
-                        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                        </svg>
-                        <div>
-                          <span className="font-semibold block">Fornitura Cessata</span>
-                          <span className="text-xs text-slate-400 light:text-slate-500">La fornitura per questo punto è stata cessata o disattivata su richiesta dell&apos;utente.</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            <button
+              onClick={() => setWizard("new")}
+              className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-sm font-bold shadow-lg shadow-orange-500/20 transition cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Attiva nuovo contratto
+            </button>
+          </div>
+          <ContractRequestsList mode="customer" onOpenWizard={(target) => setWizard(target)} />
+          <div className="pt-2">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Scopri i pacchetti</p>
+            <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
+          </div>
         </div>
       )}
 
@@ -703,14 +432,6 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
             </div>
           </div>
 
-          <CustomerPromoterApplicationCard hideWhenActive />
-          <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
-        </div>
-      )}
-
-      {activeTab === "activate-contract" && (
-        <div className="space-y-6">
-          <SectionBanner image="energy" alt="Attiva Contratto" />
           <CustomerPromoterApplicationCard hideWhenActive />
           <CustomerProductsPanel visibleCategories={["INTERNAL"]} accountEmail={email} />
         </div>
@@ -784,10 +505,17 @@ export function CustomerClientPage({ contracts: initialContracts, email, organiz
       )}
 
       {activeTab === "accounting" && (
-        <div className="space-y-6">
-          <SectionBanner image="wallets" alt="Contabilità" />
-          <AccountingPanel />
-        </div>
+        <AccountingPanel onOpenTab={(tab) => setActiveTab(tab as typeof activeTab)} />
+      )}
+      {wizard && (
+        <ContractRequestWizard
+          requestId={wizard === "new" ? undefined : wizard.requestId}
+          initialStep={wizard === "new" ? undefined : wizard.step}
+          customerKind={myCustomer?.kind ?? null}
+          accountEmail={email}
+          holder={{ firstName: myCustomer?.first_name, lastName: myCustomer?.last_name, pec: myCustomer?.pec }}
+          onClose={() => setWizard(null)}
+        />
       )}
     </AppShell>
   );

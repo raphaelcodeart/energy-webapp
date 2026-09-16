@@ -6,7 +6,11 @@ export type ContractRead = {
   id: string;
   customer_id: string;
   supply_point_id: string;
-  product_version_id: string;
+  /** Null only while the contract is a draft point of a pratica whose
+      package has not been chosen yet (Session 52). */
+  product_version_id: string | null;
+  /** The pratica this contract was filled in and paid with. */
+  contract_request_id?: string | null;
   status: string;
   notes: string | null;
   created_at: string;
@@ -14,6 +18,10 @@ export type ContractRead = {
   expires_at: string | null;
   product_name: string | null;
   supply_point_label: string | null;
+  pod_code?: string | null;
+  pdr_code?: string | null;
+  /** ELECTRICITY / GAS -- of the supply point. */
+  energy_type?: string | null;
   iban: string | null;
   email: string | null;
   /** Intestatario as typed in the activation wizard (Session 49). Null on
@@ -49,8 +57,112 @@ export type ContractRead = {
   payment_plan: string | null;
   payment_method: string | null;
   paid_at: string | null;
+  /** An administrator stopped Stripe charging this contract every month. */
+  billing_stopped_at?: string | null;
   terms_accepted_at: string | null;
   terms_version: string | null;
+};
+
+// --- Pratica di attivazione (Session 52) ---------------------------------
+
+/** One row of every pratiche list. Every count is derived server-side from
+    the contracts, never stored twice. */
+export type ContractRequestSummaryRead = {
+  id: string;
+  /** First 8 characters of the id, upper case -- how a pratica is named aloud. */
+  code: string;
+  customer_id: string;
+  customer_name: string | null;
+  customer_kind: string | null;
+  /** DRAFT / SUBMITTED / CANCELLED */
+  status: string;
+  created_at: string;
+  submitted_at: string | null;
+  updated_at: string | null;
+  created_by_role: string | null;
+  activated_by_promoter_id: string | null;
+  activated_by_promoter_name: string | null;
+  holder_name: string | null;
+  points_total: number;
+  points_by_status: Record<string, number>;
+  points_active: number;
+  points_to_review: number;
+  points_documents_pending: number;
+  points_without_package: number;
+  points_paid: number;
+  points_payable: number;
+  total_gross_cents: number;
+  payment_plans: string[];
+  instalments_failed: number;
+};
+
+export type ContractRequestPointRead = ContractRead & {
+  /** 1-based place of the POD in the pratica. */
+  position: number;
+  meter_number: string | null;
+  street: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  product_id: string | null;
+  documents_missing: number;
+  documents_rejected: number;
+  instalments_total: number | null;
+  instalments_paid: number;
+  instalments_failed: number;
+  /** Stripe is still charging this contract every month. */
+  billing_active: boolean;
+};
+
+export type ContractRequestCheckoutRead = {
+  id: string;
+  created_at: string;
+  payment_plan: string;
+  total_cents: number;
+  instalment_cents: number;
+  contracts: number;
+  completed_at: string | null;
+  stripe_checkout_session_id: string;
+  stripe_subscription_id: string | null;
+  outcome: string | null;
+};
+
+export type ContractRequestDetailRead = ContractRequestSummaryRead & {
+  /** The supply address every POD of the pratica starts from. */
+  street: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  holder_first_name: string | null;
+  holder_last_name: string | null;
+  email: string | null;
+  pec: string | null;
+  iban: string | null;
+  points: ContractRequestPointRead[];
+  /** Staff only. */
+  checkouts: ContractRequestCheckoutRead[];
+};
+
+export type ContractRequestPaymentOptionRead = {
+  key: string;
+  label: string;
+  description: string;
+  instalments: number;
+  instalment_cents: number;
+  total_cents: number;
+  rounding_difference_cents: number;
+  available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type ContractRequestPaymentOptionsRead = {
+  contract_request_id: string;
+  card_available: boolean;
+  lines: { contract_id: string; label: string; gross_cents: number }[];
+  total_gross_cents: number;
+  options: ContractRequestPaymentOptionRead[];
+  points_paid: number;
+  cashback_total_cents: number;
 };
 
 export type ContractStatusHistoryRead = {
@@ -648,7 +760,8 @@ export type ImportedOrderQuoteRead = {
 
 export type FinancialMovementRead = {
   id: string;
-  kind: "WALLET" | "ORDER_PAYMENT" | "REDEMPTION_PAYMENT";
+  /** CONTRACT_PAYMENT: one paid instalment of a Lial Energy contract (Session 54). */
+  kind: "WALLET" | "ORDER_PAYMENT" | "REDEMPTION_PAYMENT" | "CONTRACT_PAYMENT";
   type: string | null;
   source: string | null;
   payment_method: "BANK_TRANSFER" | "CARD" | null;
@@ -657,10 +770,68 @@ export type FinancialMovementRead = {
   product_name: string | null;
   order_id: string | null;
   invoice_redemption_id: string | null;
+  contract_id?: string | null;
+  contract_request_id?: string | null;
   note: string | null;
   customer_user_id: string | null;
   customer_display_name: string | null;
   created_at: string;
+};
+
+/** The totals at the top of "Contabilità", computed server-side (Session 54). */
+export type AccountingSummaryRead = {
+  spent_total_cents: number;
+  spent_card_cents: number;
+  spent_bank_transfer_cents: number;
+  spent_this_month_cents: number;
+  spent_orders_cents: number;
+  spent_redemptions_cents: number;
+  spent_contracts_cents: number;
+  payments_count: number;
+  lialcash_balance_cents: number;
+  lialcash_received_cents: number;
+  lialcash_spent_cents: number;
+  cashback_received_cents: number;
+  contracts_active: number;
+  instalments_paid: number;
+  next_instalment_due_date: string | null;
+  next_instalment_cents: number | null;
+  /** Null unless the account is also a promoter. */
+  commissions_total_cents: number | null;
+  commissions_to_collect_cents: number | null;
+  commissions_paid_cents: number | null;
+  commissions_count: number | null;
+};
+
+/** Everything about one movement, or about the order / cashback redemption /
+    contract it refers to -- the "Contabilità" detail popup. */
+export type AccountingDetailRead = {
+  ref: string;
+  kind: "WALLET" | "ORDER" | "REDEMPTION" | "CONTRACT";
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  status_tone: "success" | "warning" | "danger" | "neutral";
+  amount_cents: number | null;
+  currency: "EUR" | "LIALCASH";
+  direction: "in" | "out" | null;
+  facts: { label: string; value: string; mono: boolean }[];
+  timeline: { label: string; at: string | null; by: string | null; tone: "done" | "pending" | "warning" }[];
+  instalments: {
+    number: number;
+    instalments_total: number;
+    due_date: string;
+    amount_cents: number;
+    status: string;
+    paid_at: string | null;
+    source: string | null;
+    confirmed_by: string | null;
+  }[];
+  related_refs: string[];
+  tab: "orders" | "cashback" | "contracts" | "wallet" | null;
+  order_id: string | null;
+  invoice_redemption_id: string | null;
+  contract_id: string | null;
 };
 
 export type InvoiceRedemptionRead = {

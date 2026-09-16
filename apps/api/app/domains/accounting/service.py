@@ -79,6 +79,76 @@ async def _product_name_lookups(db: AsyncSession, wallet_txns: list[dict]) -> tu
     return product_name_by_order_id, partner_name_by_redemption_id
 
 
+#: A contract instalment collected by Stripe is a card payment; one an
+#: administrator confirmed by hand is a bank transfer.
+_INSTALMENT_SOURCE_METHOD = {"STRIPE_CHECKOUT": "CARD", "STRIPE_INVOICE": "CARD", "ADMIN": "BANK_TRANSFER"}
+
+
+async def _contract_product_names(db: AsyncSession, contract_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    from app.domains.contracts.models import Contract
+
+    if not contract_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Contract.id, ProductVersion.name)
+            .join(ProductVersion, ProductVersion.id == Contract.product_version_id)
+            .where(Contract.id.in_(contract_ids))
+        )
+    ).all()
+    return {row.id: row.name for row in rows}
+
+
+async def contract_payment_movements(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_user_id: uuid.UUID | None
+) -> list[dict]:
+    """Every paid instalment of a Lial Energy contract, as a real-money row
+    (Session 54). Before this, paying a contract left no trace at all in
+    "Contabilità" -- only the LialCash cashback it earned. One row per
+    instalment, because that is what was actually charged: a single payment
+    is one row, 12 rate are twelve, each at the time it was collected."""
+    from app.domains.contracts.models import Contract, ContractInstalment
+    from app.domains.customers.models import Customer
+    from app.domains.wallets.service import _resolve_display_names
+
+    stmt = (
+        select(ContractInstalment, Contract, Customer.user_id)
+        .join(Contract, Contract.id == ContractInstalment.contract_id)
+        .join(Customer, Customer.id == Contract.customer_id)
+        .where(ContractInstalment.organization_id == organization_id, ContractInstalment.status == "PAID")
+    )
+    if customer_user_id is not None:
+        stmt = stmt.where(Customer.user_id == customer_user_id)
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+    names = await _contract_product_names(db, {c.id for _, c, _ in rows})
+    user_ids = {uid for _, _, uid in rows if uid}
+    display = await _resolve_display_names(db, organization_id=organization_id, user_ids=user_ids) if user_ids else {}
+    out = []
+    for instalment, contract, user_id in rows:
+        plan = f"rata {instalment.number} di {instalment.instalments_total}" if instalment.instalments_total > 1 else None
+        out.append({
+            "id": f"instalment-{instalment.id}",
+            "kind": "CONTRACT_PAYMENT",
+            "type": None,
+            "source": instalment.payment_source,
+            "payment_method": _INSTALMENT_SOURCE_METHOD.get(instalment.payment_source or "", "CARD"),
+            "amount_cents": instalment.amount_cents,
+            "currency": "EUR",
+            "product_name": names.get(contract.id),
+            "order_id": None,
+            "invoice_redemption_id": None,
+            "contract_id": contract.id,
+            "contract_request_id": contract.contract_request_id,
+            "note": plan,
+            "customer_user_id": user_id,
+            "customer_display_name": display.get(user_id) if user_id else None,
+            "created_at": instalment.paid_at or instalment.created_at,
+        })
+    return out
+
+
 def _order_payment_row(row: dict) -> dict | None:
     """The real-money leg of a PAID order (regular or imported-products,
     see FinancialMovementRead's docstring) -- what was actually charged via
@@ -101,6 +171,8 @@ def _order_payment_row(row: dict) -> dict | None:
         "product_name": row["product_name"],
         "order_id": row["id"],
         "invoice_redemption_id": None,
+        "contract_id": None,
+        "contract_request_id": None,
         "note": None,
         "customer_user_id": row["customer_user_id"],
         "customer_display_name": row["customer_display_name"],
@@ -129,6 +201,8 @@ def _redemption_payment_row(row: dict) -> dict | None:
         "product_name": row["partner_name"],
         "order_id": None,
         "invoice_redemption_id": row["id"],
+        "contract_id": None,
+        "contract_request_id": None,
         "note": None,
         "customer_user_id": row["customer_user_id"],
         "customer_display_name": row["customer_display_name"],
@@ -151,6 +225,9 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         db, organization_id=organization_id, wallet_id=wallet.id, limit=500
     )
     product_name_by_order_id, partner_name_by_redemption_id = await _product_name_lookups(db, wallet_txns)
+    contract_names = await _contract_product_names(
+        db, {t["reference_contract_id"] for t in wallet_txns if t["reference_contract_id"]}
+    )
 
     movements = []
     for t in wallet_txns:
@@ -164,6 +241,8 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
             product_name = product_name_by_order_id.get(unified_order_id)
         elif t["reference_invoice_redemption_id"]:
             product_name = partner_name_by_redemption_id.get(t["reference_invoice_redemption_id"])
+        elif t["reference_contract_id"]:
+            product_name = contract_names.get(t["reference_contract_id"])
         movements.append(
             {
                 "id": str(t["id"]),
@@ -176,6 +255,8 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
                 "product_name": product_name,
                 "order_id": unified_order_id,
                 "invoice_redemption_id": t["reference_invoice_redemption_id"],
+                "contract_id": t["reference_contract_id"],
+                "contract_request_id": None,
                 "note": t["note"],
                 "customer_user_id": user_id,
                 "customer_display_name": None,
@@ -211,6 +292,8 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         if movement is not None:
             movements.append(movement)
 
+    movements.extend(await contract_payment_movements(db, organization_id=organization_id, customer_user_id=user_id))
+
     movements.sort(key=lambda m: m["created_at"], reverse=True)
     return movements
 
@@ -235,6 +318,9 @@ async def list_all_movements(
         db, organization_id=organization_id, user_id=customer_user_id, limit=2000
     )
     product_name_by_order_id, partner_name_by_redemption_id = await _product_name_lookups(db, wallet_txns)
+    contract_names = await _contract_product_names(
+        db, {t["reference_contract_id"] for t in wallet_txns if t["reference_contract_id"]}
+    )
 
     movements = []
     for t in wallet_txns:
@@ -248,6 +334,8 @@ async def list_all_movements(
             product_name = product_name_by_order_id.get(unified_order_id)
         elif t["reference_invoice_redemption_id"]:
             product_name = partner_name_by_redemption_id.get(t["reference_invoice_redemption_id"])
+        elif t["reference_contract_id"]:
+            product_name = contract_names.get(t["reference_contract_id"])
         movements.append(
             {
                 "id": str(t["id"]),
@@ -260,6 +348,8 @@ async def list_all_movements(
                 "product_name": product_name,
                 "order_id": unified_order_id,
                 "invoice_redemption_id": t["reference_invoice_redemption_id"],
+                "contract_id": t["reference_contract_id"],
+                "contract_request_id": None,
                 "note": t["note"],
                 "customer_user_id": cust_id,
                 "customer_display_name": cust_name,
@@ -296,5 +386,108 @@ async def list_all_movements(
         if movement is not None:
             movements.append(movement)
 
+    movements.extend(
+        await contract_payment_movements(db, organization_id=organization_id, customer_user_id=customer_user_id)
+    )
+
     movements.sort(key=lambda m: m["created_at"], reverse=True)
     return movements
+
+
+CASHBACK_SOURCES = frozenset({
+    "ORDER_CASHBACK_BASE", "ORDER_CASHBACK_BONUS", "INVOICE_REDEMPTION_BASE", "INVOICE_REDEMPTION_BONUS",
+    "CONTRACT_CASHBACK",
+})
+REAL_MONEY_KINDS = frozenset({"ORDER_PAYMENT", "REDEMPTION_PAYMENT", "CONTRACT_PAYMENT"})
+
+
+async def my_summary(db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID) -> dict:
+    """The totals at the top of "Contabilità" (Session 54): what was paid
+    and how, LialCash in and out, contracts, and -- for someone who is also
+    a promoter -- commissions. Built from list_my_movements so the cards can
+    never tell a different story from the list below them."""
+    from datetime import UTC, datetime
+
+    from app.domains.commissions.models import CommissionMovement
+    from app.domains.commissions.services.admin_ledger import PAYABLE_STATUSES
+    from app.domains.contracts.models import Contract, ContractInstalment
+    from app.domains.customers.models import Customer
+    from app.domains.network.models import AgentProfile
+
+    movements = await list_my_movements(db, organization_id=organization_id, user_id=user_id)
+    now = datetime.now(UTC)
+    payments = [m for m in movements if m["kind"] in REAL_MONEY_KINDS]
+    wallet_rows = [m for m in movements if m["kind"] == "WALLET"]
+
+    def total(rows, predicate=lambda m: True):
+        return sum(abs(m["amount_cents"]) for m in rows if predicate(m))
+
+    wallet = await wallets_service.get_or_create_wallet(db, organization_id=organization_id, user_id=user_id)
+    out = {
+        "spent_total_cents": total(payments),
+        "spent_card_cents": total(payments, lambda m: m["payment_method"] == "CARD"),
+        "spent_bank_transfer_cents": total(payments, lambda m: m["payment_method"] == "BANK_TRANSFER"),
+        "spent_this_month_cents": total(
+            payments, lambda m: m["created_at"].year == now.year and m["created_at"].month == now.month
+        ),
+        "spent_orders_cents": total(payments, lambda m: m["kind"] == "ORDER_PAYMENT"),
+        "spent_redemptions_cents": total(payments, lambda m: m["kind"] == "REDEMPTION_PAYMENT"),
+        "spent_contracts_cents": total(payments, lambda m: m["kind"] == "CONTRACT_PAYMENT"),
+        "payments_count": len(payments),
+        "lialcash_balance_cents": wallet.balance_cents,
+        "lialcash_received_cents": total(wallet_rows, lambda m: m["amount_cents"] > 0),
+        "lialcash_spent_cents": total(wallet_rows, lambda m: m["amount_cents"] < 0),
+        "cashback_received_cents": total(
+            wallet_rows, lambda m: m["amount_cents"] > 0 and (m["source"] or "") in CASHBACK_SOURCES
+        ),
+        "instalments_paid": sum(1 for m in payments if m["kind"] == "CONTRACT_PAYMENT"),
+    }
+
+    customer = (
+        await db.execute(select(Customer).where(Customer.organization_id == organization_id, Customer.user_id == user_id))
+    ).scalar_one_or_none()
+    if customer is not None:
+        contracts = list((await db.execute(select(Contract).where(Contract.customer_id == customer.id))).scalars())
+        out["contracts_active"] = sum(1 for c in contracts if c.status in ("ACTIVE", "RENEWED"))
+        billing = [c.id for c in contracts if c.billing_stopped_at is None and c.status not in ("REJECTED", "CANCELLED")]
+        if billing:
+            next_row = (
+                await db.execute(
+                    select(ContractInstalment)
+                    .where(ContractInstalment.contract_id.in_(billing), ContractInstalment.status == "SCHEDULED")
+                    .order_by(ContractInstalment.due_date)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if next_row is not None:
+                same_day = (
+                    await db.execute(
+                        select(ContractInstalment.amount_cents).where(
+                            ContractInstalment.contract_id.in_(billing),
+                            ContractInstalment.status == "SCHEDULED",
+                            ContractInstalment.due_date == next_row.due_date,
+                        )
+                    )
+                ).scalars()
+                out["next_instalment_due_date"] = next_row.due_date.isoformat()
+                out["next_instalment_cents"] = sum(same_day)
+
+    agent_id = (
+        await db.execute(
+            select(AgentProfile.id).where(AgentProfile.organization_id == organization_id, AgentProfile.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if agent_id is not None:
+        rows = (
+            await db.execute(
+                select(CommissionMovement.amount_cents, CommissionMovement.status).where(
+                    CommissionMovement.organization_id == organization_id, CommissionMovement.agent_id == agent_id
+                )
+            )
+        ).all()
+        live = [r for r in rows if r.status not in ("REVERSED", "CANCELLED")]
+        out["commissions_total_cents"] = sum(r.amount_cents for r in live)
+        out["commissions_to_collect_cents"] = sum(r.amount_cents for r in live if r.status in PAYABLE_STATUSES)
+        out["commissions_paid_cents"] = sum(r.amount_cents for r in live if r.status == "PAID")
+        out["commissions_count"] = len(live)
+    return out

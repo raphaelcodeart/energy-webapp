@@ -3,7 +3,9 @@ routers/services must call `assert_transition_allowed` before writing a new stat
 See docs/business-rules.md#contract-state-machine."""
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "DRAFT": {"SUBMITTED", "REJECTED"},
+    # DRAFT -> CANCELLED: a point removed from a pratica before it was ever
+    # sent (Session 52). Nothing was reviewed, so it is not a rejection.
+    "DRAFT": {"SUBMITTED", "REJECTED", "CANCELLED"},
     "SUBMITTED": {"DOCUMENTS_PENDING", "UNDER_REVIEW", "REJECTED"},
     "DOCUMENTS_PENDING": {"UNDER_REVIEW", "REJECTED"},
     "UNDER_REVIEW": {"APPROVED", "REJECTED", "DOCUMENTS_PENDING"},

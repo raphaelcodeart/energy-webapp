@@ -6,7 +6,10 @@ import { friendlyApiError } from "@/lib/api-error";
 
 type DocumentRead = {
   id: string;
-  contract_id: string;
+  /** Exactly one of these two is set: a document of one contract, or of its
+      whole pratica (Session 52), which then counts for every point in it. */
+  contract_id: string | null;
+  contract_request_id: string | null;
   document_type: string;
   /** Only ever set on an extra attachment -- what its uploader called it. */
   description: string | null;
@@ -34,7 +37,8 @@ type RequiredDocumentStatus = {
 };
 
 type ContractDocumentsRead = {
-  contract_id: string;
+  contract_id?: string | null;
+  contract_request_id?: string | null;
   required: RequiredDocumentStatus[];
   extra?: DocumentRead[];
 };
@@ -74,10 +78,16 @@ function statusColor(status: string): string {
   return "bg-amber-500/10 text-amber-400 border-amber-500/20";
 }
 
-async function fetchContractDocuments(contractId: string): Promise<ContractDocumentsRead> {
-  const res = await fetch(`/api/proxy/contracts/${contractId}/documents`);
+async function fetchDocuments(path: string): Promise<ContractDocumentsRead> {
+  const res = await fetch(path);
   if (!res.ok) throw new Error("Impossibile caricare i documenti.");
   return res.json();
+}
+
+function documentsPath({ contractId, requestId }: { contractId?: string; requestId?: string }): string {
+  return contractId
+    ? `/api/proxy/contracts/${contractId}/documents`
+    : `/api/proxy/contract-requests/${requestId}/documents`;
 }
 
 async function fetchDocumentUrl(documentId: string): Promise<string> {
@@ -98,13 +108,51 @@ export function missingRequiredCount(data: ContractDocumentsRead | undefined): n
 export function useContractDocuments(contractId: string) {
   return useQuery({
     queryKey: ["documents", "contract", contractId],
-    queryFn: () => fetchContractDocuments(contractId),
+    queryFn: () => fetchDocuments(documentsPath({ contractId })),
   });
 }
 
-export function ContractDocumentsPanel({ contractId, isStaff = false }: { contractId: string; isStaff?: boolean }) {
+/** The documents uploaded once for a whole pratica (Session 52). */
+export function useRequestDocuments(requestId: string) {
+  return useQuery({
+    queryKey: ["documents", "request", requestId],
+    queryFn: () => fetchDocuments(documentsPath({ requestId })),
+  });
+}
+
+/** One contract's documents (`contractId`) or a pratica's shared ones
+    (`requestId`) -- same slots, same upload, same review.
+
+    `onlyTypes` narrows the slots shown, for a screen that is about one
+    supply point: there the identity and fiscal code already live on the
+    pratica, and only the point's own bill belongs. */
+export function ContractDocumentsPanel({
+  contractId,
+  requestId,
+  isStaff = false,
+  onlyTypes,
+}: {
+  contractId?: string;
+  requestId?: string;
+  isStaff?: boolean;
+  onlyTypes?: string[];
+}) {
   const queryClient = useQueryClient();
-  const { data, error, isLoading } = useContractDocuments(contractId);
+  const contractQuery = useQuery({
+    queryKey: ["documents", "contract", contractId],
+    queryFn: () => fetchDocuments(documentsPath({ contractId })),
+    enabled: Boolean(contractId),
+  });
+  const requestQuery = useQuery({
+    queryKey: ["documents", "request", requestId],
+    queryFn: () => fetchDocuments(documentsPath({ requestId })),
+    enabled: !contractId && Boolean(requestId),
+  });
+  const { data: rawData, error, isLoading } = contractId ? contractQuery : requestQuery;
+  const ownerKey = contractId ?? requestId ?? "";
+  const data = rawData && onlyTypes
+    ? { ...rawData, required: rawData.required.filter((row) => onlyTypes.includes(row.document_type)) }
+    : rawData;
 
   const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -118,7 +166,13 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
   const canPickExtraFile = trimmedExtraLabel.length >= MIN_DESCRIPTION_LENGTH;
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["documents", "contract", contractId] });
+    // Every contract of a pratica shows the pratica's documents too, and the
+    // pratica screens count what is missing: all of it is stale now.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["documents"] }),
+      queryClient.invalidateQueries({ queryKey: ["contract-request"] }),
+      queryClient.invalidateQueries({ queryKey: ["contract-requests"] }),
+    ]);
   }
 
   async function handleUpload(documentType: string, file: File, description?: string) {
@@ -129,7 +183,7 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
       formData.append("document_type", documentType);
       if (description) formData.append("description", description);
       formData.append("file", file);
-      const res = await fetch(`/api/proxy/contracts/${contractId}/documents`, { method: "POST", body: formData });
+      const res = await fetch(documentsPath({ contractId, requestId }), { method: "POST", body: formData });
       if (!res.ok) throw new Error(await friendlyApiError(res));
       await refresh();
       return true;
@@ -262,7 +316,9 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
       {data.required.map((row) => {
         const doc = row.document;
         const isRequired = row.required !== false;
-        const inputId = `doc-upload-${contractId}-${row.document_type}`;
+        const inputId = `doc-upload-${ownerKey}-${row.document_type}`;
+        // On a contract, a slot filled by its pratica's document.
+        const inherited = Boolean(contractId && doc?.contract_request_id);
         return (
           <div
             key={row.document_type}
@@ -287,6 +343,7 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     {doc.original_filename} · caricato da {doc.uploaded_by_name ?? "—"} il{" "}
                     {new Date(doc.created_at).toLocaleDateString("it-IT")}
+                    {inherited && " · vale per tutti i punti della pratica"}
                   </p>
                 )}
               </div>
@@ -317,7 +374,13 @@ export function ContractDocumentsPanel({ contractId, isStaff = false }: { contra
                   htmlFor={inputId}
                   className="px-2.5 py-1 rounded-lg bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold cursor-pointer transition"
                 >
-                  {uploadingType === row.document_type ? "Caricamento..." : doc ? "Sostituisci" : "Carica"}
+                  {uploadingType === row.document_type
+                    ? "Caricamento..."
+                    : inherited
+                      ? "Carica per questo punto"
+                      : doc
+                        ? "Sostituisci"
+                        : "Carica"}
                 </label>
               </div>
             </div>

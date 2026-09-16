@@ -4,6 +4,127 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 54 — 2026-09-16 — Contabilità: totali, rate dei contratti, dettaglio collegato di ogni movimento
+
+Richiesta dell'utente: nella pagina Contabilità togliere il sottotitolo
+dell'area cliente e l'immagine di intestazione per fare spazio a più card di
+totali (totale speso bonifico + Stripe, provvigioni, altri dati utili);
+rendere l'elenco dei movimenti professionale e leggibile (data piccola in
+grassetto, titolo grande, sottotitolo piccolo); ogni riga — riscatto, ordine,
+ricarica — deve aprire un popup con il dettaglio di quella specifica cosa,
+tutto collegato, con ogni dato del pagamento (orari di accettazione ecc.) e
+strumenti di ricerca utili.
+
+- [x] **Mancavano i pagamenti dei contratti**: pagare un contratto non
+  lasciava nessuna traccia in euro in Contabilità, solo il cashback. Ora ogni
+  rata pagata è un movimento `CONTRACT_PAYMENT` (carta o bonifico).
+- [x] `GET /accounting/mine/summary`: totali calcolati sul server dagli stessi
+  movimenti, compresa la prossima rata e le provvigioni per chi è promoter.
+- [x] `GET /accounting/{mine,admin}/detail?ref=`: dettaglio unico per
+  movimento LialCash, ordine, riscatto e contratto, con cronologia al secondo
+  e autore di ogni passaggio; lato cliente limitato alle sue cose.
+- [x] Pagina cliente ridisegnata: niente sottotitolo né banner, 10 card di
+  totali, ricerca testuale + periodo + 9 filtri con totali della selezione,
+  movimenti raggruppati per mese, riga nuova (data/ora piccola in grassetto,
+  icona per categoria, titolo grande, descrizione piccola, chip del
+  riferimento), popup di dettaglio con navigazione tra movimenti collegati e
+  "Indietro". Stesso popup nella Contabilità admin.
+- [x] Test: 4 nuovi (dettaglio ordine con cronologia e privacy, totali, rate
+  del contratto in contabilità, cronologia con orari con e senza fuso). Suite
+  completa verde (368) prima dell'ultimo test, aggiunto dopo il controllo
+  sui dati reali.
+- [x] **Trovato verificando sui dati reali, dopo il rilascio**: il dettaglio di
+  un ordine vero rispondeva 500, perché alcune colonne più vecchie restituiscono
+  orari senza fuso e la cronologia non riusciva a ordinarli insieme agli altri.
+  Corretto (normalizzati a UTC) e ricontrollato in sola lettura: tutti i
+  dettagli di un cliente reale (15) e i primi movimenti della vista admin (29)
+  rispondono.
+- Nessuna modifica allo schema del database.
+
+## Session 53 — 2026-09-16 — Pratica: dati una volta, "quanti POD hai?", poi solo il contratto per POD
+
+Correzione dell'utente sul flusso appena rilasciato: vuole tutti i dati
+(indirizzo compreso, PEC, IBAN) **una volta all'inizio** come prima, insieme a
+**"Quanti POD hai?"** con il contatore; poi i documenti d'identità una volta;
+poi trovarsi **i POD già creati** e solo **associare il contratto** a ciascuno.
+Il **codice POD non serve**: tolto.
+
+- [x] Migrazione 0043: indirizzo sulla pratica (backfill dal primo punto),
+  `supply_points.energy_type` nullable. Provata su una copia del database
+  reale, andata e ritorno.
+- [x] Backend: la pratica si crea con dati + indirizzo + numero di POD (e
+  l'eventuale pacchetto di partenza per tutti); `PUT /points-count` aggiunge o
+  toglie POD (prima quelli senza contratto); `PATCH /points/{id}/address` per
+  un POD a un altro indirizzo; niente più codici né validazione POD/PDR; è il
+  pacchetto scelto a fare del POD un punto luce o gas; tutti i pacchetti sono
+  proponibili su ogni POD. Le righe Stripe mostrano "pacchetto — indirizzo".
+- [x] Wizard in 4 passaggi: Dati (con "Quanti POD hai?") → Documenti →
+  Contratti → Riepilogo. I POD si chiamano "POD 1", "POD 2"… quando non hanno
+  un codice.
+- [x] Test aggiornati (20 nella suite della pratica). Suite completa verde.
+- Conseguenza dichiarata: senza codice non c'è più il controllo "stesso POD in
+  due contratti in corso"; il punto reale si identifica dalla bolletta.
+
+## Session 52 — 2026-09-16 — La pratica di attivazione: N punti, N contratti, un pagamento
+
+Richiesta dell'utente: quando si attiva un contratto si chiede al cliente
+quanti POD ha, ma poi tutti i punti prendevano lo stesso pacchetto, i
+documenti andavano caricati per ogni punto e si pagava con N checkout
+separati. Serve: configurare ogni POD con il suo pacchetto, un totale e un
+pagamento unico, ma **ogni POD resta un contratto indipendente** per il
+cliente, per il promoter e per le provvigioni. L'area "Attiva contratti"
+diventa l'elenco delle pratiche, con un pulsante ben evidente per aprirne una
+nuova. Dettagli in `business-rules.md#contract-request`.
+
+Scelte prese in autonomia (l'utente ha chiesto "ingegnerizza bene e fai tu"):
+un solo flusso anche per un solo POD (niente percorso separato); un piano di
+pagamento per pratica (Stripe non gestisce in modo pulito durate diverse nello
+stesso abbonamento); documenti dell'intestatario una volta sola sulla pratica;
+niente pacchetti luce+gas combinati (il catalogo non ne ha); i contratti
+esistenti ricevono ciascuno una pratica di un contratto.
+
+- [x] **Modello dati** (migrazione 0042): `contract_requests`,
+  `contract_request_checkouts`; `contracts.contract_request_id` NOT NULL
+  (backfill 1:1, stesso id), `stripe_subscription_item_id`,
+  `billing_stopped_at`; `product_version_id` nullable solo in bozza (CHECK);
+  documenti della pratica (`documents.contract_request_id`, CHECK un solo
+  proprietario); rate uniche per `(contract_id, stripe_invoice_id)`.
+  Provata su una copia del database reale, andata e ritorno.
+- [x] **Backend** `contracts/requests.py` + `/contract-requests`: bozza, punti
+  (validazione POD/PDR, un contratto in corso per codice), pacchetto per punto
+  con prezzo congelato alla scelta, invio di tutti i punti insieme, accessi
+  cliente/promoter/staff.
+- [x] **Pagamento unico**: una Checkout con una riga per contratto, oppure un
+  abbonamento con una voce per contratto; ogni fattura mensile letta riga per
+  riga e registrata sul contratto giusto; pagamento doppio rilevato e non
+  riaccreditato; "Interrompi addebiti" toglie dall'abbonamento solo quel
+  contratto. Corretto anche lo stop dopo l'ultima rata: il periodo su API
+  dahlia non è più sull'abbonamento, e senza `proration_behavior="none"`
+  Stripe avrebbe accreditato al cliente i giorni dopo l'ultima rata.
+- [x] **Cliente**: "I miei Contratti" = elenco pratiche + "Attiva nuovo
+  contratto" + catalogo "Scopri i pacchetti"; la voce di menu "Attiva
+  Contratto" è confluita qui (i vecchi link `?tab=activate-contract`
+  funzionano). Wizard in 5 passaggi con salvataggio continuo e "Riprendi".
+- [x] **Promoter** ("Miei Clienti"): stessa pratica per il cliente, elenco
+  pratiche per cliente; invia ma non paga.
+- [x] **Admin**: nuova voce "Pratiche" (filtri Da verificare / Documenti
+  mancanti / Non pagate / Rate non riscosse / In compilazione), dettaglio con
+  intestatario, documenti comuni, tentativi di pagamento, e ogni punto con
+  Documenti, Provvigioni, Recensisci, Interrompi addebiti; **"Approva i N
+  contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e manda
+  una transizione per contratto. In "Tutti i Contratti" ogni riga porta alla
+  sua pratica.
+- [x] Rimossi i componenti del vecchio flusso a contratto singolo
+  (`contract-activation-wizard`, `contract-completion-screen`,
+  `contract-payment-panel`). Le rotte per contratto restano: le sessioni
+  Stripe già aperte su un contratto singolo vengono ancora onorate.
+- [x] Test: 19 nuovi (`tests/test_contract_requests.py`, comprese le rotte
+  HTTP e i webhook con righe per contratto). Suite completa verde.
+- [ ] **Segnalato, non toccato**: il pacchetto "GAS Energia Circolare con cash
+  back" (codice `LUCE-STD-COPY`) è registrato come **luce**: con il filtro per
+  tipo di punto compare tra i pacchetti per i POD. Va corretto da Prodotti →
+  tipo energia Gas (ha già un contratto, che resta invariato).
+
 ## Session 51 — 2026-09-16 — Verifica del flusso soldi: tre difetti trovati e corretti
 
 L'utente ha chiesto di spiegare quando partono provvigioni e cashback, se gli

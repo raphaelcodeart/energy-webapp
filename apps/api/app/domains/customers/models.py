@@ -76,7 +76,9 @@ class SupplyPoint(UUIDPKMixin, TimestampMixin, Base):
     # scanning a list. Auto-computed from energy_type + address at creation if
     # not given explicitly (see service.py); always editable afterwards.
     label: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    energy_type: Mapped[str] = mapped_column(String(16))
+    #: ELECTRICITY / GAS / DUAL_FUEL. Null only for a point of a pratica whose
+    #: package has not been chosen yet: the package decides it (Session 53).
+    energy_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     pod_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pdr_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     meter_number: Mapped[str | None] = mapped_column(String(64), nullable=True)

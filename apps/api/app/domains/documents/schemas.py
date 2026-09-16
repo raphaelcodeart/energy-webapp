@@ -8,7 +8,10 @@ from app.domains.documents.models import DOCUMENT_STATUSES, DOCUMENT_TYPES
 
 class DocumentRead(BaseModel):
     id: uuid.UUID
-    contract_id: uuid.UUID
+    #: Exactly one of these is set: the document belongs to one contract, or
+    #: to its whole pratica (Session 52).
+    contract_id: uuid.UUID | None = None
+    contract_request_id: uuid.UUID | None = None
     document_type: str
     #: Only ever set for an OTHER attachment -- the label its uploader gave
     #: it. None for every slot document, which is named by its type.
@@ -59,7 +62,9 @@ class RequiredDocumentStatus(BaseModel):
 
 
 class ContractDocumentsRead(BaseModel):
-    contract_id: uuid.UUID
+    #: Set for a contract's documents, or contract_request_id for a pratica's.
+    contract_id: uuid.UUID | None = None
+    contract_request_id: uuid.UUID | None = None
     required: list[RequiredDocumentStatus]
     #: Free-form attachments, oldest first -- each one labelled by whoever
     #: uploaded it. Never gates the contract.

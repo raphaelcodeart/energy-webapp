@@ -195,7 +195,7 @@ async def get_my_contract_payment_options(
         db, organization_id=current_user.organization_id
     )
     payable = contract_service.is_payable(contract)
-    version = await db.get(ProductVersion, contract.product_version_id)
+    version = await db.get(ProductVersion, contract.product_version_id) if contract.product_version_id else None
     cashback_percentage = int(version.contract_cashback_percentage or 0) if version is not None else 0
     options = (
         [
@@ -369,6 +369,10 @@ async def get_commission_preview(
     contract = await _get_org_scoped_contract(
         db, organization_id=current_user.organization_id, contract_id=contract_id
     )
+    if contract.product_version_id is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Questo punto non ha ancora un pacchetto: non ci sono provvigioni da mostrare."
+        )
     preview = await build_commission_preview(db, organization_id=current_user.organization_id, contract=contract)
     preview["already_accepted"] = await contract_service.has_accepted_commission_plan(db, contract_id=contract.id)
     return preview
@@ -475,6 +479,31 @@ async def confirm_instalment_manually(
     )
     await db.commit()
     return {"number": row.number, "status": row.status}
+
+
+@router.post("/{contract_id}/stop-billing", response_model=ContractRead)
+async def stop_contract_billing(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("contracts.review")),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRead:
+    """"Interrompi addebiti": Stripe stops charging this contract every month.
+    In a pratica only this contract's line leaves the subscription."""
+    from app.domains.payments import service as payments_service
+
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    try:
+        contract = await payments_service.stop_contract_billing(
+            db, organization_id=current_user.organization_id, contract=contract, actor_user_id=current_user.user_id
+        )
+    except payments_service.StripeNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    except payments_service.PaymentsError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    rows = await contract_service.to_read_dicts(db, [contract])
+    return ContractRead(**rows[0])
 
 
 @router.post("/{contract_id}/transition", response_model=ContractRead)

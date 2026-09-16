@@ -91,7 +91,31 @@ mostra anche il proprio **IBAN per l'addebito** (modificabile in linea).
 > quella che c'è. Il secondo pulsante funziona dopo aver collegato un
 > account Google una volta sola, da *Impostazioni → Google Drive*.
 
-**Attivare un contratto** (Session 49) si fa in tre passaggi a schermo intero.
+**Attivare contratti: la pratica (Sessions 52–53).** In **I miei Contratti** il
+pulsante **"Attiva nuovo contratto"** apre una *pratica di attivazione* a
+schermo intero, in quattro passaggi. **1. Dati**: tutto una volta sola —
+nome, cognome, email, PEC (facoltativa), IBAN, indirizzo di fornitura — e la
+domanda **"Quanti POD hai?"**: scrivi il numero o usa **+** e **−**. **2.
+Documenti d'identità**: identità, codice fiscale, visura per le aziende, una
+volta sola per tutti i POD (se hai un'unica bolletta con tutti i punti,
+caricala qui). **3. Contratti**: trovi **già tutti i POD creati** ("POD 1",
+"POD 2"…) e per ognuno scegli il contratto da attivare (pulsante
+**"Anteprima"** per leggerlo), oppure "Stesso contratto per tutti i POD". Il
+codice POD non serve. Se un POD è a un altro indirizzo, "Indirizzo diverso?"
+sotto quel POD; puoi anche allegare la sua bolletta o una foto del contatore.
+**4. Riepilogo**: controlli contratti e totale, premi **"Invia la pratica"** e
+scegli come pagare: **un solo pagamento** per tutti i contratti — unica
+soluzione, oppure 3 o 12 rate con **un solo addebito mensile** sulla carta.
+Ogni POD resta **un contratto a sé**, verificato e attivato per conto suo.
+Tutto viene salvato mentre compili: una pratica lasciata a metà resta in
+elenco come **Bozza** con **"Riprendi"**. Nella lista ogni pratica mostra cosa
+manca ("Da pagare", "Mancano documenti per 2 POD", "7/10 attivi") e, aperta,
+l'elenco dei suoi POD con stato, contratto, rate, IBAN e documenti. Il
+catalogo resta sotto, in **"Scopri i pacchetti"**: "Attiva Contratto" su un
+pacchetto apre una pratica con quel contratto già scelto per tutti i POD.
+
+**Come funzionava prima (Session 49), ancora valido per i contratti già
+aperti.** L'attivazione di un singolo contratto si faceva in tre passaggi a schermo intero.
 **1. Dati**: intestatario (nome e cognome, già compilati dal tuo account ma
 modificabili), email, **PEC** (facoltativa), **IBAN per l'addebito** — che
 potrai comunque cambiare dopo da "I miei Contratti" — e il punto di
@@ -177,10 +201,25 @@ di quell'importo (con carta, subito, o con bonifico indicando il codice
 causale mostrato) per riscattare il 100% + un ulteriore 5% di bonus in
 LialCash sul tuo wallet.
 
-**Contabilità** — la tua rendicontazione personale: un unico elenco che
-unisce i movimenti LialCash del wallet e i pagamenti reali (bonifico o
-carta) dei tuoi ordini, con filtri per tipo, totali riepilogativi e un
-pulsante per scaricare tutto in CSV.
+**Contabilità** (rinnovata in Session 54) — la tua rendicontazione personale.
+In alto i **totali**: totale speso (carta + bonifico) e speso nel mese, saldo
+LialCash, cashback ricevuto, pagato con carta e con bonifico, quanto hai
+pagato per i contratti con le rate già pagate e la **prossima rata**, Shop e
+riscatti, LialCash ricevuti e spesi e — se sei anche promoter — le
+**provvigioni maturate** (da incassare e pagate). Sotto, tutti i movimenti
+**raggruppati per mese**: data e ora in piccolo, titolo del movimento in
+grande, descrizione in piccolo, importo ben in evidenza. Puoi **cercare**
+(descrizione, prodotto, importo, numero di ordine/riscatto/contratto),
+**filtrare** (Pagamenti, Contratti, Cashback, LialCash, Carta, Bonifico,
+Entrate, Uscite) e scegliere un **periodo** (dal… al…); con i filtri attivi
+vedi subito quanto hai pagato e quanti LialCash hai ricevuto in quella
+selezione. **Clicca un movimento** per aprirne il dettaglio: importi, metodo,
+riferimenti Stripe o causale del bonifico e una **cronologia con data e ora al
+secondo** di ogni passaggio (creato, ricevuta caricata, pagamento confermato da
+Stripe o dall'amministrazione, cashback accreditato). Il bottone **"Riscatto
+#…" / "Ordine #…" / "Contratto #…"** sulla riga apre quella pratica con tutti i
+suoi movimenti collegati, ognuno a sua volta apribile; per un contratto vedi
+anche tutte le rate con la data di incasso. Resta il pulsante **Esporta CSV**.
 
 ### 3.2 Area Promoter (`/promoter`)
 
@@ -210,6 +249,13 @@ Pensata per far gestire al promoter la propria rete **come una vera azienda**:
   che HAI guadagnato tu specificamente da quel contratto** (diversa dalla
   provvigione totale pagata a tutta la filiera, perché nel piano multilivello
   ogni persona nella catena prende una quota diversa).
+- **Miei Clienti → Attiva nuovo contratto** (Session 52) — apre per il tuo
+  cliente la stessa pratica di attivazione che vede lui: dati e "quanti POD
+  hai?", documenti d'identità, contratto per ogni POD, invio. **Il pagamento lo
+  fa il cliente** dal suo account ("I miei Contratti" → "Paga"). Il pulsante
+  **Pratiche** accanto a ogni cliente mostra tutte le sue pratiche — anche
+  quelle che ha compilato da solo — con cosa manca a ciascuna; una bozza si
+  riprende da lì. Ogni punto è un contratto a sé anche per le tue provvigioni.
 - **Prodotti da Condividere** — lo stesso catalogo che vede il cliente, con un
   pulsante **Condividi** su ogni prodotto: un link diretto a quel prodotto con
   il tuo codice promoter già incorporato, pronto da inviare a un cliente.
@@ -263,6 +309,15 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   attenzione" (contratti fermi in revisione da troppo tempo, o **pagati ma non
   ancora attivati** — quindi con provvigioni non ancora generate), attività
   recente.
+- **Pratiche** (Session 52) — le pratiche di attivazione: filtri rapidi *Da
+  verificare*, *Documenti mancanti*, *Non pagate*, *Rate non riscosse*, *In
+  compilazione*. Aprendo una pratica vedi intestatario, documenti comuni
+  (validi per tutti i punti), tentativi di pagamento con carta, e ogni punto
+  come contratto a sé con i pulsanti **Documenti**, **Provvigioni**,
+  **Recensisci** e — se paga a rate — **Interrompi addebiti** (toglie solo quel
+  contratto dall'addebito mensile, gli altri continuano). **"Approva i N
+  contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e li
+  approva tutti in un colpo, ognuno con la sua anteprima salvata.
 - **Tutti i Contratti** — elenco con nome cliente (non solo l'ID), prodotto e
   punto di fornitura con nome comprensibile, colonna **Origine** (vedi sotto),
   colonna **Importo** con netto / IVA / totale, colonna scadenza/rinnovo colorata
@@ -404,10 +459,11 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
     accreditava davvero una seconda volta; è corretto, ma l'abitudine di
     verificare il saldo prima di ripetere un'operazione sui soldi resta
     quella giusta.
-- **Contabilità** — non esiste una vista admin separata: ogni cliente vede
-  la propria in "Contabilità" nella sua area (LialCash del wallet + ordini
-  pagati in euro, filtri, totali, export CSV); l'amministrazione ha
-  l'equivalente organizzativo nelle sezioni **Wallet** e **Ordini** sopra.
+- **Contabilità** — tutti i movimenti di tutti i clienti (LialCash, ordini,
+  riscatti e, da Session 54, le rate dei contratti), filtrabili per cliente.
+  Ogni riga e ogni riferimento "Ordine / Riscatto / Contratto #…" apre lo stesso
+  dettaglio che vede il cliente, con la cronologia completa di chi ha fatto
+  cosa e quando.
 
 ## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 

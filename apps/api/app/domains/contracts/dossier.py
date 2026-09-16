@@ -202,7 +202,7 @@ async def _load_context(
         ).scalars().first()
 
     product_name = product_code = None
-    version = await db.get(ProductVersion, contract.product_version_id)
+    version = await db.get(ProductVersion, contract.product_version_id) if contract.product_version_id else None
     if version is not None:
         product_name = version.name
         product = await db.get(Product, version.product_id)
@@ -217,12 +217,19 @@ async def _load_context(
 
     organization = await db.get(Organization, organization_id)
 
-    documents = await documents_service.list_documents_for_contract(
+    # Prima i documenti della pratica (identità, codice fiscale, visura: gli
+    # stessi per tutti i punti), poi quelli di questo contratto. Il fascicolo
+    # di un contratto deve bastare da solo, anche se quei file sono stati
+    # caricati una volta sola per dieci punti.
+    shared = await documents_service.list_documents_for_request(
+        db, organization_id=organization_id, contract_request_id=contract.contract_request_id
+    )
+    own = await documents_service.list_documents_for_contract(
         db, organization_id=organization_id, contract_id=contract.id
     )
-    # list_documents_for_contract restituisce il più recente per primo; in un
-    # dossier l'ordine naturale è quello di caricamento.
-    documents = list(reversed(documents))
+    # Le liste arrivano dal più recente; in un dossier l'ordine naturale è
+    # quello di caricamento.
+    documents = list(reversed(shared)) + list(reversed(own))
 
     return _ContractContext(
         contract=contract,

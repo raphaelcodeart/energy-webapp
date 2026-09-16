@@ -425,11 +425,50 @@ contract_instalments  (added Session 50, same migration)
   id, organization_id, contract_id, number, instalments_total, due_date,
   amount_cents, status (SCHEDULED/PAID/FAILED), paid_at, payment_source
   (STRIPE_CHECKOUT/STRIPE_INVOICE/ADMIN), confirmed_by_user_id -> users,
-  stripe_invoice_id UNIQUE nullable, commission_event_id (the one outbox event
+  stripe_invoice_id nullable, commission_event_id (the one outbox event
   that releases this slice), commission_released_at,
   commission_calculation_id -> commission_calculations, created_at.
-  UNIQUE (contract_id, number).
+  UNIQUE (contract_id, number), UNIQUE (contract_id, stripe_invoice_id)
+  (Session 52: was UNIQUE stripe_invoice_id -- one monthly invoice of a
+  pratica now pays N contracts).
   -- one row per payment owed; each paid row releases 1/N of the commissions
+
+contract_requests  (added Session 52, migration 0042 / c4f9a2b7d318)
+  id, organization_id, customer_id -> customers, status (DRAFT/SUBMITTED/
+  CANCELLED), holder_first_name, holder_last_name, email, pec, iban,
+  created_by_user_id -> users, created_by_role, activated_by_promoter_id ->
+  agent_profiles, submitted_at, cancelled_at, created_at, updated_at.
+  -- la pratica di attivazione: N supply points -> N independent contracts,
+  -- shared holder/documents/payment; see business-rules.md#contract-request.
+  -- Existing contracts backfilled one pratica each, id = the contract's id.
+
+contract_requests -- Session 53 additions (migration 0043 / d5a1b3c9e472)
+  street, city, province, postal_code: the address every POD of the pratica
+  starts from, asked once with the holder data. Backfilled from each existing
+  pratica's first point.
+
+supply_points -- Session 53: energy_type is now nullable (a POD created by
+  "quanti POD hai?" is luce or gas only once its package is chosen).
+
+contract_request_checkouts  (added Session 52, same migration)
+  id, organization_id, contract_request_id -> contract_requests,
+  stripe_checkout_session_id UNIQUE, payment_plan, lines JSONB
+  ([{contract_id, gross_cents, instalment_cents}] frozen at creation),
+  total_cents, instalment_cents, created_by_user_id -> users, completed_at,
+  stripe_subscription_id, stripe_customer_id, outcome, created_at.
+  -- one row per Stripe Checkout Session opened for a pratica
+
+contracts -- Session 52 additions
+  contract_request_id -> contract_requests NOT NULL (indexed),
+  stripe_subscription_item_id UNIQUE nullable (this contract's line in the
+  pratica's subscription), billing_stopped_at nullable.
+  product_version_id is now nullable, with
+  CHECK ck_contracts_product_required: product_version_id IS NOT NULL OR
+  status IN ('DRAFT','CANCELLED').
+
+documents -- Session 52 additions
+  contract_request_id -> contract_requests nullable (indexed); contract_id is
+  now nullable; CHECK ck_documents_one_owner: exactly one of the two is set.
 
 ## 5. Commissions (first-referrer bonus added Session 38)
 
@@ -978,6 +1017,15 @@ which remain each domain's own single source of truth:
 This is what the customer-facing "Contabilità" dashboard section renders
 (filters by LialCash/Bonifico/Carta, totals, CSV export) -- see
 `business-rules.md#internal-wallet`.
+
+Session 54, still no new table: a third real-money source, every `PAID`
+`contract_instalments` row as a `"CONTRACT_PAYMENT"` / `"EUR"` movement
+(`contract_id`, `contract_request_id`, `payment_method` derived from
+`payment_source`); `GET /accounting/mine/summary` (totals, next instalment,
+commissions from `commission_movements` for a promoter) and
+`GET /accounting/{mine,admin}/detail?ref=` (read-only detail with timeline)
+are computed from the existing tables. See
+`business-rules.md#accounting-detail`.
 
 ## 15. Imported products: the "Acquisti LialEnergy" plugin (added Session 34)
 

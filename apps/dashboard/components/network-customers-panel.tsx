@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
-import { ContractActivationWizard } from "@/components/contract-activation-wizard";
-import { productAllowsCustomerKind } from "@/lib/product-audience";
+import { ContractRequestWizard } from "@/components/contract-request-wizard";
+import { ContractRequestsList, type WizardTarget } from "@/components/contract-requests-list";
 import { friendlyApiError } from "@/lib/api-error";
-import type { CustomerRead, ProductCatalogRead } from "@/lib/types";
+import type { CustomerRead } from "@/lib/types";
 
 const KIND_LABELS: Record<string, string> = {
   PRIVATE: "Privato",
@@ -20,15 +20,6 @@ async function fetchMyRecruitedCustomers(): Promise<CustomerRead[]> {
   const res = await fetch("/api/proxy/network/customers/mine");
   if (!res.ok) throw new Error("Impossibile caricare i tuoi clienti.");
   return res.json();
-}
-
-async function fetchInternalProducts(): Promise<ProductCatalogRead[]> {
-  const res = await fetch("/api/proxy/products");
-  if (!res.ok) throw new Error("Impossibile caricare i contratti disponibili.");
-  const all: ProductCatalogRead[] = await res.json();
-  return all.filter(
-    (p) => p.category === "INTERNAL" && p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
-  );
 }
 
 /** "Miei Clienti": a promoter's own CRM tool -- registers a brand-new
@@ -46,10 +37,6 @@ export function NetworkCustomersPanel() {
     queryKey: ["network", "customers", "mine"],
     queryFn: fetchMyRecruitedCustomers,
   });
-  const { data: products } = useQuery({
-    queryKey: ["network", "internal-products"],
-    queryFn: fetchInternalProducts,
-  });
 
   const pagination = usePagination(customers ?? []);
 
@@ -65,8 +52,10 @@ export function NetworkCustomersPanel() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const [activationTarget, setActivationTarget] = useState<{ customer: CustomerRead; product: ProductCatalogRead } | null>(null);
-  const [pickingProductFor, setPickingProductFor] = useState<CustomerRead | null>(null);
+  // The pratica wizard for one customer: a new pratica, or one reopened
+  // from that customer's list (Session 52).
+  const [wizard, setWizard] = useState<{ customer: CustomerRead; target: WizardTarget | "new" } | null>(null);
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -202,7 +191,8 @@ export function NetworkCustomersPanel() {
           <p className="text-center py-8 text-slate-500 text-sm">Non hai ancora registrato nessun cliente.</p>
         ) : (
           pagination.pageItems.map((c) => (
-            <div key={c.id} className="p-5 flex flex-wrap items-center justify-between gap-4">
+            <div key={c.id}>
+            <div className="p-5 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-white light:text-slate-900">{c.display_name}</span>
@@ -212,70 +202,52 @@ export function NetworkCustomersPanel() {
                   {KIND_LABELS[c.kind] ?? c.kind} · {c.email}{c.phone ? ` · ${c.phone}` : ""}
                 </p>
               </div>
-              <button
-                onClick={() => setPickingProductFor(c)}
-                className="px-4 py-2 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer shrink-0"
-              >
-                Attiva Contratto
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setExpandedCustomerId(expandedCustomerId === c.id ? null : c.id)}
+                  className="px-3 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
+                >
+                  {expandedCustomerId === c.id ? "Nascondi pratiche" : "Pratiche"}
+                </button>
+                <button
+                  onClick={() => setWizard({ customer: c, target: "new" })}
+                  className="px-4 py-2 rounded-xl bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/20 text-orange-400 text-xs font-semibold transition cursor-pointer"
+                >
+                  Attiva nuovo contratto
+                </button>
+              </div>
+            </div>
+            {expandedCustomerId === c.id && (
+              <div className="px-5 pb-5">
+                <ContractRequestsList
+                  mode="promoter"
+                  customerId={c.id}
+                  onOpenWizard={(target) => setWizard({ customer: c, target })}
+                />
+              </div>
+            )}
             </div>
           ))
         )}
       </div>
       <Pagination {...pagination} label="clienti" />
 
-      {pickingProductFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white light:text-slate-900">
-                Attiva contratto per {pickingProductFor.display_name}
-              </h3>
-              <button onClick={() => setPickingProductFor(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {products === undefined ? (
-              <p className="text-sm text-slate-500 py-6 text-center">Caricamento contratti...</p>
-            ) : products.length === 0 ? (
-              <p className="text-sm text-slate-500 py-6 text-center">Nessun contratto Lial Energy disponibile al momento.</p>
-            ) : (
-              <div className="space-y-2">
-                {products
-                  .filter((p) => productAllowsCustomerKind(p.customer_type, pickingProductFor.kind))
-                  .map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { setActivationTarget({ customer: pickingProductFor, product: p }); setPickingProductFor(null); }}
-                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 light:border-slate-200 hover:border-orange-500/40 hover:bg-white/5 transition cursor-pointer text-left"
-                  >
-                    <span className="text-sm font-semibold text-white light:text-slate-900">{p.current_version!.name}</span>
-                    <svg className="w-4 h-4 text-orange-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activationTarget && (
-        <ContractActivationWizard
-          product={activationTarget.product}
-          accountEmail={activationTarget.customer.email}
-          customerId={activationTarget.customer.id}
-          customerKind={activationTarget.customer.kind}
-          holder={{
-            firstName: activationTarget.customer.first_name,
-            lastName: activationTarget.customer.last_name,
-            pec: activationTarget.customer.pec,
+      {wizard && (
+        <ContractRequestWizard
+          requestId={wizard.target === "new" ? undefined : wizard.target.requestId}
+          initialStep={wizard.target === "new" ? undefined : wizard.target.step}
+          customer={{
+            id: wizard.customer.id,
+            kind: wizard.customer.kind,
+            email: wizard.customer.email,
+            firstName: wizard.customer.first_name,
+            lastName: wizard.customer.last_name,
+            pec: wizard.customer.pec,
           }}
-          onClose={() => setActivationTarget(null)}
-          onActivated={() => queryClient.invalidateQueries({ queryKey: ["network", "customers", "mine"] })}
+          onClose={() => {
+            setExpandedCustomerId(wizard.customer.id);
+            setWizard(null);
+          }}
         />
       )}
     </div>

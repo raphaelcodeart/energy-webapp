@@ -10,6 +10,8 @@ import {
 } from "@/lib/accounting-format";
 import type { FinancialMovementRead } from "@/lib/types";
 import { LialCashAmount } from "@/components/lial-cash-amount";
+import { AccountingDetailModal } from "@/components/accounting-detail-modal";
+import { movementDetailRef, movementEntity } from "@/lib/accounting-format";
 
 type MovementFilter = "ALL" | "LIALCASH" | "BANK_TRANSFER" | "CARD";
 
@@ -24,6 +26,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Ricarica: "bg-sky-500/10 text-sky-400 border-sky-500/20",
   Cashback: "bg-orange-500/10 text-orange-400 border-orange-500/20",
   Pagamento: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  Contratto: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   Trasferimento: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
   Storno: "bg-slate-500/10 text-slate-400 border-slate-500/20",
   Altro: "bg-slate-500/10 text-slate-400 border-slate-500/20",
@@ -88,6 +91,10 @@ export function AdminAccountingPanel() {
   const [customerId, setCustomerId] = useState<string>("ALL");
   const [filter, setFilter] = useState<MovementFilter>("ALL");
   const [search, setSearch] = useState("");
+  // Session 54: every row opens its detail -- order, cashback redemption,
+  // contract or LialCash movement -- with the exact time and author of each
+  // step, as the customer sees it.
+  const [detailRef, setDetailRef] = useState<string | null>(null);
 
   const list = useMemo(() => movements ?? [], [movements]);
 
@@ -271,13 +278,23 @@ export function AdminAccountingPanel() {
                   const direction = movementDirection(m);
                   const category = movementCategory(m);
                   return (
-                    <tr key={m.id} className="text-slate-300 light:text-slate-600">
+                    <tr
+                      key={m.id}
+                      onClick={() => {
+                        const ref = movementDetailRef(m);
+                        if (ref) setDetailRef(ref);
+                      }}
+                      className="text-slate-300 light:text-slate-600 hover:bg-white/5 light:hover:bg-slate-50 cursor-pointer"
+                    >
                       <td className="py-2.5 px-5 whitespace-nowrap text-slate-400 light:text-slate-500">{formatDate(m.created_at)}</td>
                       <td className="py-2.5 px-5"><DirectionBadge direction={direction} /></td>
                       {customerId === "ALL" && (
                         <td className="py-2.5 px-5">
                           <button
-                            onClick={() => m.customer_user_id && setCustomerId(m.customer_user_id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (m.customer_user_id) setCustomerId(m.customer_user_id);
+                            }}
                             className="font-medium text-white light:text-slate-900 hover:text-orange-400 transition cursor-pointer text-left"
                           >
                             {m.customer_display_name ?? "—"}
@@ -292,6 +309,17 @@ export function AdminAccountingPanel() {
                       <td className="py-2.5 px-5">
                         <p className="font-medium text-white light:text-slate-900">{movementLabel(m)}</p>
                         {m.product_name && <p className="text-slate-500 text-[11px]">{m.product_name}</p>}
+                        {movementEntity(m) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailRef(movementEntity(m)!.ref);
+                            }}
+                            className="mt-0.5 text-[10px] font-bold text-orange-400 hover:text-orange-300 cursor-pointer"
+                          >
+                            {movementEntity(m)!.label} →
+                          </button>
+                        )}
                       </td>
                       <td className="py-2.5 px-5"><CurrencyBadge m={m} /></td>
                       <td className={`py-2.5 px-5 text-right font-bold ${direction === "out" ? "text-rose-400" : "text-emerald-400"}`}>
@@ -315,6 +343,15 @@ export function AdminAccountingPanel() {
           <Pagination {...pagination} label="movimenti" />
         </div>
       </div>
+
+      {detailRef && (
+        <AccountingDetailModal
+          initialRef={detailRef}
+          scope="admin"
+          movements={list}
+          onClose={() => setDetailRef(null)}
+        />
+      )}
     </div>
   );
 }

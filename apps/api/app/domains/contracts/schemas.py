@@ -37,7 +37,11 @@ class ContractRead(BaseModel):
     id: uuid.UUID
     customer_id: uuid.UUID
     supply_point_id: uuid.UUID
-    product_version_id: uuid.UUID
+    #: None only while the contract is a draft point of a pratica whose
+    #: package has not been chosen yet.
+    product_version_id: uuid.UUID | None = None
+    #: The pratica it was filled in and paid with (Session 52).
+    contract_request_id: uuid.UUID | None = None
     status: str
     notes: str | None = None
     iban: str | None = None
@@ -54,6 +58,9 @@ class ContractRead(BaseModel):
     # own N+1 lookup. None only if the referenced row was hard-deleted.
     product_name: str | None = None
     supply_point_label: str | None = None
+    pod_code: str | None = None
+    pdr_code: str | None = None
+    energy_type: str | None = None
 
     # --- Who built it ------------------------------------------------------
     #: CUSTOMER / PROMOTER / ADMIN. None on contracts created before this
@@ -80,6 +87,7 @@ class ContractRead(BaseModel):
     payment_plan: str | None = None
     payment_method: str | None = None
     paid_at: datetime | None = None
+    billing_stopped_at: datetime | None = None
     terms_accepted_at: datetime | None = None
     terms_version: str | None = None
 

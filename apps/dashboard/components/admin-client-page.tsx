@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { AdminOverviewPanel } from "@/components/admin-overview-panel";
 import { AdminCustomersPanel } from "@/components/admin-customers-panel";
 import { AdminPromotersPanel } from "@/components/admin-promoters-panel";
 import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
+import { AdminContractRequestsPanel } from "@/components/admin-contract-requests-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { ContractDossierActions } from "@/components/contract-dossier-actions";
@@ -80,7 +81,7 @@ const STATUS_LABELS: Record<string, string> = {
 const ACTIVATION_PATH_TARGETS = new Set(["APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING", "ACTIVE"]);
 
 const CONTRACT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ["SUBMITTED", "REJECTED"],
+  DRAFT: ["SUBMITTED", "REJECTED", "CANCELLED"],
   SUBMITTED: ["DOCUMENTS_PENDING", "UNDER_REVIEW", "REJECTED"],
   DOCUMENTS_PENDING: ["UNDER_REVIEW", "REJECTED"],
   UNDER_REVIEW: ["APPROVED", "REJECTED", "DOCUMENTS_PENDING"],
@@ -118,6 +119,18 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 13h4v8H3v-8zm7-9h4v17h-4V4zm7 5h4v12h-4V9z" />
+      </svg>
+    ),
+  },
+  {
+    // Session 52: pratiche first -- one customer's N points, filled in and
+    // paid together, each point still reviewed as its own contract.
+    key: "requests",
+    label: "Pratiche",
+    notificationTypes: ["CONTRACT_CREATED", "CONTRACT_PAID_BEFORE_APPROVAL", "CONTRACT_INSTALMENT_FAILED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
       </svg>
     ),
   },
@@ -289,7 +302,9 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
     queryFn: fetchCustomersForLookup,
   });
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
-  const [activeTab, setActiveTab] = useState<"overview" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "accounting" | "documentation" | "settings">("overview");
+  const queryClient = useQueryClient();
+  const [openRequestId, setOpenRequestId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "accounting" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -420,6 +435,9 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
       // Update local state
       setContracts(prev => prev.map(c => c.id === updatedContract.id ? updatedContract : c));
       setSelectedContract(null);
+      // The same contract may be on screen inside its pratica.
+      queryClient.invalidateQueries({ queryKey: ["contract-request"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "contract-requests"] });
     } catch (err: any) {
       setTransitionError(err.message || "Transizione fallita. Controlla le regole della macchina di stato.");
     } finally {
@@ -484,6 +502,23 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
               }}
             />
           </>
+        )}
+
+        {activeTab === "requests" && (
+          <div className="space-y-6">
+            <SectionBanner image="energy" alt="Pratiche" />
+            <AdminContractRequestsPanel
+              openRequestId={openRequestId}
+              onOpenRequest={setOpenRequestId}
+              onReview={handleOpenTransition}
+              onCommissions={setCommissionsContractId}
+              onHistory={setHistoryContractId}
+              onContractsChanged={async () => {
+                const res = await fetch("/api/proxy/contracts");
+                if (res.ok) setContracts(await res.json());
+              }}
+            />
+          </div>
         )}
 
         {activeTab === "list" && (
@@ -595,6 +630,14 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                             {c.supply_point_label ?? "Punto di fornitura"}
                           </div>
                           <div className="font-mono text-[10px] text-slate-500">{c.id}</div>
+                          {c.contract_request_id && (
+                            <button
+                              onClick={() => { setOpenRequestId(c.contract_request_id!); setActiveTab("requests"); }}
+                              className="mt-1 text-[10px] font-semibold text-orange-400 hover:text-orange-300 cursor-pointer"
+                            >
+                              Pratica #{c.contract_request_id.slice(0, 8).toUpperCase()} →
+                            </button>
+                          )}
                         </td>
                         <td className="py-4 px-6">
                           {/* The one question that used to be unanswerable at a

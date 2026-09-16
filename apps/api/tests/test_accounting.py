@@ -308,3 +308,88 @@ async def test_imported_product_order_is_unified_with_regular_orders(db, organiz
     assert payment_row["order_id"] == order.id
     assert payment_row["amount_cents"] == 4000
     assert payment_row["product_name"] == product.name
+
+
+# --- Session 54: totali, pagamenti dei contratti, dettaglio ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_order_detail_has_its_payment_timeline_and_is_private_to_its_customer(db, organization_id):
+    from app.domains.accounting import details as accounting_details
+
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    stranger = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=0, actor_user_id=customer.id, require_otp_for_credit_spend=False,
+    )
+    await orders_service.confirm_payment(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
+
+    detail = await accounting_details.build_detail(
+        db, organization_id=organization_id, ref=f"order:{order.id}", owner_user_id=customer.id
+    )
+    assert detail["kind"] == "ORDER"
+    assert detail["status"] == "Pagato"
+    labels = [e["label"] for e in detail["timeline"]]
+    assert labels[0] == "Ordine creato"
+    confirmed = next(e for e in detail["timeline"] if e["label"] == "Pagamento confermato")
+    assert confirmed["at"] is not None
+    assert confirmed["by"] == admin.email, "chi ha confermato il bonifico"
+    assert {"label": "Metodo", "value": "Bonifico", "mono": False} in detail["facts"]
+
+    with pytest.raises(accounting_details.DetailNotFoundError):
+        await accounting_details.build_detail(
+            db, organization_id=organization_id, ref=f"order:{order.id}", owner_user_id=stranger.id
+        )
+    with pytest.raises(accounting_details.DetailNotFoundError):
+        await accounting_details.build_detail(db, organization_id=organization_id, ref="order:nope", owner_user_id=None)
+
+
+@pytest.mark.asyncio
+async def test_summary_adds_up_what_was_paid_and_the_lialcash(db, organization_id):
+    await _configure_bank_transfer(db, organization_id)
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    customer = await _make_user_with_role(db, organization_id)
+    version = await _make_product_version(db, organization_id, admin.id, price_cents=5000, discount_pct=20)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=1000, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+    order = await orders_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, product_version_id=version.id,
+        credit_applied_cents=1000, actor_user_id=admin.id, require_otp_for_credit_spend=False,
+    )
+    await orders_service.confirm_payment(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
+
+    summary = await accounting_service.my_summary(db, organization_id=organization_id, user_id=customer.id)
+    assert summary["spent_total_cents"] == 4000
+    assert summary["spent_bank_transfer_cents"] == 4000
+    assert summary["spent_card_cents"] == 0
+    assert summary["spent_orders_cents"] == 4000
+    assert summary["payments_count"] == 1
+    assert summary["lialcash_received_cents"] == 1000
+    assert summary["lialcash_spent_cents"] == 1000
+    assert summary["lialcash_balance_cents"] == 0
+    assert summary.get("commissions_total_cents") is None, "non è un promoter"
+
+
+def test_a_timeline_mixing_naive_and_aware_times_still_sorts():
+    """Some older columns come back without a time zone (always UTC): a
+    detail mixing them with aware ones used to fail with a 500 on real data."""
+    from datetime import UTC, datetime
+
+    from app.domains.accounting import details as accounting_details
+
+    detail = accounting_details._clean({
+        "facts": [],
+        "timeline": [
+            accounting_details._event("dopo", datetime(2026, 9, 2, 10, 0, tzinfo=UTC)),
+            accounting_details._event("prima", datetime(2026, 9, 1, 10, 0)),
+            accounting_details._event("in attesa", None, tone="pending"),
+        ],
+    })
+    assert [e["label"] for e in detail["timeline"]] == ["prima", "dopo", "in attesa"]

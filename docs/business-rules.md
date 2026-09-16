@@ -366,6 +366,131 @@ times, **each slice when that instalment has really been paid**.
   same invoice then finds it already paid. `UNIQUE (contract_id, number)` and
   `UNIQUE stripe_invoice_id` make a double release impossible.
 
+## La pratica di attivazione (Session 52) {#contract-request}
+
+**Regola, detta dal business:** un cliente con 10 POD firma **10 contratti** —
+10 per il cliente, 10 per il promoter, ognuno con il suo pacchetto, la sua
+approvazione, le sue rate e le sue provvigioni — ma compila i propri dati una
+volta, carica il documento d'identità una volta, sceglie il pacchetto punto per
+punto e **paga una volta**.
+
+La pratica (`contract_requests`) è il contenitore che rende possibile tutto
+questo. **Non possiede niente che possieda già un contratto**: stato,
+pacchetto, prezzo congelato, approvazione, rate, provvigioni restano sul
+singolo contratto. Un contratto respinto, sospeso o cessato dentro una pratica
+non tocca gli altri.
+
+**Ogni contratto appartiene a una pratica** (`contracts.contract_request_id`,
+NOT NULL). Un contratto creato fuori dal flusso (admin "Nuovo Contratto", le
+vecchie rotte `/contracts/mine` e `/contracts/for-customer`) riceve una pratica
+di un solo contratto. I contratti esistenti prima della migrazione 0042 hanno
+ciascuno la propria, con **lo stesso id del contratto**.
+
+### Il percorso
+
+Ridisegnato in Session 53 su richiesta esplicita: **tutti i dati una volta
+all'inizio, poi "quanti POD hai?", poi i POD sono già creati e si sceglie solo
+il contratto per ciascuno. Il codice POD non si chiede.**
+
+1. **Dati**, in un'unica schermata: intestatario (nome, cognome, email, PEC,
+   IBAN), **indirizzo di fornitura** (`contract_requests.street/city/
+   province/postal_code`) e **"Quanti POD hai?"** (contatore o numero, 1–50).
+   La pratica nasce `DRAFT` con quel numero di POD già creati: ognuno è un
+   contratto `DRAFT` senza pacchetto, con un supply point all'indirizzo della
+   pratica e **nessun codice POD/PDR** e **nessun tipo energia**
+   (`supply_points.energy_type` nullable). Cambiare il numero in bozza
+   aggiunge POD o toglie **prima quelli senza contratto scelto**, i più
+   recenti per primi; un POD tolto va in `CANCELLED` (nuova transizione `DRAFT
+   → CANCELLED`). Cambiare l'indirizzo della pratica sposta tutti i POD che
+   erano ancora a quell'indirizzo; un POD spostato su un indirizzo suo lo
+   tiene.
+   - Il produttore delle provvigioni si risolve **per POD**, con le stesse
+     regole di sempre (promoter che compila, o referente del cliente con
+     risalita al primo sponsor attivo, auditata).
+2. **Documenti d'identità** sulla pratica: identità, codice fiscale, visura
+   (per chi la deve dare), più una **bolletta facoltativa** per chi ha
+   un'unica bolletta con tutti i punti.
+3. **Un contratto per ogni POD**: tutti i pacchetti INTERNAL attivi adatti
+   alla tipologia di cliente, oppure "Stesso contratto per tutti i POD".
+   **È il pacchetto a decidere se il POD è luce o gas** (il supply point prende
+   `energy_type` del prodotto) e **il prezzo si congela sul contratto in quel
+   momento** (`contracts/service.py::freeze_price`). Un vincolo CHECK
+   (`ck_contracts_product_required`) impedisce a un contratto senza pacchetto
+   di uscire da `DRAFT`. Facoltativi per POD: un indirizzo diverso, la bolletta
+   o la foto del contatore.
+4. **Invio** (`submit`): tutti i POD passano insieme `DRAFT → SUBMITTED →
+   DOCUMENTS_PENDING`, e ciascuno va da solo in `UNDER_REVIEW` appena i
+   **suoi** documenti obbligatori ci sono. Lo staff riceve **una** notifica
+   per pratica. Dopo l'invio POD e contratti scelti non si modificano più: un
+   altro POD è una nuova pratica.
+5. **Pagamento**, solo dal cliente (il promoter compila e invia, non paga).
+
+Senza codice POD non c'è più il controllo "stesso POD con due contratti in
+corso": l'identificazione del punto reale avviene sulla bolletta, in verifica
+documenti.
+
+### Documenti: pratica o contratto
+
+Un documento appartiene **a un contratto oppure a una pratica, mai a
+entrambi** (`ck_documents_one_owner`). Per ogni casella di un contratto vale
+il documento **del contratto se c'è, altrimenti quello della pratica**: la
+bolletta del singolo punto vince su quella comune. Caricare un documento sulla
+pratica rivaluta tutti i suoi contratti (`maybe_advance_to_under_review`). Il
+fascicolo (zip/Drive) di ogni contratto include anche i documenti della
+pratica.
+
+### Un pagamento, N contratti
+
+Paga **ogni contratto della pratica inviato, prezzato e non ancora pagato**
+(`is_payable`). Un solo piano per pagamento (unica soluzione, 3 o 12 rate).
+
+- **Unica soluzione**: una Checkout Session con **una riga per contratto**.
+- **Rate**: **un solo abbonamento Stripe con una voce per contratto**. Ogni
+  mese un solo addebito sulla carta, una fattura con N righe.
+- L'importo di ogni riga è la rata **di quel contratto**
+  (`breakdown_for(piano, prezzo del contratto)`), quindi ogni contratto
+  registra esattamente la sua rata e il suo cashback; il cliente vede la somma.
+- **Limite Stripe: 20 voci per abbonamento.** Oltre 20 contratti da pagare
+  insieme le rate non sono offerte (resta l'unica soluzione, o due pratiche).
+- Ogni sessione aperta viene congelata in `contract_request_checkouts`
+  (quali contratti, quali importi) **prima** di mandare il cliente su Stripe;
+  il webhook paga quello che dice quella riga. Le sessioni precedenti ancora
+  aperte vengono fatte scadere. Se comunque due sessioni arrivano a buon fine,
+  i contratti già pagati **non vengono ripagati**: lo staff riceve l'avviso
+  "Pagamento doppio" e rimborsa quelle righe.
+- Ogni riga del prodotto inline porta `metadata.contract_id`; al completamento
+  si legge l'abbonamento e si salva su ogni contratto il suo
+  `stripe_subscription_item_id`. Ogni `invoice.paid` successivo viene letto
+  **riga per riga dall'API** (il payload del webhook non contiene tutte le
+  righe) e ogni riga registra la rata del suo contratto: cashback con chiave
+  `contract-cashback:{contract}:{invoice}`, provvigioni per rata come da
+  Session 50. `contract_instalments.stripe_invoice_id` è ora unico **per
+  contratto**, non globalmente.
+- Una rata non riscossa manda **un** avviso allo staff e **uno** al cliente
+  per tutta la pratica.
+
+### Interrompere gli addebiti di un contratto
+
+"Interrompi addebiti" (`POST /contracts/{id}/stop-billing`, staff) toglie
+dall'abbonamento **solo la voce di quel contratto** (senza proration); se era
+l'ultima voce, o l'abbonamento era di quel contratto soltanto, annulla
+l'abbonamento. Segna `billing_stopped_at`. Il rimborso di quanto già incassato
+resta una decisione umana sul pannello Stripe.
+
+### Chi può fare cosa (`/contract-requests`)
+
+- **Cliente**: le proprie pratiche, tutto compreso il pagamento.
+- **Promoter**: le pratiche dei clienti per cui può agire (propri, o
+  ereditati da un promoter disattivato sotto di lui) — compilare, documenti,
+  inviare; **non pagare**.
+- **Staff** (`contracts.review`): vede tutte le pratiche e i tentativi di
+  pagamento. Approvare e respingere restano **per contratto**, con la stessa
+  anteprima provvigioni obbligatoria; "Approva i N contratti in revisione"
+  manda N transizioni, ciascuna con il checksum della sua anteprima.
+
+Un utente può essere cliente e promoter insieme: si controllano entrambe le
+relazioni, non il primo ruolo del token.
+
 ## Contract economics: IVA, tipo cliente, cashback, bonus (Session 38) {#contract-economics}
 
 Three rules that had **no server-side implementation at all** before this,
@@ -1435,6 +1560,39 @@ export. Computed on the fly from the two existing tables (see
 `database-model.md` §14) -- deliberately not a new persisted table, so
 there is nothing here that can drift from the wallet ledger or the orders
 table, which remain the actual source of truth for their own domains.
+
+### Session 54: totali, pagamenti dei contratti, dettaglio collegato {#accounting-detail}
+
+- **I pagamenti dei contratti ci sono.** Ogni rata pagata
+  (`contract_instalments.status = PAID`) è un movimento `CONTRACT_PAYMENT`
+  in euro: carta se incassata da Stripe (`STRIPE_CHECKOUT`/`STRIPE_INVOICE`),
+  bonifico se confermata a mano dall'amministrazione (`ADMIN`). Una rata = una
+  riga, alla data in cui è stata incassata. Anche il cashback LialCash di un
+  contratto porta ora il suo `contract_id`.
+- **I totali li calcola il server** (`GET /accounting/mine/summary`,
+  `accounting/service.py::my_summary`) dagli stessi movimenti dell'elenco, così
+  le card e la lista non possono dire cose diverse: totale speso (carta +
+  bonifico) e ripartizione, speso nel mese corrente, per ordini / riscatti /
+  contratti, saldo LialCash (dal wallet), LialCash ricevuti e spesi, cashback
+  ricevuto (fonti `*_CASHBACK_*` e `CONTRACT_CASHBACK`), contratti attivi,
+  rate pagate e **prossima rata** (somma delle rate previste nello stesso
+  giorno, contratti con addebiti non interrotti). **Provvigioni** solo se
+  l'account è anche un promoter: totale maturato, da incassare (`ACCRUED`/
+  `PAYABLE`/`SCHEDULED`), pagate; `REVERSED`/`CANCELLED` escluse.
+- **Dettaglio** (`GET /accounting/mine/detail?ref=…`, e
+  `/accounting/admin/detail` per lo staff con `wallet.manage`;
+  `accounting/details.py`): `wallet:<id>`, `order:<id>` (ordine normale o
+  "Acquisti LialEnergy"), `redemption:<id>`, `contract:<id>`. Stessa forma per
+  tutti: dati, **cronologia con data e ora al secondo e chi ha agito**
+  (creazione, ricevuta del bonifico caricata, pagamento confermato "Stripe
+  (automatico)" o dall'amministratore, cashback accreditato, annullamento,
+  approvazione, ogni rata incassata, prossima rata), le rate di un contratto,
+  e i riferimenti collegati. Lato cliente tutto è limitato alle proprie cose:
+  ciò che non è suo risulta "non trovato", mai "vietato".
+- **Tutto collegato**: ogni riga apre il suo dettaglio; il chip "Ordine /
+  Riscatto / Contratto #…" apre quella cosa, che elenca tutti i movimenti che
+  ha prodotto (pagamento in euro, LialCash usati, cashback), ognuno apribile a
+  sua volta.
 
 ## Account gates (Session 27)
 

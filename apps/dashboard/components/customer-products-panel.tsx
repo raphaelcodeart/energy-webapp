@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CustomerRead, ImportedProductRead, ProductCatalogRead } from "@/lib/types";
-import { ContractActivationWizard } from "@/components/contract-activation-wizard";
+import { ContractRequestWizard } from "@/components/contract-request-wizard";
 import { ImportedProductCheckoutModal } from "@/components/imported-product-checkout-modal";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
@@ -473,13 +473,18 @@ export function CustomerProductsPanel({
       )}
 
       {activationTarget && (
-        <ContractActivationWizard
-          product={activationTarget}
+        // Starting from a package opens a new pratica with that package
+        // already chosen for every point it fits (Session 52) -- one POD or
+        // ten, changeable point by point.
+        <ContractRequestWizard
+          initialProduct={activationTarget}
           customerKind={customerKind}
           accountEmail={accountEmail}
           holder={{ firstName: myCustomer?.first_name, lastName: myCustomer?.last_name, pec: myCustomer?.pec }}
-          onClose={() => setActivationTarget(null)}
-          onActivated={() => queryClient.invalidateQueries({ queryKey: ["customer", "contracts"] })}
+          onClose={() => {
+            setActivationTarget(null);
+            queryClient.invalidateQueries({ queryKey: ["contract-requests"] });
+          }}
         />
       )}
     </div>

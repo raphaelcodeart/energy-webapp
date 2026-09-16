@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.storage import generate_presigned_document_url
 from app.core.storage import upload_document as storage_upload_document
 from app.domains.audit import service as audit_service
-from app.domains.contracts.models import Contract
+from app.domains.contracts.models import Contract, ContractRequest
 from app.domains.documents.models import (
     DOCUMENT_TYPE_OTHER,
     DOCUMENT_TYPES,
@@ -57,10 +57,25 @@ def document_slots_for(customer_kind: str) -> list[DocumentSlot]:
     return slots
 
 
+#: Slots that describe the holder, not the supply point: the same for every
+#: point of a pratica, so a pratica collects them once (Session 52).
+REQUEST_LEVEL_DOCUMENT_TYPES = frozenset({"IDENTITY", "FISCAL_CODE", "CHAMBER_OF_COMMERCE"})
+
+
+def request_document_slots_for(customer_kind: str) -> list[DocumentSlot]:
+    """What a pratica asks for once, for all its points: the holder's slots,
+    plus an optional bill -- for the customer whose single bill lists every
+    point. Each contract still has its own bill slot; a bill on the pratica
+    simply fills it for every contract that has none of its own."""
+    slots = [slot for slot in document_slots_for(customer_kind) if slot.document_type in REQUEST_LEVEL_DOCUMENT_TYPES]
+    slots.append(DocumentSlot(document_type="UTILITY_BILL", required=False))
+    return slots
+
+
 def required_document_types_for(customer_kind: str) -> list[str]:
     """Only the types that actually block the contract. Everything that is
     merely offered (optional slots, extra attachments) is deliberately not
-    here: this is the list `_maybe_advance_to_under_review` gates on."""
+    here: this is the list `maybe_advance_to_under_review` gates on."""
     return [slot.document_type for slot in document_slots_for(customer_kind) if slot.required]
 
 
@@ -86,7 +101,8 @@ async def upload_document(
     db: AsyncSession,
     *,
     organization_id: uuid.UUID,
-    contract_id: uuid.UUID,
+    contract_id: uuid.UUID | None = None,
+    contract_request_id: uuid.UUID | None = None,
     document_type: str,
     file_bytes: bytes,
     content_type: str,
@@ -95,6 +111,10 @@ async def upload_document(
     actor_role: str,
     description: str | None = None,
 ) -> Document:
+    """Attaches a document to one contract, or -- with `contract_request_id`
+    -- to a whole pratica, where it counts for every contract in it."""
+    if (contract_id is None) == (contract_request_id is None):
+        raise DocumentValidationError("Un documento appartiene a un contratto oppure a una pratica.")
     if document_type not in DOCUMENT_TYPES:
         raise DocumentValidationError(f"document_type must be one of {sorted(DOCUMENT_TYPES)}")
 
@@ -105,12 +125,14 @@ async def upload_document(
     description = normalize_document_description(description) if document_type == DOCUMENT_TYPE_OTHER else None
 
     storage_key = storage_upload_document(
-        file_bytes=file_bytes, content_type=content_type, key_prefix=f"documents/{contract_id}"
+        file_bytes=file_bytes, content_type=content_type,
+        key_prefix=f"documents/{contract_id}" if contract_id else f"documents/requests/{contract_request_id}",
     )
 
     document = Document(
         organization_id=organization_id,
         contract_id=contract_id,
+        contract_request_id=contract_request_id,
         document_type=document_type,
         description=description,
         original_filename=original_filename,
@@ -124,7 +146,7 @@ async def upload_document(
     db.add(document)
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
-        action="document.uploaded", entity_type="document", entity_id=str(contract_id),
+        action="document.uploaded", entity_type="document", entity_id=str(contract_id or contract_request_id),
         new_value={
             "document_type": document_type,
             "uploaded_by_role": actor_role,
@@ -134,13 +156,20 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
 
-    await _maybe_advance_to_under_review(
-        db, organization_id=organization_id, contract_id=contract_id, actor_user_id=actor_user_id
-    )
+    if contract_id is not None:
+        contract_ids = [contract_id]
+    else:
+        contract_ids = list(
+            (await db.execute(select(Contract.id).where(Contract.contract_request_id == contract_request_id))).scalars()
+        )
+    for target_id in contract_ids:
+        await maybe_advance_to_under_review(
+            db, organization_id=organization_id, contract_id=target_id, actor_user_id=actor_user_id
+        )
     return document
 
 
-async def _maybe_advance_to_under_review(
+async def maybe_advance_to_under_review(
     db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, actor_user_id: uuid.UUID
 ) -> None:
     """Once every required document type has at least one uploaded document
@@ -185,12 +214,32 @@ async def _maybe_advance_to_under_review(
 async def list_documents_for_contract(
     db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID
 ) -> list[Document]:
+    """The contract's own documents only, newest first -- not its pratica's."""
     stmt = (
         select(Document)
         .where(Document.organization_id == organization_id, Document.contract_id == contract_id)
         .order_by(Document.created_at.desc())
     )
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_documents_for_request(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract_request_id: uuid.UUID
+) -> list[Document]:
+    """The documents uploaded once for a whole pratica, newest first."""
+    stmt = (
+        select(Document)
+        .where(Document.organization_id == organization_id, Document.contract_request_id == contract_request_id)
+        .order_by(Document.created_at.desc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+def _latest_by_type(docs: list[Document]) -> dict[str, Document]:
+    latest: dict[str, Document] = {}
+    for doc in sorted(docs, key=lambda d: d.created_at, reverse=True):
+        latest.setdefault(doc.document_type, doc)
+    return latest
 
 
 async def get_contract_documents_status(
@@ -201,21 +250,52 @@ async def get_contract_documents_status(
     is required or merely offered. A rejected document doesn't disappear --
     if a newer one of the same type was uploaded after it, that newer one is
     what's shown; the rejected one stays in the full list
-    (list_documents_for_contract) as history."""
-    docs = await list_documents_for_contract(db, organization_id=organization_id, contract_id=contract.id)
-    latest_by_type: dict[str, Document] = {}
-    for doc in docs:  # already newest-first
-        if doc.document_type not in latest_by_type:
-            latest_by_type[doc.document_type] = doc
+    (list_documents_for_contract) as history.
+
+    A document uploaded on the contract's pratica fills the same slot here
+    (Session 52): identity and fiscal code are uploaded once for ten points,
+    and each of the ten contracts sees them. When both exist, the contract's
+    own wins -- it is the more specific one (this point's bill over the
+    pratica's shared bill)."""
+    own = _latest_by_type(
+        await list_documents_for_contract(db, organization_id=organization_id, contract_id=contract.id)
+    )
+    shared = _latest_by_type(
+        await list_documents_for_request(
+            db, organization_id=organization_id, contract_request_id=contract.contract_request_id
+        )
+    )
 
     return [
         {
             "document_type": slot.document_type,
             "required": slot.required,
-            "document": latest_by_type.get(slot.document_type),
+            "document": own.get(slot.document_type) or shared.get(slot.document_type),
         }
         for slot in document_slots_for(customer_kind)
     ]
+
+
+async def get_request_documents_status(
+    db: AsyncSession, *, organization_id: uuid.UUID, request: ContractRequest, customer_kind: str
+) -> list[dict]:
+    """Same shape as get_contract_documents_status, for the slots a pratica
+    collects once (request_document_slots_for)."""
+    shared = _latest_by_type(
+        await list_documents_for_request(db, organization_id=organization_id, contract_request_id=request.id)
+    )
+    return [
+        {"document_type": slot.document_type, "required": slot.required, "document": shared.get(slot.document_type)}
+        for slot in request_document_slots_for(customer_kind)
+    ]
+
+
+async def get_extra_documents_for_request(
+    db: AsyncSession, *, organization_id: uuid.UUID, request: ContractRequest, customer_kind: str
+) -> list[Document]:
+    slot_types = {slot.document_type for slot in request_document_slots_for(customer_kind)}
+    docs = await list_documents_for_request(db, organization_id=organization_id, contract_request_id=request.id)
+    return [doc for doc in reversed(docs) if doc.document_type not in slot_types]
 
 
 async def get_extra_documents_for_contract(

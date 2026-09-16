@@ -11,7 +11,12 @@ from app.core.db import utcnow
 from app.domains.audit import service as audit_service
 from app.domains.catalog import pricing
 from app.domains.catalog.models import Product, ProductVersion
-from app.domains.contracts.models import Contract, ContractAttribution, ContractStatusHistory
+from app.domains.contracts.models import (
+    Contract,
+    ContractAttribution,
+    ContractRequest,
+    ContractStatusHistory,
+)
 from app.domains.contracts.state_machine import assert_transition_allowed, event_name_for
 from app.domains.customers.models import SupplyPoint
 from app.domains.network import service as network_service
@@ -76,7 +81,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
     if not contracts:
         return []
 
-    product_version_ids = {c.product_version_id for c in contracts}
+    product_version_ids = {c.product_version_id for c in contracts if c.product_version_id is not None}
     supply_point_ids = {c.supply_point_id for c in contracts}
     # Both "who filled it in for the customer" and "who originally brought
     # the customer in" are shown by name, never as a bare UUID -- same
@@ -108,13 +113,9 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             )
         ).all()
     }
-    supply_point_labels: dict[uuid.UUID, str | None] = {
-        row.id: row.label
-        for row in (
-            await db.execute(
-                select(SupplyPoint.id, SupplyPoint.label).where(SupplyPoint.id.in_(supply_point_ids))
-            )
-        ).all()
+    supply_points: dict[uuid.UUID, SupplyPoint] = {
+        sp.id: sp
+        for sp in (await db.execute(select(SupplyPoint).where(SupplyPoint.id.in_(supply_point_ids)))).scalars()
     }
 
     def _agent_name(agent_id: uuid.UUID | None) -> str | None:
@@ -122,6 +123,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
 
     result = []
     for c in contracts:
+        sp = supply_points.get(c.supply_point_id)
         row = {
             "id": c.id,
             "customer_id": c.customer_id,
@@ -137,8 +139,12 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "created_at": c.created_at,
             "activated_at": c.activated_at,
             "expires_at": c.expires_at,
-            "product_name": product_names.get(c.product_version_id),
-            "supply_point_label": supply_point_labels.get(c.supply_point_id),
+            "product_name": product_names.get(c.product_version_id) if c.product_version_id else None,
+            "supply_point_label": sp.label if sp else None,
+            "pod_code": sp.pod_code if sp else None,
+            "pdr_code": sp.pdr_code if sp else None,
+            "energy_type": sp.energy_type if sp else None,
+            "contract_request_id": c.contract_request_id,
             "created_by_role": c.created_by_role,
             "activated_by_promoter_id": c.activated_by_promoter_id,
             "activated_by_promoter_name": _agent_name(c.activated_by_promoter_id),
@@ -155,6 +161,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "payment_plan": c.payment_plan,
             "payment_method": c.payment_method,
             "paid_at": c.paid_at,
+            "billing_stopped_at": c.billing_stopped_at,
             "terms_accepted_at": c.terms_accepted_at,
             "terms_version": c.terms_version,
         }
@@ -221,10 +228,12 @@ async def create_contract(
     organization_id: uuid.UUID,
     customer_id: uuid.UUID,
     supply_point_id: uuid.UUID,
-    product_version_id: uuid.UUID,
+    product_version_id: uuid.UUID | None,
     producer_agent_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     correlation_id: str,
+    contract_request_id: uuid.UUID | None = None,
+    notify_staff: bool = True,
     notes: str | None = None,
     iban: str | None = None,
     email: str | None = None,
@@ -247,7 +256,14 @@ async def create_contract(
 
     The price breakdown is computed here, server-side, from the product
     version row and the customer's own kind -- never from anything a caller
-    passed in -- and frozen onto the contract. See catalog/pricing.py."""
+    passed in -- and frozen onto the contract. See catalog/pricing.py.
+
+    Every contract belongs to a pratica (Session 52). A caller building one
+    passes `contract_request_id` (and `notify_staff=False`: the pratica
+    announces itself once, when it is sent, not once per point); any other
+    caller gets a pratica of one created here with the same holder data.
+    `product_version_id` may be None only for a point of a pratica still
+    being filled in -- the database refuses it anywhere past DRAFT."""
     producer = await db.get(AgentProfile, producer_agent_id)
     if producer is None or producer.organization_id != organization_id:
         raise InvalidProducerAgentError(
@@ -273,16 +289,26 @@ async def create_contract(
     # read once here and frozen alongside the amounts it produced.
     customer = await db.get(Customer, customer_id)
     customer_kind = customer.kind if customer is not None else None
-    version = await db.get(ProductVersion, product_version_id)
-    product_for_price = await db.get(Product, version.product_id) if version is not None else None
-    price = (
-        pricing.compute_contract_price(
-            version=version, customer_kind=customer_kind,
-            product_type=product_for_price.product_type if product_for_price else None,
+    version = await db.get(ProductVersion, product_version_id) if product_version_id is not None else None
+    price = await _price_for(db, version=version, customer_kind=customer_kind)
+
+    if contract_request_id is None:
+        request = ContractRequest(
+            organization_id=organization_id,
+            customer_id=customer_id,
+            status="DRAFT",
+            holder_first_name=holder_first_name,
+            holder_last_name=holder_last_name,
+            email=email,
+            pec=pec,
+            iban=iban,
+            created_by_user_id=actor_user_id,
+            created_by_role=created_by_role,
+            activated_by_promoter_id=activated_by_promoter_id,
         )
-        if version is not None
-        else None
-    )
+        db.add(request)
+        await db.flush()
+        contract_request_id = request.id
 
     # Who originally brought this customer in. Resolved now and frozen,
     # deliberately NOT re-read at activation: an admin reassigning the
@@ -295,6 +321,7 @@ async def create_contract(
     contract = Contract(
         organization_id=organization_id,
         customer_id=customer_id,
+        contract_request_id=contract_request_id,
         supply_point_id=supply_point_id,
         product_version_id=product_version_id,
         contract_attribution_id=attribution.id,
@@ -332,15 +359,48 @@ async def create_contract(
         action="contract.created", entity_type="contract", entity_id=str(contract.id),
         new_value={"status": "DRAFT"},
     )
-    await notifications_service.notify_roles(
-        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
-        type_="CONTRACT_CREATED", entity_type="contract", entity_id=contract.id,
-        title="Nuovo contratto creato", body=f"Contratto {contract.id} in stato Bozza.",
-        exclude_user_id=actor_user_id,
-    )
+    if notify_staff:
+        await notifications_service.notify_roles(
+            db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+            type_="CONTRACT_CREATED", entity_type="contract", entity_id=contract.id,
+            title="Nuovo contratto creato", body=f"Contratto {contract.id} in stato Bozza.",
+            exclude_user_id=actor_user_id,
+        )
     await db.commit()
     await db.refresh(contract)
     return contract
+
+
+async def _price_for(
+    db: AsyncSession, *, version: ProductVersion | None, customer_kind: str | None
+) -> pricing.PriceBreakdown | None:
+    if version is None:
+        return None
+    product = await db.get(Product, version.product_id)
+    return pricing.compute_contract_price(
+        version=version, customer_kind=customer_kind,
+        product_type=product.product_type if product else None,
+    )
+
+
+async def freeze_price(db: AsyncSession, *, contract: Contract, version: ProductVersion) -> None:
+    """Sets the package of a contract that did not have one yet and freezes
+    its price, exactly as create_contract would have. Only ever called on a
+    DRAFT (see contracts/requests.py::set_point_product): a price is frozen
+    once, when the customer commits to it, and never restated. Does not
+    commit."""
+    from app.domains.customers.models import Customer
+
+    customer = await db.get(Customer, contract.customer_id)
+    customer_kind = customer.kind if customer is not None else None
+    price = await _price_for(db, version=version, customer_kind=customer_kind)
+    contract.product_version_id = version.id
+    contract.customer_kind = customer_kind
+    contract.net_amount_cents = price.net_amount_cents if price else None
+    contract.vat_rate = price.vat_rate if price else None
+    contract.vat_amount_cents = price.vat_amount_cents if price else None
+    contract.gross_amount_cents = price.gross_amount_cents if price else None
+    contract.updated_at = utcnow()
 
 
 class SelfServiceContractError(Exception):
@@ -367,6 +427,95 @@ async def _resolve_referring_agent_id_for_customer(
         .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def resolve_self_service_producer(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID | None]:
+    """Who earns the commission on a contract the customer activates
+    themselves: their own referrer, or -- if that promoter is no longer
+    active -- the nearest active sponsor above them. Returns the producer
+    and, when a substitution happened, the referrer it replaced.
+
+    A customer must never be stranded by something they had no part in.
+    Their referring promoter can be deactivated months after they signed up,
+    and create_contract() refuses to attribute a contract to a non-ACTIVE
+    agent -- correctly, since a contract that activates and pays nobody is a
+    real failure mode (docs/paid-contract-commission-audit.md). Business
+    decision: walk UP to the nearest active sponsor rather than block, so the
+    branch that built the relationship keeps it and nobody waits for an
+    admin to notice. The original referrer is still recorded on the contract
+    (first_referrer_agent_id), so the substitution is visible rather than
+    silent."""
+    referrer_agent_id = await _resolve_referring_agent_id_for_customer(
+        db, organization_id=organization_id, customer_id=customer_id
+    )
+    if referrer_agent_id is None:
+        raise SelfServiceContractError(
+            "Nessun promoter di riferimento trovato per il tuo account -- contatta l'assistenza."
+        )
+    producer = await network_service.resolve_nearest_active_agent(
+        db, organization_id=organization_id, agent_id=referrer_agent_id
+    )
+    if producer is None:
+        raise SelfServiceContractError(
+            "Il promoter che ti ha invitato non è più attivo e non risulta nessun referente attivo "
+            "sopra di lui. Contatta l'assistenza: ti verrà assegnato un nuovo referente e potrai "
+            "completare l'attivazione."
+        )
+    return producer.id, (referrer_agent_id if producer.id != referrer_agent_id else None)
+
+
+async def record_producer_substitution(
+    db: AsyncSession, *, organization_id: uuid.UUID, contract: Contract, actor_user_id: uuid.UUID,
+    substituted_for_agent_id: uuid.UUID,
+) -> None:
+    """Audited, not silent: somebody other than the customer's own referrer
+    is being credited for this contract, and an accountant asking "why is
+    this Alessandro's and not Salvatore's?" deserves a row that answers it
+    rather than an inference from two statuses. Does not commit."""
+    attribution = await db.get(ContractAttribution, contract.contract_attribution_id)
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="contract.producer_substituted", entity_type="contract", entity_id=str(contract.id),
+        previous_value={"producer_agent_id": str(substituted_for_agent_id)},
+        new_value={"producer_agent_id": str(attribution.producer_agent_id) if attribution else None},
+        reason="Il promoter di riferimento non è attivo: attribuito allo sponsor attivo più vicino",
+    )
+
+
+async def resolve_promoter_for_customer(
+    db: AsyncSession, *, organization_id: uuid.UUID, promoter_user_id: uuid.UUID, customer_id: uuid.UUID
+) -> AgentProfile:
+    """The calling promoter's own agent, provided they may act for this
+    customer: the customer was attributed to them, or to a deactivated
+    promoter whose nearest active sponsor is them. Raises otherwise."""
+    promoter_agent = await network_service.get_own_agent_profile(
+        db, organization_id=organization_id, user_id=promoter_user_id
+    )
+    if promoter_agent is None or promoter_agent.status != "ACTIVE":
+        raise SelfServiceContractError("Solo un promoter attivo può attivare contratti per i propri clienti.")
+
+    resolved_agent_id = await _resolve_referring_agent_id_for_customer(
+        db, organization_id=organization_id, customer_id=customer_id
+    )
+    if resolved_agent_id != promoter_agent.id:
+        # Same walk-up as the self-service path: if the customer's own
+        # referrer has been deactivated, the nearest ACTIVE sponsor above
+        # them inherits the relationship -- and is therefore allowed to
+        # activate a contract for them. Without this, a customer whose
+        # promoter left would be unreachable from BOTH sides: they cannot
+        # self-activate, and nobody can do it for them either.
+        inheritor = (
+            await network_service.resolve_nearest_active_agent(
+                db, organization_id=organization_id, agent_id=resolved_agent_id
+            )
+            if resolved_agent_id is not None
+            else None
+        )
+        if inheritor is None or inheritor.id != promoter_agent.id:
+            raise SelfServiceContractError("Questo cliente non è nella tua rete.")
+    return promoter_agent
 
 
 async def create_contract_self_service(
@@ -421,34 +570,9 @@ async def create_contract_self_service(
             "Questo contratto non è disponibile per la tua tipologia di cliente."
         )
 
-    producer_agent_id = await _resolve_referring_agent_id_for_customer(
+    producer_agent_id, substituted_for_agent_id = await resolve_self_service_producer(
         db, organization_id=organization_id, customer_id=customer.id
     )
-    if producer_agent_id is None:
-        raise SelfServiceContractError(
-            "Nessun promoter di riferimento trovato per il tuo account -- contatta l'assistenza."
-        )
-    # A customer must never be stranded by something they had no part in.
-    # Their referring promoter can be deactivated months after they signed
-    # up, and create_contract() refuses to attribute a contract to a
-    # non-ACTIVE agent -- correctly, since a contract that activates and pays
-    # nobody is a real failure mode (docs/paid-contract-commission-audit.md).
-    # Business decision: walk UP to the nearest active sponsor rather than
-    # block, so the branch that built the relationship keeps it and nobody
-    # waits for an admin to notice. The original referrer is still recorded
-    # on the contract (first_referrer_agent_id), so the substitution is
-    # visible rather than silent.
-    producer = await network_service.resolve_nearest_active_agent(
-        db, organization_id=organization_id, agent_id=producer_agent_id
-    )
-    if producer is None:
-        raise SelfServiceContractError(
-            "Il promoter che ti ha invitato non è più attivo e non risulta nessun referente attivo "
-            "sopra di lui. Contatta l'assistenza: ti verrà assegnato un nuovo referente e potrai "
-            "completare l'attivazione."
-        )
-    substituted_for_agent_id = producer_agent_id if producer.id != producer_agent_id else None
-    producer_agent_id = producer.id
 
     supply_point = await customers_service.add_supply_point(
         db, organization_id=organization_id, customer_id=customer.id,
@@ -470,16 +594,9 @@ async def create_contract_self_service(
         activated_by_promoter_id=None,
     )
     if substituted_for_agent_id is not None:
-        # Audited, not silent: somebody other than the customer's own
-        # referrer is being credited for this contract, and an accountant
-        # asking "why is this Alessandro's and not Salvatore's?" deserves a
-        # row that answers it rather than an inference from two statuses.
-        await audit_service.record(
-            db, organization_id=organization_id, actor_user_id=customer_user_id,
-            action="contract.producer_substituted", entity_type="contract", entity_id=str(contract.id),
-            previous_value={"producer_agent_id": str(substituted_for_agent_id)},
-            new_value={"producer_agent_id": str(producer_agent_id)},
-            reason="Il promoter di riferimento non è attivo: attribuito allo sponsor attivo più vicino",
+        await record_producer_substitution(
+            db, organization_id=organization_id, contract=contract, actor_user_id=customer_user_id,
+            substituted_for_agent_id=substituted_for_agent_id,
         )
         await db.commit()
     contract = await transition_contract(
@@ -524,35 +641,13 @@ async def create_contract_for_recruited_customer(
     from app.domains.customers import service as customers_service
     from app.domains.customers.models import Customer
 
-    promoter_agent = await network_service.get_own_agent_profile(
-        db, organization_id=organization_id, user_id=promoter_user_id
-    )
-    if promoter_agent is None or promoter_agent.status != "ACTIVE":
-        raise SelfServiceContractError("Solo un promoter attivo può attivare contratti per i propri clienti.")
-
     customer = await db.get(Customer, customer_id)
     if customer is None or customer.organization_id != organization_id:
         raise SelfServiceContractError("Customer not found")
 
-    resolved_agent_id = await _resolve_referring_agent_id_for_customer(
-        db, organization_id=organization_id, customer_id=customer_id
+    promoter_agent = await resolve_promoter_for_customer(
+        db, organization_id=organization_id, promoter_user_id=promoter_user_id, customer_id=customer_id
     )
-    if resolved_agent_id != promoter_agent.id:
-        # Same walk-up as the self-service path: if the customer's own
-        # referrer has been deactivated, the nearest ACTIVE sponsor above
-        # them inherits the relationship -- and is therefore allowed to
-        # activate a contract for them. Without this, a customer whose
-        # promoter left would be unreachable from BOTH sides: they cannot
-        # self-activate, and nobody can do it for them either.
-        inheritor = (
-            await network_service.resolve_nearest_active_agent(
-                db, organization_id=organization_id, agent_id=resolved_agent_id
-            )
-            if resolved_agent_id is not None
-            else None
-        )
-        if inheritor is None or inheritor.id != promoter_agent.id:
-            raise SelfServiceContractError("Questo cliente non è nella tua rete.")
 
     version = await db.get(ProductVersion, product_version_id)
     if version is None:
@@ -715,6 +810,27 @@ async def transition_contract(
                 payload={"contract_id": str(contract.id), "correlation_id": correlation_id},
             )
         )
+
+    if from_status == "DRAFT" and to_status == "SUBMITTED":
+        # A pratica is sent once none of its points is a draft any more.
+        # Sending one normally goes through contracts/requests.py::
+        # submit_request, which moves every point together; this covers a
+        # pratica of one moved on by staff from the contract list.
+        request = await db.get(ContractRequest, contract.contract_request_id)
+        if request is not None and request.status == "DRAFT":
+            other_drafts = (
+                await db.execute(
+                    select(Contract.id).where(
+                        Contract.contract_request_id == request.id,
+                        Contract.id != contract.id,
+                        Contract.status == "DRAFT",
+                    )
+                )
+            ).first()
+            if other_drafts is None:
+                request.status = "SUBMITTED"
+                request.submitted_at = utcnow()
+                request.updated_at = utcnow()
 
     if from_status == "ACTIVATION_PENDING" and to_status == "ACTIVE":
         # Every instalment the customer has already paid releases its slice
@@ -1020,14 +1136,10 @@ async def mark_paid_via_stripe(
     db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str,
     stripe_invoice_id: str | None = None,
 ) -> Contract | None:
-    """Called only from the verified Stripe webhook. The success URL is never
-    treated as proof of anything -- a customer can open it by hand.
-
-    For an instalment plan this fires on the FIRST payment: the contract is
-    in force from then on and the remaining instalments are collected
-    automatically, which is why it reaches PAID (and, through the existing
-    auto-cascade, ACTIVE -- so commissions are calculated exactly once, at
-    the same point in the state machine as every other contract).
+    """Called only from the verified Stripe webhook, for a Checkout Session
+    opened on one contract by itself (the flow before pratiche, whose open
+    sessions must still be honoured). The success URL is never treated as
+    proof of anything -- a customer can open it by hand.
 
     Returns None rather than raising when no contract matches: an event for
     another organization, or for a session superseded by a newer attempt, is
@@ -1043,6 +1155,29 @@ async def mark_paid_via_stripe(
     ).scalar_one_or_none()
     if contract is None:
         return None
+    return await record_card_payment(
+        db, organization_id=organization_id, contract=contract, stripe_invoice_id=stripe_invoice_id
+    )
+
+
+async def record_card_payment(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    contract: Contract,
+    stripe_invoice_id: str | None = None,
+    notify_staff: bool = True,
+) -> Contract:
+    """Stripe confirmed the (first) card payment of this contract.
+
+    For an instalment plan this is the FIRST payment: the contract is in
+    force from then on and the remaining instalments are collected
+    automatically. `contract.payment_plan` must already say which plan was
+    paid -- it decides the instalment schedule and how the LialCash is
+    credited.
+
+    `notify_staff=False` lets a pratica paying ten contracts at once say so
+    in one notification instead of ten (see contracts/requests.py)."""
     from app.domains.contracts import instalments as instalments_service
 
     if contract.status == "PAYMENT_PENDING" and await has_accepted_commission_plan(db, contract_id=contract.id):
@@ -1090,17 +1225,18 @@ async def mark_paid_via_stripe(
         new_value={"status": contract.status, "payment_plan": contract.payment_plan},
         reason="Pagamento confermato da Stripe",
     )
-    await notifications_service.notify_roles(
-        db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
-        type_="CONTRACT_PAID_BEFORE_APPROVAL" if accepted else "CONTRACT_PAID_REJECTED",
-        entity_type="contract", entity_id=contract.id,
-        title=f"Contratto {code} pagato" + ("" if accepted else " dopo essere stato chiuso"),
-        body=(
-            "Il cliente ha già pagato: il contratto si attiva appena approvi i documenti e accetti l'anteprima provvigioni."
-            if accepted
-            else "Il contratto non è più attivabile: valuta il rimborso su Stripe e annulla l'eventuale abbonamento."
-        ),
-    )
+    if notify_staff or not accepted:
+        await notifications_service.notify_roles(
+            db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+            type_="CONTRACT_PAID_BEFORE_APPROVAL" if accepted else "CONTRACT_PAID_REJECTED",
+            entity_type="contract", entity_id=contract.id,
+            title=f"Contratto {code} pagato" + ("" if accepted else " dopo essere stato chiuso"),
+            body=(
+                "Il cliente ha già pagato: il contratto si attiva appena approvi i documenti e accetti l'anteprima provvigioni."
+                if accepted
+                else "Il contratto non è più attivabile: valuta il rimborso su Stripe e interrompi gli addebiti di questo contratto."
+            ),
+        )
     await db.commit()
     await db.refresh(contract)
     if accepted:
@@ -1119,80 +1255,104 @@ async def record_subscription_invoice(
     amount_cents: int,
     invoice_id: str | None = None,
     billing_reason: str | None = None,
+    lines: list[tuple[str, int]] | None = None,
 ) -> str:
-    """One monthly instalment succeeded or failed.
+    """One monthly invoice of a subscription succeeded or failed.
 
-    Nothing about the contract's status changes: it is already ACTIVE, and a
-    single failed monthly charge is not grounds for automatically suspending
-    somebody's energy contract -- that is a decision for a human with the
-    context. What this does is make sure a human finds out, on both sides.
+    A subscription belongs either to one contract (paid on its own) or to a
+    pratica, where it carries one line per contract (Session 52): then each
+    `(subscription_item_id, amount_cents)` in `lines` is that contract's
+    instalment, and each contract records its own month -- its own cashback,
+    its own slice of commissions -- exactly as if it had been paid alone.
+
+    Nothing about any contract's status changes: a single failed monthly
+    charge is not grounds for automatically suspending somebody's energy
+    contract -- that is a decision for a human with the context. What this
+    does is make sure a human finds out, on both sides.
     """
-    contract = (
-        await db.execute(
-            select(Contract).where(
-                Contract.organization_id == organization_id,
-                Contract.stripe_subscription_id == subscription_id,
+    contracts = list(
+        (
+            await db.execute(
+                select(Contract).where(
+                    Contract.organization_id == organization_id,
+                    Contract.stripe_subscription_id == subscription_id,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if contract is None:
+        ).scalars()
+    )
+    if not contracts:
         return "nessun contratto per questo abbonamento"
 
-    code = str(contract.id)[:8].upper()
-    if paid:
-        # The first instalment is credited by the checkout handler, which is
-        # guaranteed to run for it; its invoice.paid (billing_reason
-        # "subscription_create") may or may not find the contract yet, so it
-        # must not be the one that credits. Every later month is credited
-        # here, keyed by the invoice.
-        if invoice_id and billing_reason != "subscription_create" and contract.status not in ("REJECTED", "CANCELLED"):
-            await credit_contract_instalment_cashback(
-                db, organization_id=organization_id, contract=contract, instalment_ref=invoice_id
-            )
-            # The same month's slice of the commissions: released at once on
-            # an active contract, held until activation otherwise.
-            from app.domains.contracts import instalments as instalments_service
+    if len(contracts) == 1 and contracts[0].stripe_subscription_item_id is None:
+        targets = [(contracts[0], amount_cents)]
+    else:
+        by_item = {c.stripe_subscription_item_id: c for c in contracts if c.stripe_subscription_item_id}
+        targets = [(by_item[item_id], cents) for item_id, cents in (lines or []) if item_id in by_item]
+        if not targets:
+            return "nessuna riga della fattura corrisponde a un contratto"
 
-            await instalments_service.record_payment(
-                db, contract=contract, source=instalments_service.SOURCE_STRIPE_INVOICE, invoice_id=invoice_id,
+    from app.domains.contracts import instalments as instalments_service
+
+    codes = ", ".join(str(c.id)[:8].upper() for c, _ in targets)
+    # The first instalment is recorded by the checkout handler, which is
+    # guaranteed to run for it; its invoice.paid (billing_reason
+    # "subscription_create") may or may not find the contracts yet, so it
+    # must not be the one that records. Every later month is recorded here,
+    # keyed by the invoice.
+    is_later_month = bool(invoice_id) and billing_reason != "subscription_create"
+
+    if paid:
+        for contract, cents in targets:
+            if is_later_month and contract.status not in ("REJECTED", "CANCELLED"):
+                await credit_contract_instalment_cashback(
+                    db, organization_id=organization_id, contract=contract, instalment_ref=invoice_id
+                )
+                # The same month's slice of the commissions: released at once
+                # on an active contract, held until activation otherwise.
+                await instalments_service.record_payment(
+                    db, contract=contract, source=instalments_service.SOURCE_STRIPE_INVOICE, invoice_id=invoice_id,
+                )
+            await audit_service.record(
+                db, organization_id=organization_id, actor_user_id=None,
+                action="contract.instalment_paid", entity_type="contract", entity_id=str(contract.id),
+                new_value={"amount_cents": cents, "subscription_id": subscription_id, "invoice_id": invoice_id},
             )
+        await db.commit()
+        return f"rata incassata per {'il contratto' if len(targets) == 1 else 'i contratti'} {codes}"
+
+    for contract, cents in targets:
+        if is_later_month:
+            await instalments_service.record_failure(db, contract=contract, invoice_id=invoice_id)
         await audit_service.record(
             db, organization_id=organization_id, actor_user_id=None,
-            action="contract.instalment_paid", entity_type="contract", entity_id=str(contract.id),
-            new_value={"amount_cents": amount_cents, "subscription_id": subscription_id},
+            action="contract.instalment_failed", entity_type="contract", entity_id=str(contract.id),
+            new_value={"amount_cents": cents, "subscription_id": subscription_id, "invoice_id": invoice_id},
+            reason="Addebito della rata non riuscito",
         )
-        await db.commit()
-        return f"rata incassata per il contratto {code}"
-
-    if invoice_id and billing_reason != "subscription_create":
-        from app.domains.contracts import instalments as instalments_service
-
-        await instalments_service.record_failure(db, contract=contract, invoice_id=invoice_id)
-    await audit_service.record(
-        db, organization_id=organization_id, actor_user_id=None,
-        action="contract.instalment_failed", entity_type="contract", entity_id=str(contract.id),
-        new_value={"amount_cents": amount_cents, "subscription_id": subscription_id},
-        reason="Addebito della rata non riuscito",
-    )
+    first = targets[0][0]
     await notifications_service.notify_roles(
         db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
-        type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=contract.id,
-        title=f"Rata non riscossa: contratto {code}",
+        type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=first.id,
+        title=(
+            f"Rata non riscossa: contratto {codes}"
+            if len(targets) == 1
+            else f"Rata non riscossa: {len(targets)} contratti della pratica {str(first.contract_request_id)[:8].upper()}"
+        ),
         body=(
             "L'addebito mensile non è andato a buon fine: le provvigioni di questa rata restano ferme. "
             "Se il cliente paga in altro modo, confermala a mano dal registro provvigioni del contratto."
         ),
     )
-    customer_user_id = await _customer_user_id_for(db, contract=contract)
+    customer_user_id = await _customer_user_id_for(db, contract=first)
     if customer_user_id is not None:
         await notifications_service.notify_user(
             db, organization_id=organization_id, user_id=customer_user_id,
-            type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=contract.id,
+            type_="CONTRACT_INSTALMENT_FAILED", entity_type="contract", entity_id=first.id,
             title="Rata del contratto non addebitata",
             body="Non siamo riusciti ad addebitare la rata mensile. Controlla la tua carta: riproveremo a breve.",
         )
     await db.commit()
-    return f"rata NON riscossa per il contratto {code}"
+    return f"rata NON riscossa per {'il contratto' if len(targets) == 1 else 'i contratti'} {codes}"
 
 
 async def _customer_user_id_for(db: AsyncSession, *, contract: Contract) -> uuid.UUID | None:

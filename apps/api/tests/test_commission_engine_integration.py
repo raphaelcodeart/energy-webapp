@@ -13,7 +13,7 @@ from app.domains.commissions.models import CommissionCalculation, CommissionMove
 from app.domains.commissions.services.run_calculation import run_calculation_for_contract
 from app.domains.commissions.tasks.dispatch import process_pending_outbox_events
 from app.domains.contracts import service as contract_service
-from app.domains.contracts.models import Contract
+from app.domains.contracts.models import Contract, ContractRequest
 from app.domains.customers.models import Address, Customer, SupplyPoint
 from app.domains.network import service as network_service
 from app.domains.network.models import AgentProfile, NetworkSnapshot, NetworkSnapshotNode
@@ -198,8 +198,14 @@ async def test_empty_ancestor_chain_records_failed_calculation_not_silent_skip(d
     db.add(snapshot)
     await db.flush()
 
+    # Every contract belongs to a pratica (Session 52).
+    request = ContractRequest(organization_id=organization_id, customer_id=customer.id, status="SUBMITTED")
+    db.add(request)
+    await db.flush()
+
     contract = Contract(
         organization_id=organization_id, customer_id=customer.id, supply_point_id=supply_point.id,
+        contract_request_id=request.id,
         product_version_id=product_version.id, contract_attribution_id=None,
         network_snapshot_id=snapshot.id, status="ACTIVE",
     )
