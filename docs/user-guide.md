@@ -117,7 +117,9 @@ la stessa pratica, con quel contratto già scelto per tutti i POD. Se la
 pratica te l'ha preparata il tuo promoter, la trovi con la dicitura
 **"Preparata dal tuo promoter …"**, ricevi una notifica e un'email, e devi solo
 controllarla e pagare. Per ogni documento puoi **caricare un file** o premere
-**Foto** per fotografarlo con il telefono.
+**Foto** per fotografarlo con il telefono. **Visualizza** apre il documento in un
+riquadro sopra la pagina (foto ingrandibile, PDF leggibile, pulsante Scarica),
+senza aprire nuove schede.
 
 **Come funzionava prima (Session 49), ancora valido per i contratti già
 aperti.** L'attivazione di un singolo contratto si faceva in tre passaggi a schermo intero.

@@ -4,6 +4,21 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 57 — 2026-09-16 — Documenti: "Visualizza" apre un popup, non una nuova scheda
+
+Richiesta dell'utente: cliccando "Visualizza" su un documento caricato (es.
+documento d'identità) non si deve uscire dalla pagina, ma vedere l'immagine
+ingrandita in un popup. Chiarito anche che nella pagina Stripe ogni riga
+"rata mensile" è un POD: 140 + 140 + 60 = 340 € al mese.
+
+- [x] `document-preview-modal.tsx`: il file viene scaricato dal link firmato e
+  mostrato in memoria (blob) sopra la pagina — foto adattata allo schermo con
+  "Dimensione reale" / clic per lo zoom, PDF nel visore del browser, "Scarica"
+  e chiusura con Esc. In memoria e non con un riquadro che punta al file
+  perché nginx manda `X-Frame-Options: DENY` su tutto, che bloccherebbe i PDF.
+- [x] Usato da ogni elenco documenti (cliente, promoter, pratica, admin).
+- Nessuna modifica al backend né al database.
+
 ## Session 56 — 2026-09-16 — Pagina Stripe: il piano a rate scritto per intero
 
 Segnalazione dell'utente: pagando in 3 rate una pratica da 1.020 € Stripe

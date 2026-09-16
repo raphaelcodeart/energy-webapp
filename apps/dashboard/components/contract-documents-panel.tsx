@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { DocumentPreviewModal } from "@/components/document-preview-modal";
 import { friendlyApiError } from "@/lib/api-error";
 
 type DocumentRead = {
@@ -206,14 +207,9 @@ export function ContractDocumentsPanel({
     }
   }
 
-  async function handleView(documentId: string) {
-    try {
-      const url = await fetchDocumentUrl(documentId);
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch {
-      setUploadError("Impossibile aprire il documento.");
-    }
-  }
+  // "Visualizza" opens the document in a popup on this page (Session 57),
+  // never in a new tab: whoever is checking a document keeps their place.
+  const [previewDoc, setPreviewDoc] = useState<DocumentRead | null>(null);
 
   async function handleReview(documentId: string, newStatus: "APPROVED" | "REJECTED") {
     try {
@@ -354,7 +350,7 @@ export function ContractDocumentsPanel({
                 </span>
                 {doc && (
                   <button
-                    onClick={() => handleView(doc.id)}
+                    onClick={() => setPreviewDoc(doc)}
                     className="px-2.5 py-1 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
                   >
                     Visualizza
@@ -461,7 +457,7 @@ export function ContractDocumentsPanel({
                     {STATUS_LABELS[doc.status] ?? doc.status}
                   </span>
                   <button
-                    onClick={() => handleView(doc.id)}
+                    onClick={() => setPreviewDoc(doc)}
                     className="px-2.5 py-1 rounded-lg bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer"
                   >
                     Visualizza
@@ -549,6 +545,16 @@ export function ContractDocumentsPanel({
           </button>
         )}
       </div>
+      {previewDoc && (
+        <DocumentPreviewModal
+          key={previewDoc.id}
+          title={previewDoc.description || DOCUMENT_TYPE_LABELS[previewDoc.document_type] || "Documento"}
+          filename={previewDoc.original_filename}
+          contentType={previewDoc.content_type}
+          loadUrl={() => fetchDocumentUrl(previewDoc.id)}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
     </div>
   );
 }
