@@ -4,6 +4,22 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 56 — 2026-09-16 — Pagina Stripe: il piano a rate scritto per intero
+
+Segnalazione dell'utente: pagando in 3 rate una pratica da 1.020 € Stripe
+mostrava "340,00 € al mese", e non era chiaro. Verificato in sola lettura: gli
+importi erano giusti (3 × 340 = 1.020; 12 × 85 = 1.020) e **il pagamento non era
+stato completato** — la sessione a 3 rate risultava aperta e non pagata, quella
+a 12 rate chiusa dal sistema all'apertura della nuova, nessun addebito né
+webhook. Il difetto era di comunicazione: Stripe per un abbonamento mostra
+solo la cifra mensile.
+
+- [x] Testo sopra il pulsante di pagamento con numero di rate, importo, totale
+  e "gli addebiti si fermano da soli dopo l'ultima rata"; descrizione per riga.
+  Parametri provati sull'API Stripe in modalità test (sessione creata e subito
+  fatta scadere) prima del rilascio.
+- [x] Test aggiornato. Suite completa verde (371).
+
 ## Session 55 — 2026-09-16 — Catalogo solo in lettura, il promoter compila la pratica per il cliente, documenti con foto
 
 Richiesta dell'utente: in "I miei Contratti" il catalogo con "Attiva Contratto"

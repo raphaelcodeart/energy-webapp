@@ -450,6 +450,12 @@ async def test_a_monthly_invoice_reaches_each_contract_through_its_own_line_once
     )
     assert created[0]["mode"] == "subscription"
     assert [li["price_data"]["unit_amount"] for li in created[0]["line_items"]] == [10_00, 20_00, 5_00]
+    # Stripe only shows "35,00 € al mese": the plan is spelled out next to it.
+    assert "12 rate mensili da 35,00 €, per un totale di 420,00 €" in created[0]["custom_text"]["submit"]["message"]
+    assert "dopo la 12ª rata" in created[0]["custom_text"]["submit"]["message"]
+    assert created[0]["line_items"][1]["price_data"]["product_data"]["description"] == (
+        "12 rate mensili da 20,00 € · totale 240,00 €"
+    )
 
     await _webhook(db, organization_id, {
         "id": "evt_pratica_sub",

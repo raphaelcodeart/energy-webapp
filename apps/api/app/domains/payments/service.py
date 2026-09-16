@@ -372,7 +372,16 @@ async def create_checkout_session_for_request(
         price_data = {
             "currency": "eur",
             "product_data": {
-                "name": labels[contract.id] + (" — rata mensile" if breakdown.is_subscription else ""),
+                "name": labels[contract.id],
+                # Stripe's page shows a subscription as "X € al mese" and
+                # nothing more; without this line nobody can tell that it
+                # stops, or what it adds up to.
+                "description": (
+                    f"{plan.instalments} rate mensili da {_euro(breakdown.instalment_cents)} · "
+                    f"totale {_euro(breakdown.total_cents)}"
+                    if breakdown.is_subscription
+                    else f"Pagamento unico · pratica {code}"
+                ),
                 "metadata": {"contract_id": str(contract.id), "contract_request_id": str(request.id)},
             },
             "unit_amount": breakdown.instalment_cents,
@@ -389,6 +398,11 @@ async def create_checkout_session_for_request(
         "metadata": metadata,
         "success_url": success_url,
         "cancel_url": cancel_url,
+        # Said in words right above the pay button (Session 56): on an
+        # instalment plan Stripe itself only ever shows the monthly figure,
+        # and a customer paying "340 € al mese" for a 1.020 € pratica must
+        # read that it is 3 of them, and that they stop by themselves.
+        "custom_text": {"submit": {"message": _checkout_summary(plan, option, len(points))}},
     }
     if plan.instalments > 1:
         params["subscription_data"] = {"metadata": metadata, "description": f"Pratica Lial Energy {code}"}
@@ -429,6 +443,21 @@ async def create_checkout_session_for_request(
         except Exception:  # noqa: BLE001 -- already completed or expired: nothing to stop
             logger.info("Checkout %s of pratica %s not expired (already closed)", old.stripe_checkout_session_id, code)
     return session.url
+
+
+def _euro(cents: int) -> str:
+    return f"{cents / 100:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _checkout_summary(plan: payment_plans.PaymentPlan, option, contracts: int) -> str:
+    what = "1 contratto" if contracts == 1 else f"{contracts} contratti"
+    if plan.instalments <= 1:
+        return f"Pagamento unico di {_euro(option.total_cents)} per {what} Lial Energy."
+    return (
+        f"Paghi {plan.instalments} rate mensili da {_euro(option.instalment_cents)}, per un totale di "
+        f"{_euro(option.total_cents)} ({what}). La prima rata oggi, le altre addebitate automaticamente ogni "
+        f"mese: gli addebiti si fermano da soli dopo la {plan.instalments}ª rata."
+    )
 
 
 async def _point_labels(db: AsyncSession, points: list[Contract]) -> dict[uuid.UUID, str]:

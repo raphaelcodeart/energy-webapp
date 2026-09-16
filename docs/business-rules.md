@@ -468,6 +468,14 @@ Paga **ogni contratto della pratica inviato, prezzato e non ancora pagato**
   contratto**, non globalmente.
 - Una rata non riscossa manda **un** avviso allo staff e **uno** al cliente
   per tutta la pratica.
+- **Cosa legge il cliente su Stripe** (Session 56). Per un abbonamento la
+  pagina di Stripe mostra solo "X € al mese": un cliente ha visto "340,00 € al
+  mese" per una pratica da 1.020 € e non ha capito che erano 3 rate. Ogni
+  Checkout della pratica porta ora sopra il pulsante di pagamento
+  (`custom_text.submit`) il piano scritto per intero — "Paghi 3 rate mensili da
+  340,00 €, per un totale di 1.020,00 € (3 contratti)… gli addebiti si fermano
+  da soli dopo la 3ª rata" — e ogni riga la sua descrizione ("3 rate mensili da
+  140,00 € · totale 420,00 €", oppure "Pagamento unico").
 
 ### Interrompere gli addebiti di un contratto
 
