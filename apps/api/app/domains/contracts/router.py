@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user, require_permission
 from app.domains.audit import service as audit_service
+from app.domains.catalog import pricing
+from app.domains.catalog.models import ProductVersion
 from app.domains.contracts import dossier, payment_plans
 from app.domains.contracts import service as contract_service
 from app.domains.contracts.models import Contract
@@ -121,6 +123,10 @@ async def create_my_contract(
             product_version_id=payload.product_version_id,
             supply_point_payload=payload.supply_point,
             email=payload.email,
+            holder_first_name=payload.holder_first_name,
+            holder_last_name=payload.holder_last_name,
+            pec=payload.pec,
+            iban=payload.iban,
         )
     except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -157,6 +163,8 @@ async def create_contract_for_my_customer(
             db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id,
             customer_id=payload.customer_id, product_version_id=payload.product_version_id,
             supply_point_payload=payload.supply_point, email=payload.email,
+            holder_first_name=payload.holder_first_name, holder_last_name=payload.holder_last_name,
+            pec=payload.pec, iban=payload.iban,
         )
     except SelfServiceContractError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -186,7 +194,9 @@ async def get_my_contract_payment_options(
     card_available = await organizations_service.is_stripe_configured(
         db, organization_id=current_user.organization_id
     )
-    payable = contract.status == "PAYMENT_PENDING" and bool(contract.gross_amount_cents)
+    payable = contract_service.is_payable(contract)
+    version = await db.get(ProductVersion, contract.product_version_id)
+    cashback_percentage = int(version.contract_cashback_percentage or 0) if version is not None else 0
     options = (
         [
             ContractPaymentOptionRead(
@@ -201,9 +211,15 @@ async def get_my_contract_payment_options(
     )
     return ContractPaymentOptionsRead(
         contract_id=contract.id, payable=payable, status=contract.status,
-        missing_amount=contract.status == "PAYMENT_PENDING" and not contract.gross_amount_cents,
+        missing_amount=contract.status in contract_service.PREPAYABLE_STATUSES and not contract.gross_amount_cents,
         gross_amount_cents=contract.gross_amount_cents, card_available=card_available,
-        options=options,
+        options=options, paid_at=contract.paid_at, payment_plan=contract.payment_plan,
+        cashback_percentage=cashback_percentage,
+        cashback_total_cents=(
+            pricing.contract_cashback_cents(version=version, gross_amount_cents=contract.gross_amount_cents)
+            if version is not None and contract.gross_amount_cents
+            else 0
+        ),
     )
 
 
@@ -216,8 +232,8 @@ async def create_my_contract_checkout_session(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Opens Stripe Checkout for one's own contract, once an administrator
-    has approved it (status PAYMENT_PENDING). Returns the URL; the contract
+    """Opens Stripe Checkout for one's own contract -- before or after the
+    documents are approved (contracts/service.py::PREPAYABLE_STATUSES). Returns the URL; the contract
     is NOT marked paid here -- only the verified webhook does that."""
     from app.domains.payments import service as payments_service
 
@@ -225,11 +241,10 @@ async def create_my_contract_checkout_session(
         db, organization_id=current_user.organization_id, contract_id=contract_id
     )
     await _assert_own_contract_or_staff(db, current_user=current_user, contract=contract)
-    if contract.status != "PAYMENT_PENDING":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Questo contratto non è (ancora) in attesa di pagamento.",
-        )
+    if contract.paid_at is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Questo contratto risulta già pagato.")
+    if not contract_service.is_payable(contract):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Questo contratto non si può pagare in questo stato.")
 
     try:
         url = await payments_service.create_checkout_session_for_contract(
@@ -332,6 +347,136 @@ async def update_contract_iban(
     return ContractRead(**rows[0])
 
 
+#: Targets on the road to a contract's FIRST activation. Reaching any of them
+#: can end in ACTIVE through the auto-cascade (an already-paid contract goes
+#: straight from APPROVED to ACTIVE), which is where commissions are paid --
+#: so none of them is allowed until the administrator has accepted the
+#: commission preview. Reactivating a SUSPENDED contract is not a first
+#: activation and pays nothing, so it is not gated.
+_ACTIVATION_PATH_TARGETS = frozenset({"APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING", "ACTIVE"})
+
+
+@router.get("/{contract_id}/commission-preview")
+async def get_commission_preview(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("contracts.review")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Who would be paid what, and when, if this contract activated now.
+    Read-only -- see commissions/services/preview.py."""
+    from app.domains.commissions.services.preview import build_commission_preview
+
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    preview = await build_commission_preview(db, organization_id=current_user.organization_id, contract=contract)
+    preview["already_accepted"] = await contract_service.has_accepted_commission_plan(db, contract_id=contract.id)
+    return preview
+
+
+@router.get("/{contract_id}/commission-log")
+async def get_commission_log(
+    contract_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("contracts.review")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """The accepted preview, the instalment schedule with what each one has
+    released, and the commission movements actually written -- side by side,
+    so an administrator can check later that what happened is what they
+    approved."""
+    from app.domains.commissions.services import admin_ledger
+    from app.domains.contracts import instalments as instalments_service
+    from app.domains.contracts.models import ContractCommissionPlan
+    from app.domains.users.models import User
+
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    plan = (
+        await db.execute(select(ContractCommissionPlan).where(ContractCommissionPlan.contract_id == contract.id))
+    ).scalar_one_or_none()
+    accepted_by = await db.get(User, plan.accepted_by_user_id) if plan is not None else None
+    rows = await instalments_service.list_instalments(db, contract_id=contract.id)
+    confirmer_ids = {r.confirmed_by_user_id for r in rows if r.confirmed_by_user_id}
+    confirmers = {
+        u.id: u.email for u in (await db.execute(select(User).where(User.id.in_(confirmer_ids)))).scalars()
+    } if confirmer_ids else {}
+    movements = await admin_ledger.get_commission_movements(
+        db, organization_id=current_user.organization_id, contract_id=contract.id
+    )
+    return {
+        "contract_id": str(contract.id),
+        "status": contract.status,
+        "payment_plan": contract.payment_plan,
+        "accepted_plan": (
+            {
+                "accepted_at": plan.accepted_at.isoformat(),
+                "accepted_by": accepted_by.email if accepted_by else None,
+                "total_commission_cents": plan.total_commission_cents,
+                "preview": plan.preview,
+            }
+            if plan is not None
+            else None
+        ),
+        "instalments": [
+            {
+                "number": r.number,
+                "instalments_total": r.instalments_total,
+                "due_date": r.due_date.isoformat(),
+                "amount_cents": r.amount_cents,
+                "status": r.status,
+                "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+                "payment_source": r.payment_source,
+                "confirmed_by": confirmers.get(r.confirmed_by_user_id) if r.confirmed_by_user_id else None,
+                "commission_released_at": r.commission_released_at.isoformat() if r.commission_released_at else None,
+                "commission_pending": r.commission_event_id is not None and r.commission_released_at is None,
+            }
+            for r in rows
+        ],
+        "movements": [
+            {
+                "id": str(m["id"]),
+                "agent_name": m["agent_name"],
+                "movement_type": m["movement_type"],
+                "amount_cents": m["amount_cents"],
+                "status": m["status"],
+                "explanation": m["explanation"],
+                "effective_date": m["effective_date"].isoformat(),
+            }
+            for m in movements
+        ],
+    }
+
+
+@router.post("/{contract_id}/instalments/{number}/confirm")
+async def confirm_instalment_manually(
+    contract_id: uuid.UUID,
+    number: int,
+    current_user: CurrentUser = Depends(require_permission("contracts.review")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Staff confirming an instalment Stripe did not collect. On an active
+    contract it releases that instalment's commissions."""
+    from app.domains.contracts import instalments as instalments_service
+
+    contract = await _get_org_scoped_contract(
+        db, organization_id=current_user.organization_id, contract_id=contract_id
+    )
+    try:
+        row = await instalments_service.confirm_manually(
+            db, contract=contract, number=number, actor_user_id=current_user.user_id
+        )
+    except instalments_service.InstalmentError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    await audit_service.record(
+        db, organization_id=current_user.organization_id, actor_user_id=current_user.user_id,
+        action="contract.instalment_confirmed_manually", entity_type="contract", entity_id=str(contract.id),
+        new_value={"instalment_number": number},
+    )
+    await db.commit()
+    return {"number": row.number, "status": row.status}
+
+
 @router.post("/{contract_id}/transition", response_model=ContractRead)
 async def transition_contract(
     contract_id: uuid.UUID,
@@ -342,6 +487,24 @@ async def transition_contract(
     contract = await _get_org_scoped_contract(
         db, organization_id=current_user.organization_id, contract_id=contract_id
     )
+    if (
+        payload.to_status in _ACTIVATION_PATH_TARGETS
+        and contract.activated_at is None
+        and contract.status != "SUSPENDED"
+        and not await contract_service.has_accepted_commission_plan(db, contract_id=contract.id)
+    ):
+        if not payload.accept_commission_preview_checksum:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Prima di approvare devi controllare e accettare l'anteprima delle provvigioni.",
+            )
+        try:
+            await contract_service.accept_commission_plan(
+                db, organization_id=current_user.organization_id, contract=contract,
+                checksum=payload.accept_commission_preview_checksum, actor_user_id=current_user.user_id,
+            )
+        except contract_service.CommissionPreviewChangedError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     try:
         contract = await contract_service.transition_contract(
             db,

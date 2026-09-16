@@ -36,6 +36,19 @@ RULE_VERSION = "2026.1-placeholder"  # see docs/open-questions.md #1
 FIRST_REFERRER_BONUS_MOVEMENT_TYPE = "FIRST_REFERRER_BONUS"
 
 
+def instalment_share(total_cents: int, *, number: int, instalments: int) -> int:
+    """This instalment's slice of a commission: an equal share, with the
+    remainder of the division on the LAST instalment, so the slices always
+    add up to exactly the whole commission -- never a cent more or less, and
+    never paid ahead of the money that justifies it."""
+    if instalments <= 1:
+        return total_cents
+    base = total_cents // instalments
+    if number == instalments:
+        return total_cents - base * (instalments - 1)
+    return base
+
+
 def _idempotency_key(contract_id: uuid.UUID, trigger_event_id: uuid.UUID, agent_id: str, movement_type: str) -> str:
     raw = f"{contract_id}:{trigger_event_id}:{agent_id}:{movement_type}"
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -101,7 +114,13 @@ async def _get_existing(
 
 
 async def run_calculation_for_contract(
-    db: AsyncSession, *, organization_id: uuid.UUID, contract_id: uuid.UUID, trigger_event_id: uuid.UUID
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    contract_id: uuid.UUID,
+    trigger_event_id: uuid.UUID,
+    instalment_number: int = 1,
+    instalments_total: int = 1,
 ) -> CommissionCalculation | None:
     """Idempotent: re-invoking with the same (contract_id, trigger_event_id) is a
     no-op if a calculation already exists for that pair. Single transaction: either
@@ -111,7 +130,13 @@ async def run_calculation_for_contract(
     only an application-level SELECT-then-INSERT -- see
     uq_commission_calculations_contract_trigger on the model for the DB-level
     backstop this function falls back to if two dispatches race (docs/
-    paid-contract-commission-audit.md, Problem #3)."""
+    paid-contract-commission-audit.md, Problem #3).
+
+    `instalment_number` / `instalments_total` (Session 50): a contract paid
+    in N instalments pays each beneficiary 1/N of their commission per paid
+    instalment (instalment_share), one calculation per instalment, all
+    against the same network snapshot frozen at activation. The defaults
+    (1 of 1) are the whole commission at once, exactly as before."""
     existing = await _get_existing(db, contract_id=contract_id, trigger_event_id=trigger_event_id)
     if existing is not None:
         return existing
@@ -160,10 +185,24 @@ async def run_calculation_for_contract(
         return calculation
 
     steps = calculate_chain(chain)
+    split = instalments_total > 1
+
+    def _amount(step) -> int:
+        return instalment_share(step.gross_amount_cents, number=instalment_number, instalments=instalments_total)
+
+    def _explanation(step) -> str:
+        if not split:
+            return step.explanation
+        return (
+            f"{step.explanation} -- quota rata {instalment_number} di {instalments_total} "
+            f"(totale {step.gross_amount_cents / 100:.2f} EUR)"
+        )
 
     input_snapshot = {
         "contract_id": str(contract_id),
         "network_snapshot_id": str(contract.network_snapshot_id),
+        "instalment_number": instalment_number,
+        "instalments_total": instalments_total,
         "chain": [
             {"agent_id": m.agent_id, "rank_code": m.rank_code, "depth": m.depth}
             for m in chain
@@ -174,8 +213,8 @@ async def run_calculation_for_contract(
             {
                 "beneficiary_agent_id": s.beneficiary_agent_id,
                 "movement_type": s.movement_type,
-                "gross_amount_cents": s.gross_amount_cents,
-                "explanation": s.explanation,
+                "gross_amount_cents": _amount(s),
+                "explanation": _explanation(s),
             }
             for s in steps
         ]
@@ -229,12 +268,12 @@ async def run_calculation_for_contract(
                 already_distributed_cents=step.already_distributed_cents,
                 entrepreneurial_difference_cents=step.entrepreneurial_difference_cents,
                 personal_bonus_cents=0,
-                gross_amount_cents=step.gross_amount_cents,
+                gross_amount_cents=_amount(step),
                 movement_type=step.movement_type,
-                explanation=step.explanation,
+                explanation=_explanation(step),
             )
         )
-        if step.gross_amount_cents > 0:
+        if _amount(step) > 0:
             db.add(
                 CommissionMovement(
                     organization_id=organization_id,
@@ -243,7 +282,7 @@ async def run_calculation_for_contract(
                     origin_event_id=trigger_event_id,
                     calculation_id=calculation.id,
                     movement_type=step.movement_type,
-                    amount_cents=step.gross_amount_cents,
+                    amount_cents=_amount(step),
                     currency="EUR",
                     status="ACCRUED",
                     effective_date=today,
@@ -259,18 +298,21 @@ async def run_calculation_for_contract(
                 await notifications_service.notify_user(
                     db, organization_id=organization_id, user_id=beneficiary_user_id,
                     type_="COMMISSION_EARNED", entity_type="contract", entity_id=contract_id,
-                    title=f"Nuova provvigione: {step.gross_amount_cents / 100:.2f} EUR",
-                    body=step.explanation,
+                    title=f"Nuova provvigione: {_amount(step) / 100:.2f} EUR",
+                    body=_explanation(step),
                 )
 
-    await _maybe_add_first_referrer_bonus(
-        db,
-        organization_id=organization_id,
-        contract=contract,
-        calculation_id=calculation.id,
-        trigger_event_id=trigger_event_id,
-        effective_date=today,
-    )
+    # The first-referrer bonus is a one-off, not a commission on the money
+    # collected: it goes out whole with the first instalment and never again.
+    if instalment_number == 1:
+        await _maybe_add_first_referrer_bonus(
+            db,
+            organization_id=organization_id,
+            contract=contract,
+            calculation_id=calculation.id,
+            trigger_event_id=trigger_event_id,
+            effective_date=today,
+        )
 
     try:
         await db.commit()

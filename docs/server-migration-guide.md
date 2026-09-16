@@ -483,10 +483,10 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
-ricostruzione a memoria (**rigenerato 2026-09-14, allineato alla revision
-Alembic `f1c3d85b204e` / migrazione `0039_document_description`**;
+ricostruzione a memoria (**rigenerato 2026-09-16, allineato alla revision
+Alembic `b3e8f1a6c257` / migrazione `0041_contract_commission_plan_and_instalments`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **63 tabelle** con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **65 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -541,7 +541,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 63 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 65 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -575,7 +575,10 @@ Contratti:         contracts (ha anche activated_at/expires_at/iban, email
                     accettazione delle condizioni),
                     contract_status_history, contract_events,
                     contract_attributions, documents (documenti sensibili
-                    del contratto -- bucket privato lial-documents)
+                    del contratto -- bucket privato lial-documents),
+                    contract_commission_plans (anteprima provvigioni
+                    accettata, Session 50), contract_instalments (rate
+                    del cliente e quote di provvigione rilasciate)
 Supporto:          tickets, ticket_messages
 Provvigioni:       ranks, agent_rank_history, commission_plan_versions,
                     commission_rule_versions, commission_calculations,

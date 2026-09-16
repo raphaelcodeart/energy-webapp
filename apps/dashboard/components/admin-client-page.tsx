@@ -23,13 +23,14 @@ import { AdminAccountingPanel } from "@/components/admin-accounting-panel";
 import { Pagination, usePagination } from "@/components/pagination";
 import { AdminDocumentationPanel } from "@/components/admin-documentation-panel";
 import { AdminOrganizationSettingsPanel } from "@/components/admin-organization-settings-panel";
+import { CommissionPreviewView } from "@/components/contract-commission-preview";
 import { ContractCommissionsModal } from "@/components/contract-commissions-modal";
 import { ContractStatusHistoryModal } from "@/components/contract-status-history-modal";
 import { SectionBanner } from "@/components/section-banner";
 import { friendlyApiError } from "@/lib/api-error";
 import { downloadCsv } from "@/lib/csv-export";
 import { formatEuroCents as euro } from "@/lib/product-audience";
-import type { ContractRead, CustomerRead } from "@/lib/types";
+import type { CommissionPreviewRead, ContractRead, CustomerRead } from "@/lib/types";
 
 async function fetchCustomersForLookup(): Promise<CustomerRead[]> {
   const res = await fetch("/api/proxy/customers");
@@ -72,6 +73,12 @@ const STATUS_LABELS: Record<string, string> = {
 // the contract's current status (e.g. DRAFT -> ACTIVE) always 400'd with
 // "Cannot transition contract from X to Y" -- confusing since the UI never
 // hinted which choices were valid.
+// Mirrors contracts/router.py::_ACTIVATION_PATH_TARGETS: moving a contract
+// that has never been active into any of these can end in activation, which
+// is what pays commissions -- so the server requires the commission preview
+// to be accepted first, and the form shows it.
+const ACTIVATION_PATH_TARGETS = new Set(["APPROVED", "PAYMENT_PENDING", "PAID", "ACTIVATION_PENDING", "ACTIVE"]);
+
 const CONTRACT_ALLOWED_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["SUBMITTED", "REJECTED"],
   SUBMITTED: ["DOCUMENTS_PENDING", "UNDER_REVIEW", "REJECTED"],
@@ -341,6 +348,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
     setTransitionReason("");
     setTransitionNotes("");
     setTransitionError(null);
+    setPreviewChecked(false);
 
     // Default to the first status-machine-allowed transition that ISN'T a
     // rejection/cancellation, so the form opens pre-selected on the "happy
@@ -351,6 +359,32 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
   };
 
   const availableTargets = selectedContract ? CONTRACT_ALLOWED_TRANSITIONS[selectedContract.status] ?? [] : [];
+
+  const needsCommissionPreview = Boolean(
+    selectedContract &&
+      ACTIVATION_PATH_TARGETS.has(targetStatus) &&
+      !selectedContract.activated_at &&
+      selectedContract.status !== "SUSPENDED"
+  );
+  const {
+    data: commissionPreview,
+    error: commissionPreviewError,
+    refetch: refetchCommissionPreview,
+  } = useQuery<CommissionPreviewRead>({
+    queryKey: ["admin", "commission-preview", selectedContract?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/proxy/contracts/${selectedContract!.id}/commission-preview`);
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      return res.json();
+    },
+    enabled: needsCommissionPreview,
+    // The preview must be what is true NOW -- never a cached copy from a
+    // previous opening, or the server would refuse it as changed anyway.
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const [previewChecked, setPreviewChecked] = useState(false);
+  const mustAcceptPreview = needsCommissionPreview && !commissionPreview?.already_accepted;
 
   const handleExecuteTransition = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,9 +401,16 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
           to_status: targetStatus,
           reason: transitionReason || null,
           notes: transitionNotes || null,
+          accept_commission_preview_checksum: mustAcceptPreview ? commissionPreview?.checksum ?? null : null,
         }),
       });
 
+      if (res.status === 409) {
+        // The figures changed while the form was open: show the new ones and
+        // make the administrator look again before accepting.
+        setPreviewChecked(false);
+        await refetchCommissionPreview();
+      }
       if (!res.ok) {
         throw new Error(await friendlyApiError(res, "Errore durante il cambio di stato del contratto."));
       }
@@ -611,6 +652,17 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                           >
                             {STATUS_LABELS[c.status] ?? c.status}
                           </button>
+                          {/* Paid before approval (Session 49): approving
+                              the documents is all that is left, and it
+                              activates the contract straight away. */}
+                          {c.paid_at && ["SUBMITTED", "DOCUMENTS_PENDING", "UNDER_REVIEW", "APPROVED", "PAYMENT_PENDING"].includes(c.status) && (
+                            <span
+                              title={`Pagato il ${new Date(c.paid_at).toLocaleDateString("it-IT")}: si attiva all'approvazione dei documenti`}
+                              className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            >
+                              Pagato
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-6">
                           <span className={`text-xs ${expiryColor(c.expires_at)}`}>
@@ -754,7 +806,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
       {/* Transition Modal / Drawer Overlay */}
       {selectedContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
+          <div className={`w-full ${needsCommissionPreview ? "max-w-3xl" : "max-w-lg"} max-h-[85vh] overflow-y-auto glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white light:text-slate-900">Recensisci / Transiziona Stato</h3>
               <button
@@ -817,6 +869,37 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                 </p>
               </div>
 
+              {needsCommissionPreview && (
+                <div className="space-y-3 p-4 rounded-2xl border border-orange-500/25 bg-slate-900/40 light:bg-orange-50/60">
+                  <p className="text-sm font-bold text-white light:text-slate-900">Anteprima provvigioni</p>
+                  {commissionPreviewError ? (
+                    <p className="text-xs text-rose-400">{(commissionPreviewError as Error).message}</p>
+                  ) : !commissionPreview ? (
+                    <div className="h-24 rounded-xl bg-white/5 light:bg-slate-900/5 animate-pulse" />
+                  ) : commissionPreview.already_accepted ? (
+                    <p className="text-xs text-emerald-400">
+                      Anteprima già accettata per questo contratto: la trovi nel registro, pulsante “Provvigioni”.
+                    </p>
+                  ) : (
+                    <>
+                      <CommissionPreviewView preview={commissionPreview} />
+                      <label className="flex items-start gap-2 pt-2 border-t border-white/10 light:border-slate-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={previewChecked}
+                          onChange={(e) => setPreviewChecked(e.target.checked)}
+                          className="mt-0.5 accent-orange-500"
+                        />
+                        <span className="text-xs text-slate-300 light:text-slate-700">
+                          Ho controllato l&apos;anteprima e accetto che le provvigioni partano come indicato.
+                          Resterà salvata nel registro del contratto.
+                        </span>
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 light:text-slate-600 block">Motivazione</label>
                 <input
@@ -856,10 +939,10 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
                 </button>
                 <button
                   type="submit"
-                  disabled={transitionLoading}
-                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer"
+                  disabled={transitionLoading || (mustAcceptPreview && (!commissionPreview || !previewChecked))}
+                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
                 >
-                  {transitionLoading ? "Salvataggio..." : "Salva Stato"}
+                  {transitionLoading ? "Salvataggio..." : mustAcceptPreview ? "Accetta anteprima e salva" : "Salva Stato"}
                 </button>
               </div>
             </form>

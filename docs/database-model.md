@@ -320,6 +320,11 @@ contracts
     contract or by staff on any contract),
   email nullable (added Session 33 -- contact address for THIS pratica,
     deliberately independent of the account's login email),
+  holder_first_name, holder_last_name, pec -- all nullable (added Session 49,
+    migration 0040 / a7d2e94c3b10 -- the intestatario and PEC as typed into
+    the activation wizard, pre-filled from the account and freely editable;
+    per contract for the same reason as email/iban. Null on older and
+    staff-created contracts),
 
   -- Who built it (added Session 38). Previously only recoverable indirectly,
   -- from the actor on the first contract_status_history row.
@@ -407,6 +412,24 @@ documents (added Session 14 -- sensitive contract paperwork; see
 
 Contract `status` is constrained (checked in application code + a Postgres CHECK
 constraint) to the state machine in `business-rules.md §Contract state machine`.
+
+contract_commission_plans  (added Session 50, migration 0041 / b3e8f1a6c257)
+  id, organization_id, contract_id UNIQUE, accepted_by_user_id -> users,
+  accepted_at, payment_plan nullable (known at acceptance, null if unpaid),
+  total_commission_cents, preview JSONB (verbatim what the administrator was
+  shown), checksum, created_at.
+  -- the accepted commission preview, required before first activation;
+  -- see business-rules.md#commission-preview
+
+contract_instalments  (added Session 50, same migration)
+  id, organization_id, contract_id, number, instalments_total, due_date,
+  amount_cents, status (SCHEDULED/PAID/FAILED), paid_at, payment_source
+  (STRIPE_CHECKOUT/STRIPE_INVOICE/ADMIN), confirmed_by_user_id -> users,
+  stripe_invoice_id UNIQUE nullable, commission_event_id (the one outbox event
+  that releases this slice), commission_released_at,
+  commission_calculation_id -> commission_calculations, created_at.
+  UNIQUE (contract_id, number).
+  -- one row per payment owed; each paid row releases 1/N of the commissions
 
 ## 5. Commissions (first-referrer bonus added Session 38)
 

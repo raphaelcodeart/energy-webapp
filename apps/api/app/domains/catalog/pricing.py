@@ -198,28 +198,64 @@ def product_vat_percentage(version: ProductVersion) -> float | None:
         return None
 
 
-def contract_net_amount_cents(version: ProductVersion) -> int:
-    """The taxable amount of a Lial Energy contract, VAT excluded.
-
-    This is `base_price_cents`: the single figure the dashboard has always
-    shown as the product's price, and the one the wizard already renders
-    with "+ IVA" next to it. `initial_fee_cents` and `recurring_fee_cents`
-    exist on the version but have never been charged by any code path in
-    this project, so folding them in here would silently start billing
-    amounts nobody has ever agreed to.
-
-    If the business ever decides a contract's total is something else
-    (base + initial fee, or 12x the recurring fee), this one function is
-    the only place that changes -- every price in the app, every payment
-    plan and every VAT figure is derived from it."""
-    return int(version.base_price_cents or 0)
+#: How many months one billing period covers. The catalog price of a Lial
+#: Energy product is a canone per period (the dashboard has always printed
+#: "/mese" next to it), not the price of the whole contract.
+BILLING_PERIOD_MONTHS = {"MONTHLY": 1, "QUARTERLY": 3, "ANNUAL": 12}
 
 
-def compute_contract_price(*, version: ProductVersion, customer_kind: str | None) -> PriceBreakdown:
+#: Only these product types are priced per period. A PHYSICAL or DIGITAL
+#: product is a one-off purchase at its listed price, whatever billing
+#: period/duration its version happens to carry -- the admin form defaults
+#: every version to MONTHLY / 12 months, and a t-shirt must never become
+#: 12 x its price.
+RECURRING_PRODUCT_TYPES = frozenset({"ENERGY_CONTRACT", "SUBSCRIPTION"})
+
+
+def contract_billing_periods(version: ProductVersion, *, product_type: str | None) -> int:
+    """How many canoni one contract term is made of: 12 for a 12-month
+    contract billed monthly, 4 for one billed quarterly. 1 for a one-off
+    product type, a version with no duration or an unknown billing period --
+    charging exactly the listed price is the only safe reading of any of
+    them."""
+    if (product_type or "").upper() not in RECURRING_PRODUCT_TYPES:
+        return 1
+    duration = int(version.contract_duration_months or 0)
+    period_months = BILLING_PERIOD_MONTHS.get((version.billing_period or "").upper())
+    if duration <= 0 or period_months is None:
+        return 1
+    return max(1, duration // period_months)
+
+
+def contract_net_amount_cents(version: ProductVersion, *, product_type: str | None) -> int:
+    """The taxable amount of a whole Lial Energy contract, VAT excluded.
+
+    `base_price_cents` is the canone for ONE billing period, and the
+    contract costs that canone for every period of its term: a "15 € /mese"
+    product on a 12-month contract is 180 € + IVA (business decision,
+    Session 49 -- until then this returned the single canone, so a
+    12-month contract was priced as one month). Paying in 12 instalments
+    therefore charges exactly the monthly canone, 3 instalments a quarter
+    of the year each, and "soluzione unica" the whole year.
+
+    `initial_fee_cents` and `recurring_fee_cents` exist on the version but
+    have never been charged by any code path in this project, so folding
+    them in here would silently start billing amounts nobody has ever
+    agreed to.
+
+    This one function is still the only place that decides it -- every
+    price in the app, every payment plan and every VAT figure is derived
+    from it."""
+    return int(version.base_price_cents or 0) * contract_billing_periods(version, product_type=product_type)
+
+
+def compute_contract_price(
+    *, version: ProductVersion, customer_kind: str | None, product_type: str | None
+) -> PriceBreakdown:
     """The full server-side price of one contract. The only entry point
     contracts/service.py and the payment flow are allowed to use."""
     return compute_price(
-        net_amount_cents=contract_net_amount_cents(version),
+        net_amount_cents=contract_net_amount_cents(version, product_type=product_type),
         product_vat_percentage=product_vat_percentage(version),
         customer_kind=customer_kind,
     )

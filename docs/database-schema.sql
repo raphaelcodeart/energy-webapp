@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Z5NAdfZCVs92iVxRBtoBIXpeXVsyLq4RUsTQtX4HNraNZJO4aTH7ZGrE4BoGjIL
+\restrict 1JRkPRCDdkJHCLP3OSTr83kutUeL7ZoO1dLek7zVymOiRalEZuTAEU3ND6c8Xlm
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -300,6 +300,24 @@ CREATE TABLE public.contract_attributions (
 
 
 --
+-- Name: contract_commission_plans; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.contract_commission_plans (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    contract_id uuid NOT NULL,
+    accepted_by_user_id uuid NOT NULL,
+    accepted_at timestamp with time zone NOT NULL,
+    payment_plan character varying(16),
+    total_commission_cents bigint NOT NULL,
+    preview jsonb NOT NULL,
+    checksum character varying(64) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: contract_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -309,6 +327,30 @@ CREATE TABLE public.contract_events (
     payload jsonb NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: contract_instalments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.contract_instalments (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    contract_id uuid NOT NULL,
+    number integer NOT NULL,
+    instalments_total integer NOT NULL,
+    due_date date NOT NULL,
+    amount_cents bigint NOT NULL,
+    status character varying(16) NOT NULL,
+    paid_at timestamp with time zone,
+    payment_source character varying(16),
+    confirmed_by_user_id uuid,
+    stripe_invoice_id character varying(255),
+    commission_event_id uuid,
+    commission_released_at timestamp with time zone,
+    commission_calculation_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -369,7 +411,10 @@ CREATE TABLE public.contracts (
     terms_accepted_by_user_id uuid,
     terms_version character varying(32),
     terms_accepted_ip character varying(45),
-    terms_accepted_user_agent character varying(500)
+    terms_accepted_user_agent character varying(500),
+    holder_first_name character varying(128),
+    holder_last_name character varying(128),
+    pec character varying(320)
 );
 
 
@@ -1279,11 +1324,27 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
+-- Name: contract_commission_plans pk_contract_commission_plans; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_commission_plans
+    ADD CONSTRAINT pk_contract_commission_plans PRIMARY KEY (id);
+
+
+--
 -- Name: contract_events pk_contract_events; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_events
     ADD CONSTRAINT pk_contract_events PRIMARY KEY (id);
+
+
+--
+-- Name: contract_instalments pk_contract_instalments; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT pk_contract_instalments PRIMARY KEY (id);
 
 
 --
@@ -1679,6 +1740,30 @@ ALTER TABLE ONLY public.commission_movements
 
 
 --
+-- Name: contract_commission_plans uq_contract_commission_plans_contract_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_commission_plans
+    ADD CONSTRAINT uq_contract_commission_plans_contract_id UNIQUE (contract_id);
+
+
+--
+-- Name: contract_instalments uq_contract_instalments_contract_number; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT uq_contract_instalments_contract_number UNIQUE (contract_id, number);
+
+
+--
+-- Name: contract_instalments uq_contract_instalments_stripe_invoice_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT uq_contract_instalments_stripe_invoice_id UNIQUE (stripe_invoice_id);
+
+
+--
 -- Name: contracts uq_contracts_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2002,10 +2087,31 @@ CREATE INDEX ix_contract_attributions_organization_id ON public.contract_attribu
 
 
 --
+-- Name: ix_contract_commission_plans_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_commission_plans_organization_id ON public.contract_commission_plans USING btree (organization_id);
+
+
+--
 -- Name: ix_contract_events_contract_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_contract_events_contract_id ON public.contract_events USING btree (contract_id);
+
+
+--
+-- Name: ix_contract_instalments_contract_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_instalments_contract_id ON public.contract_instalments USING btree (contract_id);
+
+
+--
+-- Name: ix_contract_instalments_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_contract_instalments_organization_id ON public.contract_instalments USING btree (organization_id);
 
 
 --
@@ -3030,11 +3136,67 @@ ALTER TABLE ONLY public.contract_attributions
 
 
 --
+-- Name: contract_commission_plans fk_contract_commission_plans_accepted_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_commission_plans
+    ADD CONSTRAINT fk_contract_commission_plans_accepted_by_user_id_users FOREIGN KEY (accepted_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: contract_commission_plans fk_contract_commission_plans_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_commission_plans
+    ADD CONSTRAINT fk_contract_commission_plans_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: contract_commission_plans fk_contract_commission_plans_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_commission_plans
+    ADD CONSTRAINT fk_contract_commission_plans_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: contract_events fk_contract_events_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contract_events
     ADD CONSTRAINT fk_contract_events_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: contract_instalments fk_contract_instalments_commission_calculation_id_commi_80b6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT fk_contract_instalments_commission_calculation_id_commi_80b6 FOREIGN KEY (commission_calculation_id) REFERENCES public.commission_calculations(id);
+
+
+--
+-- Name: contract_instalments fk_contract_instalments_confirmed_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT fk_contract_instalments_confirmed_by_user_id_users FOREIGN KEY (confirmed_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: contract_instalments fk_contract_instalments_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT fk_contract_instalments_contract_id_contracts FOREIGN KEY (contract_id) REFERENCES public.contracts(id);
+
+
+--
+-- Name: contract_instalments fk_contract_instalments_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_instalments
+    ADD CONSTRAINT fk_contract_instalments_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -4009,5 +4171,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Z5NAdfZCVs92iVxRBtoBIXpeXVsyLq4RUsTQtX4HNraNZJO4aTH7ZGrE4BoGjIL
+\unrestrict 1JRkPRCDdkJHCLP3OSTr83kutUeL7ZoO1dLek7zVymOiRalEZuTAEU3ND6c8Xlm
 

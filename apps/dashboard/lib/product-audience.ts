@@ -77,6 +77,14 @@ export function computePrice(
   return { netCents, vatRate: rate, vatCents, grossCents: netCents + vatCents };
 }
 
+/** Mirrors catalog/pricing.py::RECURRING_PRODUCT_TYPES. Only these are sold
+    as a canone per period; a PHYSICAL/DIGITAL product is a one-off price,
+    whatever billing period its version happens to carry (the admin form
+    defaults every version to MONTHLY). */
+export function isRecurringProductType(productType: string | null | undefined): boolean {
+  return ["ENERGY_CONTRACT", "SUBSCRIPTION"].includes((productType ?? "").toUpperCase());
+}
+
 export function formatEuroCents(cents: number): string {
   return (cents / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }

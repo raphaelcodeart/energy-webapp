@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ContractCommissionLog } from "@/components/contract-commission-preview";
 import { friendlyApiError } from "@/lib/api-error";
 import type { CommissionMovementDetailRead } from "@/lib/types";
 
@@ -162,7 +163,12 @@ export function ContractCommissionsModal({
           </div>
         </div>
 
-        <h4 className="text-sm font-semibold text-white light:text-slate-900 mb-2">Rete beneficiaria</h4>
+        <h4 className="text-sm font-semibold text-white light:text-slate-900 mb-2">Registro provvigioni</h4>
+        <div className="mb-5">
+          <ContractCommissionLog contractId={contractId} />
+        </div>
+
+        <h4 className="text-sm font-semibold text-white light:text-slate-900 mb-2">Movimenti scritti in contabilità</h4>
         <div className="overflow-x-auto rounded-xl border border-white/5 light:border-slate-200">
           <table className="w-full border-collapse text-left text-xs">
             <thead>

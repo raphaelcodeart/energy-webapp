@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
+import { ContractPaymentPanel } from "@/components/contract-payment-panel";
 import { FullScreenPanel, FullScreenSteps } from "@/components/full-screen-panel";
 import { type CodeEntry, emptyEntries, SupplyPointCodeFields } from "@/components/supply-point-code-fields";
 import { computePrice } from "@/lib/product-audience";
@@ -29,9 +30,13 @@ function euro(cents: number): string {
     code (contracts/service.py::create_contract_self_service takes exactly
     one supply point per call -- there is no bulk endpoint, this simply
     calls it once per code, sequentially), then hands into
-    ContractDocumentsPanel for each. From here on an admin needs exactly
-    two clicks per contract (Approva, Conferma pagamento) to reach ACTIVE --
-    see business-rules.md#contract-self-service. */
+    ContractDocumentsPanel for each, then into the payment step.
+
+    Documents can be skipped: payment is deliberately NOT gated on them
+    (Session 49). A customer can fill in the data, go straight to paying,
+    and upload the documents later -- the contract still activates, and
+    commissions still fire, only once an administrator approves them. See
+    business-rules.md#contract-prepayment. */
 export function ContractActivationWizard({
   product,
   accountEmail,
@@ -39,6 +44,7 @@ export function ContractActivationWizard({
   onActivated,
   customerId,
   customerKind,
+  holder,
 }: {
   product: ProductCatalogRead;
   /** Pre-fills the editable Email field below -- never forced: the customer
@@ -60,17 +66,35 @@ export function ContractActivationWizard({
       backend computes and freezes the same breakdown onto the contract
       (catalog/pricing.py) -- this is only what the buyer is shown. */
   customerKind?: string | null;
+  /** Pre-fills Nome / Cognome / PEC, all freely editable -- the contract
+      holder need not be exactly how the account was registered. */
+  holder?: { firstName?: string | null; lastName?: string | null; pec?: string | null };
 }) {
   const v = product.current_version!;
   // Private customers pay no VAT on a contract; businesses pay net + VAT.
   // Same rule the server applies and freezes onto the contract.
-  const price = computePrice(v.base_price_cents, v.vat_percentage, customerKind ?? null, {
+  // The listed price is the canone per period; the contract is all of its
+  // periods. Both figures come from the server, only VAT is applied here
+  // for display (and the server applies the same rule when it freezes it).
+  const monthly = computePrice(v.base_price_cents, v.vat_percentage, customerKind ?? null, {
     assumeBusinessWhenUnknown: false,
   });
+  const price = computePrice(v.contract_net_amount_cents, v.vat_percentage, customerKind ?? null, {
+    assumeBusinessWhenUnknown: false,
+  });
+  const periods = v.contract_billing_periods;
+  // The CRM path (a promoter acting for a customer) stops after the
+  // documents: paying is done by the customer, from their own account.
+  const withPayment = !customerId;
+  const steps = withPayment ? ["Dati", "Documenti", "Pagamento"] : ["Dati", "Documenti"];
   const needsPod = product.energy_type === "ELECTRICITY" || product.energy_type === "DUAL_FUEL";
   const needsPdr = product.energy_type === "GAS" || product.energy_type === "DUAL_FUEL";
 
-  const [step, setStep] = useState<"supply_point" | "documents">("supply_point");
+  const [step, setStep] = useState<"supply_point" | "documents" | "payment">("supply_point");
+  const [firstName, setFirstName] = useState(holder?.firstName ?? "");
+  const [lastName, setLastName] = useState(holder?.lastName ?? "");
+  const [pec, setPec] = useState(holder?.pec ?? "");
+  const [iban, setIban] = useState("");
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
@@ -105,6 +129,10 @@ export function ContractActivationWizard({
             ...(customerId ? { customer_id: customerId } : {}),
             product_version_id: v.id,
             email: email.trim(),
+            holder_first_name: firstName.trim(),
+            holder_last_name: lastName.trim(),
+            pec: pec.trim() || null,
+            iban: iban.replace(/\s+/g, "").toUpperCase() || null,
             supply_point: {
               energy_type: product.energy_type,
               pod_code: podCode,
@@ -138,8 +166,16 @@ export function ContractActivationWizard({
       onClose={onClose}
       subtitle={
         <div className="space-y-2.5">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(price.netCents)}</span>
+          <div className="flex items-baseline gap-1.5 flex-wrap">
+            <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(monthly.netCents)}</span>
+            {periods > 1 && (
+              <span className="text-[10px] text-slate-500">
+                {v.billing_period === "MONTHLY" ? `/mese × ${periods} mesi =` : `× ${periods} canoni =`}
+              </span>
+            )}
+            {periods > 1 && (
+              <span className="text-sm font-bold text-orange-400 tabular-nums">{euro(price.netCents)}</span>
+            )}
             {price.vatCents > 0 ? (
               <span className="text-[10px] text-slate-500">
                 + IVA {price.vatRate}% = <strong className="text-slate-400">{euro(price.grossCents)}</strong>
@@ -149,8 +185,8 @@ export function ContractActivationWizard({
             )}
           </div>
           <FullScreenSteps
-            steps={["Dati fornitura", "Documenti"]}
-            current={step === "supply_point" ? 0 : 1}
+            steps={steps}
+            current={step === "supply_point" ? 0 : step === "documents" ? 1 : 2}
           />
         </div>
       }
@@ -158,10 +194,21 @@ export function ContractActivationWizard({
       <>
         {step === "supply_point" && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-xs text-slate-400 light:text-slate-500">
-                Inserisci i dati del punto di fornitura ({ENERGY_LABELS[product.energy_type ?? ""] ?? "energia"}) da attivare.
-              </p>
-
+              <h3 className="text-sm font-bold text-white light:text-slate-900">Intestatario del contratto</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome</label>
+                  <input required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                    autoComplete="given-name"
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Cognome</label>
+                  <input required value={lastName} onChange={(e) => setLastName(e.target.value)}
+                    autoComplete="family-name"
+                    className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+                </div>
+              </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Email</label>
                 <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -171,6 +218,33 @@ export function ContractActivationWizard({
                   Email di riferimento per questo contratto -- puoi usarne una diversa da quella del tuo account.
                 </p>
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
+                  PEC <span className="normal-case font-normal text-slate-500">(facoltativa)</span>
+                </label>
+                <input type="email" value={pec} onChange={(e) => setPec(e.target.value)}
+                  placeholder="nome@pec.it"
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm focus:border-orange-500" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">
+                  IBAN per addebito{!withPayment && <span className="normal-case font-normal text-slate-500"> (facoltativo)</span>}
+                </label>
+                <input required={withPayment} value={iban}
+                  onChange={(e) => setIban(e.target.value.toUpperCase())}
+                  placeholder="IT60 X054 2811 1010 0000 0123 456"
+                  minLength={15} maxLength={42}
+                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm font-mono tracking-wide focus:border-orange-500" />
+                <p className="text-[10px] text-slate-500">
+                  Potrai modificarlo in qualsiasi momento da “I miei Contratti”.
+                </p>
+              </div>
+
+              <h3 className="text-sm font-bold text-white light:text-slate-900 pt-3">Punto di fornitura</h3>
+              <p className="text-xs text-slate-400 light:text-slate-500">
+                Inserisci i dati del punto di fornitura ({ENERGY_LABELS[product.energy_type ?? ""] ?? "energia"}) da attivare.
+              </p>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-slate-300 light:text-slate-600 uppercase block">Indirizzo</label>
                 <input required value={street} onChange={(e) => setStreet(e.target.value)}
@@ -244,12 +318,52 @@ export function ContractActivationWizard({
                   <ContractDocumentsPanel contractId={c.id} />
                 </div>
               ))}
-              <button onClick={onClose}
-                className="w-full rounded-xl bg-white/10 light:bg-slate-900/5 hover:bg-white/20 py-2.5 text-xs font-semibold text-white light:text-slate-700 transition cursor-pointer">
-                {customerId
-                  ? "Chiudi -- puoi riprendere il caricamento documenti in qualsiasi momento da qui"
-                  : `Continua più tardi -- trovi ${contracts.length > 1 ? "le richieste" : "la richiesta"} in “I miei Contratti”`}
-              </button>
+              {withPayment ? (
+                <div className="space-y-2">
+                  <button onClick={() => setStep("payment")}
+                    className="w-full rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 transition cursor-pointer">
+                    Vai avanti al pagamento
+                  </button>
+                  <p className="text-[10px] text-slate-500 text-center">
+                    Non hai i documenti a portata di mano? Vai avanti lo stesso: puoi caricarli dopo da “I miei Contratti”.
+                  </p>
+                </div>
+              ) : (
+                <button onClick={onClose}
+                  className="w-full rounded-xl bg-white/10 light:bg-slate-900/5 hover:bg-white/20 py-2.5 text-xs font-semibold text-white light:text-slate-700 transition cursor-pointer">
+                  Chiudi -- puoi riprendere il caricamento documenti in qualsiasi momento da qui
+                </button>
+              )}
+            </div>
+          )}
+
+          {step === "payment" && contracts.length > 0 && (
+            <div className="space-y-5">
+              <p className="text-xs text-slate-400 light:text-slate-500">
+                Scegli come pagare: in un&apos;unica soluzione, in 3 rate o in 12 rate mensili addebitate in
+                automatico sulla carta. Puoi pagare subito, anche se i documenti non sono ancora stati caricati o
+                approvati: il contratto si attiva appena l&apos;amministrazione li approva.
+              </p>
+              {contracts.map((c, i) => (
+                <div key={c.id} className="space-y-2">
+                  {contracts.length > 1 && (
+                    <p className="text-xs font-semibold text-slate-300 light:text-slate-600">
+                      Punto {i + 1} di {contracts.length}
+                    </p>
+                  )}
+                  <ContractPaymentPanel contractId={c.id} />
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <button onClick={() => setStep("documents")}
+                  className="rounded-xl bg-white/10 light:bg-slate-900/5 hover:bg-white/20 px-4 py-2.5 text-xs font-semibold text-white light:text-slate-700 transition cursor-pointer">
+                  ← Documenti
+                </button>
+                <button onClick={onClose}
+                  className="flex-1 rounded-xl bg-white/10 light:bg-slate-900/5 hover:bg-white/20 py-2.5 text-xs font-semibold text-white light:text-slate-700 transition cursor-pointer">
+                  {`Chiudi -- ${contracts.length > 1 ? "le richieste restano" : "la richiesta resta"} in “I miei Contratti”`}
+                </button>
+              </div>
             </div>
           )}
       </>

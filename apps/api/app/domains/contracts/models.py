@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, Numeric, String
+from sqlalchemy import BigInteger, Date, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,6 +44,13 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     # supply point's own). Nullable for compatibility with contracts created
     # before this field existed.
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # The contract holder as typed into the activation wizard (pre-filled
+    # from the account, freely editable) plus an optional PEC. Per contract
+    # for the same reason as email/iban above. Null on contracts created
+    # before migration 0040 and on staff-created ones.
+    holder_first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    holder_last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pec: Mapped[str | None] = mapped_column(String(320), nullable=True)
     # Set (and reset, on every renewal) by transition_contract() whenever the
     # contract enters ACTIVE or RENEWED. expires_at is computed from the
     # product version's contract_duration_months at that same moment -- never
@@ -182,4 +189,76 @@ class ContractAttribution(UUIDPKMixin, TimestampMixin, Base):
     )
     attributed_promoter_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agent_profiles.id")
+    )
+
+
+class ContractCommissionPlan(UUIDPKMixin, TimestampMixin, Base):
+    """The commission preview an administrator accepted before this contract
+    could activate -- kept verbatim, as the log they can reopen later.
+
+    Business rule (Session 50): approving a contract is the act that sets
+    commissions going, so the administrator must see who is paid what, and
+    how it is spread over the customer's instalments, before it happens.
+    `preview` is exactly what was on their screen; the ledger rows that
+    actually get written later (commission_movements) may differ if the
+    network changed between approval and payment, and the log shows both
+    side by side rather than pretending they are the same thing.
+    """
+
+    __tablename__ = "contract_commission_plans"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contracts.id"), unique=True
+    )
+    accepted_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    accepted_at: Mapped[datetime] = mapped_column()
+    #: The payment plan known at acceptance -- null when the customer had not
+    #: paid yet, in which case the preview listed every possible split.
+    payment_plan: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    total_commission_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    preview: Mapped[dict] = mapped_column(JSONB, default=dict)
+    checksum: Mapped[str] = mapped_column(String(64))
+
+
+class ContractInstalment(UUIDPKMixin, TimestampMixin, Base):
+    """One payment the customer owes on a contract: 1 row for a single
+    payment, 3 or 12 for an instalment plan.
+
+    It is what releases commissions a slice at a time: each row, once PAID
+    on an ACTIVE contract, emits exactly one ContractInstalmentPaid outbox
+    event (commission_event_id, set once) and the engine pays 1/N of every
+    beneficiary's commission for it. The UNIQUE (contract_id, number) and
+    the UNIQUE stripe_invoice_id are what make "Stripe confirmed it" and
+    "an administrator confirmed it" unable to pay the same month twice.
+    """
+
+    __tablename__ = "contract_instalments"
+    __table_args__ = (UniqueConstraint("contract_id", "number", name="uq_contract_instalments_contract_number"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
+    )
+    contract_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    instalments_total: Mapped[int] = mapped_column(Integer)
+    #: Expected date, from the first payment plus (number - 1) months.
+    due_date: Mapped[date] = mapped_column(Date)
+    #: What the customer pays for this instalment.
+    amount_cents: Mapped[int] = mapped_column(BigInteger)
+    #: SCHEDULED / PAID / FAILED
+    status: Mapped[str] = mapped_column(String(16), default="SCHEDULED")
+    paid_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    #: STRIPE_CHECKOUT / STRIPE_INVOICE / ADMIN
+    payment_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    stripe_invoice_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    commission_event_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    commission_released_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    commission_calculation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("commission_calculations.id"), nullable=True
     )

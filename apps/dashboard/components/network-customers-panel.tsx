@@ -269,6 +269,11 @@ export function NetworkCustomersPanel() {
           accountEmail={activationTarget.customer.email}
           customerId={activationTarget.customer.id}
           customerKind={activationTarget.customer.kind}
+          holder={{
+            firstName: activationTarget.customer.first_name,
+            lastName: activationTarget.customer.last_name,
+            pec: activationTarget.customer.pec,
+          }}
           onClose={() => setActivationTarget(null)}
           onActivated={() => queryClient.invalidateQueries({ queryKey: ["network", "customers", "mine"] })}
         />

@@ -331,14 +331,19 @@ async def _finish_event(db: AsyncSession, *, row: StripeWebhookEvent | None, out
 async def _handle_contract_checkout(
     db: AsyncSession, *, organization_id: uuid.UUID, session, secret_key: str
 ) -> str:
-    """First payment of a contract landed: mark it paid (which cascades the
-    contract to ACTIVE and triggers commissions, exactly as an admin
-    confirming a bank transfer does), and -- for an instalment plan -- tell
-    Stripe when to stop charging."""
+    """First payment of a contract landed: mark it paid, credit the LialCash,
+    and -- for an instalment plan -- tell Stripe when to stop charging.
+
+    If the documents are already approved the contract cascades to ACTIVE
+    and commissions fire, exactly as an admin confirming a bank transfer
+    does. If they are not (payment is accepted before approval), the
+    payment is recorded and the contract waits for approval to activate."""
     from app.domains.contracts import service as contracts_service
 
+    invoice = getattr(session, "invoice", None)
     contract = await contracts_service.mark_paid_via_stripe(
-        db, organization_id=organization_id, stripe_checkout_session_id=session["id"]
+        db, organization_id=organization_id, stripe_checkout_session_id=session["id"],
+        stripe_invoice_id=str(invoice) if invoice else None,
     )
     if contract is None:
         return "nessun contratto per questa sessione"
@@ -351,6 +356,10 @@ async def _handle_contract_checkout(
             customer_id=str(getattr(session, "customer", "") or "") or None,
         )
         if plan is not None and plan.instalments > 1:
+            if contract.status not in ("REJECTED", "CANCELLED"):
+                await contracts_service.credit_contract_instalment_cashback(
+                    db, organization_id=organization_id, contract=contract, instalment_ref="first"
+                )
             try:
                 await _stop_subscription_after_last_instalment(
                     secret_key=secret_key,
@@ -369,6 +378,25 @@ async def _handle_contract_checkout(
                 )
                 return f"contratto {contract.id} pagato; ATTENZIONE: cancel_at non impostato"
     return f"contratto {contract.id} pagato"
+
+
+def _invoice_subscription_id(invoice) -> str | None:
+    """Where an invoice says which subscription it belongs to.
+
+    Stripe moved it: up to API 2025-03-31 it was `invoice.subscription`;
+    from "basil" onwards (this account and SDK are on 2026-08-26.dahlia) it is
+    `invoice.parent.subscription_details.subscription`, and the old field is
+    simply absent. Reading only the old place made every monthly instalment
+    look like an invoice with no subscription -- silently ignored: no
+    cashback, no commissions, no failed-charge alert. Both are read so an
+    endpoint pinned to either version works."""
+    legacy = getattr(invoice, "subscription", None)
+    if legacy:
+        return str(legacy)
+    parent = getattr(invoice, "parent", None)
+    details = getattr(parent, "subscription_details", None) if parent is not None else None
+    subscription = getattr(details, "subscription", None) if details is not None else None
+    return str(subscription) if subscription else None
 
 
 async def handle_webhook_event(
@@ -465,7 +493,7 @@ async def handle_webhook_event(
         from app.domains.contracts import service as contracts_service
 
         invoice = event["data"]["object"]
-        subscription_id = getattr(invoice, "subscription", None)
+        subscription_id = _invoice_subscription_id(invoice)
         if subscription_id:
             outcome = await contracts_service.record_subscription_invoice(
                 db,
@@ -473,6 +501,8 @@ async def handle_webhook_event(
                 subscription_id=str(subscription_id),
                 paid=event["type"] == "invoice.paid",
                 amount_cents=int(getattr(invoice, "amount_paid", 0) or getattr(invoice, "amount_due", 0) or 0),
+                invoice_id=str(invoice["id"]),
+                billing_reason=getattr(invoice, "billing_reason", None),
             )
             await _finish_event(db, row=event_row, outcome=outcome)
             return

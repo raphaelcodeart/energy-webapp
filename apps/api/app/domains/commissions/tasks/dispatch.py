@@ -3,6 +3,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import utcnow
 from app.domains.audit import service as audit_service
 from app.domains.commissions.services.run_calculation import run_calculation_for_contract
 from app.domains.outbox import service as outbox_service
@@ -13,7 +14,45 @@ logger = logging.getLogger(__name__)
 # Only these event types trigger a commission calculation. Every other outbox event
 # type is marked processed as a no-op by this dispatcher (other handlers, e.g.
 # notifications, are expected to register themselves separately in Phase F).
-COMMISSION_TRIGGER_EVENTS = {"ContractActivated", "ContractRenewed"}
+COMMISSION_TRIGGER_EVENTS = {"ContractActivated", "ContractRenewed", "ContractInstalmentPaid"}
+
+
+async def _dispatch_commission_event(db: AsyncSession, record: dict, contract_id: uuid.UUID) -> None:
+    """ContractInstalmentPaid pays one instalment's slice (Session 50).
+
+    ContractActivated pays the whole commission only for a contract with no
+    instalment rows -- one activated before instalments existed, or through
+    a path that recorded no payment. A contract that has them is paid
+    entirely through its ContractInstalmentPaid events, which activation
+    itself emits for everything already paid (contracts/instalments.py), so
+    calculating here too would pay the first instalment twice."""
+    from app.domains.contracts import instalments as instalments_service
+
+    if record["event_type"] == "ContractInstalmentPaid":
+        number = int(record["payload"]["instalment_number"])
+        calculation = await run_calculation_for_contract(
+            db,
+            organization_id=record["organization_id"],
+            contract_id=contract_id,
+            trigger_event_id=record["id"],
+            instalment_number=number,
+            instalments_total=int(record["payload"]["instalments_total"]),
+        )
+        await instalments_service.mark_commission_released(
+            db, contract_id=contract_id, number=number,
+            calculation_id=calculation.id if calculation is not None else None, at=utcnow(),
+        )
+        return
+    if record["event_type"] == "ContractActivated" and await instalments_service.list_instalments(
+        db, contract_id=contract_id
+    ):
+        return
+    await run_calculation_for_contract(
+        db,
+        organization_id=record["organization_id"],
+        contract_id=contract_id,
+        trigger_event_id=record["id"],
+    )
 
 
 async def process_pending_outbox_events(db: AsyncSession, *, limit: int = 100) -> int:
@@ -49,12 +88,7 @@ async def process_pending_outbox_events(db: AsyncSession, *, limit: int = 100) -
         if record["event_type"] in COMMISSION_TRIGGER_EVENTS:
             contract_id = uuid.UUID(record["payload"]["contract_id"])
             try:
-                await run_calculation_for_contract(
-                    db,
-                    organization_id=record["organization_id"],
-                    contract_id=contract_id,
-                    trigger_event_id=record["id"],
-                )
+                await _dispatch_commission_event(db, record, contract_id)
             except Exception:
                 logger.exception(
                     "Commission calculation failed for contract %s (event %s, type %s)",

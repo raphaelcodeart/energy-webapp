@@ -311,7 +311,11 @@ def render_summary_pdf(ctx: _ContractContext, *, generated_at: datetime) -> byte
         ("Creato il", _fmt_datetime(c.created_at)),
         ("Attivato il", _fmt_date(c.activated_at)),
         ("Scadenza / rinnovo", _fmt_date(c.expires_at)),
+        ("Intestatario", _escape(_or_dash(
+            " ".join(part for part in (c.holder_first_name, c.holder_last_name) if part) or None
+        ))),
         ("Email del contratto", _escape(_or_dash(c.email))),
+        ("PEC del contratto", _escape(_or_dash(c.pec))),
         ("Note", _escape(_or_dash(c.notes))),
     ], styles))
 

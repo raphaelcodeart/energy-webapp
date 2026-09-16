@@ -8,7 +8,7 @@ import { ImportedProductCheckoutModal } from "@/components/imported-product-chec
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { ProductThumbnail } from "@/components/product-thumbnail";
-import { computePrice, productAllowsCustomerKind } from "@/lib/product-audience";
+import { computePrice, productAllowsCustomerKind, isRecurringProductType } from "@/lib/product-audience";
 import { ShareMenu } from "@/components/share-buttons";
 
 const ENERGY_LABELS: Record<string, string> = {
@@ -367,7 +367,7 @@ export function CustomerProductsPanel({
                       <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
                       <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
-                        <span className="text-[11px] text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
+                        <span className="text-[11px] text-slate-500">{isRecurringProductType(p.product_type) ? BILLING_LABELS[v.billing_period] ?? "" : ""}</span>
                       </div>
                       {(() => {
                         // A contract for a private customer carries no VAT at
@@ -477,6 +477,7 @@ export function CustomerProductsPanel({
           product={activationTarget}
           customerKind={customerKind}
           accountEmail={accountEmail}
+          holder={{ firstName: myCustomer?.first_name, lastName: myCustomer?.last_name, pec: myCustomer?.pec }}
           onClose={() => setActivationTarget(null)}
           onActivated={() => queryClient.invalidateQueries({ queryKey: ["customer", "contracts"] })}
         />

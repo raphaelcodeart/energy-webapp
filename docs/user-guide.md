@@ -91,6 +91,22 @@ mostra anche il proprio **IBAN per l'addebito** (modificabile in linea).
 > quella che c'è. Il secondo pulsante funziona dopo aver collegato un
 > account Google una volta sola, da *Impostazioni → Google Drive*.
 
+**Attivare un contratto** (Session 49) si fa in tre passaggi a schermo intero.
+**1. Dati**: intestatario (nome e cognome, già compilati dal tuo account ma
+modificabili), email, **PEC** (facoltativa), **IBAN per l'addebito** — che
+potrai comunque cambiare dopo da "I miei Contratti" — e il punto di
+fornitura. In alto vedi il prezzo come canone e come totale: ad esempio
+*15,00 € /mese × 12 mesi = 180,00 €* (+ IVA per aziende e partite IVA).
+**2. Documenti**: caricali subito, oppure premi **"Vai avanti al pagamento"**
+e caricali più tardi. **3. Pagamento**: soluzione unica, 3 rate o 12 rate
+mensili addebitate in automatico sulla carta. **Puoi pagare subito, anche se
+i documenti mancano o non sono ancora stati approvati.** Appena il pagamento
+va a buon fine ricevi il **cashback LialCash dell'intero importo** sul wallet
+— con le rate, a ogni rata pagata. Il contratto però diventa **Attivo** (e
+partono le provvigioni della rete) solo quando l'amministrazione approva i
+documenti: nell'elenco contratti dell'amministratore un contratto pagato in
+anticipo ha il badge verde **Pagato**, e approvarlo lo attiva subito.
+
 Finché un contratto è in corso di attivazione, la scheda non mostra più
 l'elenco dei documenti in mezzo a tutto il resto: mostra **un solo riquadro**
 che dice cosa manca davvero ("Mancano 2 documenti", "Documenti in verifica",
@@ -395,9 +411,26 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
 
 ## 4. Cosa succede "dietro le quinte" quando un contratto si attiva
 
+- **Anteprima provvigioni** (Session 50): quando l'amministratore approva un
+  contratto (o lo porta comunque verso l'attivazione), la finestra
+  *Recensisci* mostra prima **chi riceve cosa**: il promoter del cliente e
+  gli sponsor sopra di lui, ciascuno con grado, tipo di provvigione e
+  importo; se il cliente paga a rate, quanto parte a ogni rata e fino a
+  quando; se non ha ancora pagato, come verrebbero divise nelle tre
+  modalità. Il pulsante di conferma si sblocca solo spuntando *"Ho
+  controllato l'anteprima"*. L'anteprima accettata resta salvata: la riapri
+  dal pulsante **Provvigioni** del contratto, insieme alla tabella delle
+  rate (pagata / non riuscita / in attesa, e quando sono partite le relative
+  provvigioni). Se Stripe non riesce a incassare una rata e il cliente paga
+  in altro modo, lì c'è **"Conferma rata ricevuta"**.
+- **Rate**: pagamento unico → le provvigioni partono una volta sola, intere.
+  3 o 12 rate → ogni promoter riceve la sua provvigione divisa in 3 o 12
+  quote, una per ogni rata effettivamente incassata (la somma delle quote è
+  esattamente la provvigione intera).
 - Creare o inviare un contratto **non genera mai** una provvigione.
 - La provvigione viene calcolata **una sola volta**, quando un contratto passa
-  allo stato **Attivo** — non quando viene solo pagato (quello è uno stato
+  allo stato **Attivo** — cioè quando ci sono **sia** il pagamento **sia**
+  l'approvazione dei documenti, in qualunque ordine arrivino — non quando viene solo pagato (quello è uno stato
   intermedio, "Pagata", distinto da "Attiva"; se un contratto resta fermo lì
   troppo a lungo, l'amministrazione lo vede nell'elenco "Richiede attenzione").
 - Il calcolo cristallizza la catena degli sponsor così com'era in quel momento

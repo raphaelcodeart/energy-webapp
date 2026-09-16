@@ -4,6 +4,149 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 51 — 2026-09-16 — Verifica del flusso soldi: tre difetti trovati e corretti
+
+L'utente ha chiesto di spiegare quando partono provvigioni e cashback, se gli
+abbonamenti addebitano davvero da soli il mese dopo, e se i prodotti fisici
+sono distinti dagli abbonamenti. Verificando invece di rispondere a memoria:
+
+- [x] **Le rate successive non ci arrivavano.** L'endpoint webhook su Stripe
+  (letto via API, sola lettura) ha abilitato **solo**
+  `checkout.session.completed`. Stripe addebita davvero la carta ogni mese,
+  ma `invoice.paid` / `invoice.payment_failed` non vengono mai inviati:
+  dalla 2ª rata in poi niente cashback, niente provvigioni, nessun avviso di
+  addebito fallito. **Da abilitare sul pannello Stripe** (non modificato da
+  qui senza conferma dell'utente).
+- [x] **E anche abilitandoli sarebbero stati ignorati.** L'account e l'SDK
+  sono sulla versione API `2026-08-26.dahlia`, dove `invoice.subscription`
+  non esiste più (è in `invoice.parent.subscription_details.subscription`).
+  Il codice leggeva il campo vecchio: ogni rata sarebbe sembrata una fattura
+  senza abbonamento e scartata in silenzio. `payments/service.py::
+  _invoice_subscription_id` legge entrambe le forme; un test le copre tutte e
+  due.
+- [x] **Un prodotto fisico poteva diventare "× 12 mesi".** Il form admin
+  imposta ogni versione a MONTHLY / 12 mesi di default, quindi anche i due
+  Power Bank e lo Zaino li hanno. Il checkout ordini addebitava già il prezzo
+  una volta sola, ma la scheda Shop mostrava "39,00 € /mese", e un prodotto
+  fisico o digitale in categoria Lial Energy sarebbe passato dal calcolo
+  "canone × mesi". Ora `pricing.RECURRING_PRODUCT_TYPES` = ENERGY_CONTRACT e
+  SUBSCRIPTION: solo questi sono prezzati a canone; PHYSICAL/DIGITAL restano
+  prezzo unico, e l'etichetta "/mese" compare solo per i tipi ricorrenti.
+- [ ] **Segnalato, non toccato**: nello Shop la scheda e il dettaglio prodotto
+  mostrano "+ IVA 22% (totale)", ma l'ordine addebita il prezzo di listino
+  senza aggiungere IVA. Serve una decisione: il prezzo dello Shop è IVA
+  inclusa (e va tolta la dicitura) o IVA esclusa (e va aggiunta al checkout)?
+- Suite 343 → 345, verde.
+
+## Session 50 — 2026-09-16 — Anteprima provvigioni all'approvazione, e provvigioni rata per rata
+
+Richiesta dell'utente: il click di approvazione dell'amministratore è ciò che
+fa partire le provvigioni in rete, quindi prima deve vederle — chiare, con
+importi e destinatari — e l'anteprima accettata deve restare consultabile.
+Pagamento unico → provvigione una volta; 3 o 12 rate → provvigioni a ogni rata
+che Stripe conferma incassata, o che l'amministratore conferma a mano. Il
+LialCash resta solo il cashback al cliente.
+
+Una scelta presa senza chiedere, perché i numeri non lasciavano dubbi: con le
+rate la provvigione di ciascuno è **divisa** in N quote, non pagata intera N
+volte (i gettoni vanno da 40 a 160 € su un contratto da 180 €; ×12 sarebbero
+fino a 1.920 €).
+
+- [x] **Anteprima** (`commissions/services/preview.py`, `GET
+  /contracts/{id}/commission-preview`): stessa catena, stessi gettoni, stesso
+  calcolatore del motore vero, senza scrivere niente. Chi riceve cosa dal
+  promoter del cliente verso l'alto, bonus primo segnalatore, calendario
+  delle quote con date (o le tre ipotesi se il cliente non ha pagato),
+  cashback del cliente indicato a parte, avvisi.
+- [x] **Obbligatoria lato server**: portare verso l'attivazione un contratto
+  mai attivato senza anteprima accettata è rifiutato; l'anteprima viene
+  ricalcolata e rifiutata (409) se non coincide più con quella a schermo.
+  Salvata in `contract_commission_plans` e riapribile dal pulsante
+  *Provvigioni*, accanto ai movimenti realmente scritti.
+- [x] **Rate** (`contract_instalments`, `contracts/instalments.py`): una
+  riga per pagamento dovuto; ogni riga pagata su un contratto attivo emette
+  **un solo** evento `ContractInstalmentPaid` e il motore paga 1/N
+  (`instalment_share`, resto sull'ultima quota: la somma è esatta). Rate
+  pagate prima dell'approvazione partono tutte all'attivazione. Rata fallita
+  → nessuna provvigione; conferma manuale dal registro; il successivo
+  tentativo riuscito di Stripe sulla stessa fattura non paga due volte.
+- [x] Un contratto già approvato *prima* di questa funzione e poi pagato con
+  Stripe non si attiva da solo: aspetta l'anteprima (riguarda l'unico
+  contratto oggi in `PAYMENT_PENDING`).
+- [x] Migrazione `0041` (`b3e8f1a6c257`), due tabelle nuove, nessuna colonna
+  su tabelle esistenti. 8 test nuovi, fra cui 3 rate con la seconda rata
+  consegnata due volte, la terza fallita, confermata a mano e poi
+  ritentata da Stripe — totale esattamente 45,00 € su 6 movimenti. Suite
+  335 → 343, verde.
+
+## Session 49 — 2026-09-16 — Attivazione contratto: intestatario, IBAN subito, pagamento senza aspettare i documenti
+
+Segnalato dall'utente: nel wizard "Attiva Contratto" mancavano i campi che
+aveva chiesto (nome, cognome, email, PEC, IBAN — l'IBAN compariva solo dopo,
+in "I miei Contratti", come "Non impostato · Aggiungi") e mancava lo step
+finale di pagamento, che voleva **possibile anche con documenti mancanti o
+non approvati**, con cashback LialCash dell'intero importo.
+
+Tre decisioni prese esplicitamente con l'utente prima di scrivere codice:
+il prezzo di listino (es. 15 €) è il **canone mensile**, il contratto vale
+12 canoni; l'**IVA resta solo per aziende/P.IVA**; con le rate il cashback
+arriva **rata per rata**. E una quarta, detta a lavoro in corso: le
+provvigioni partono **solo all'approvazione**, anche se il cliente ha già
+pagato.
+
+- [x] **Wizard in tre passi: Dati → Documenti → Pagamento.** "Dati" ora ha
+  una sezione *Intestatario* (nome e cognome precompilati dall'account ma
+  modificabili, email, PEC facoltativa, IBAN obbligatorio per il cliente e
+  facoltativo per il promoter che compila per un suo cliente) sopra quella
+  del punto di fornitura. Nei Documenti c'è **"Vai avanti al pagamento"**:
+  si possono saltare e caricare dopo. Il percorso CRM del promoter si ferma
+  ai documenti — a pagare è il cliente dal proprio account.
+- [x] **Nuove colonne** `contracts.holder_first_name / holder_last_name /
+  pec` (migrazione `0040` / `a7d2e94c3b10`), per contratto come `email` e
+  `iban`. `GET /customers/me` e la lista CRM espongono ora `first_name` /
+  `last_name` separati, per precompilare senza mai ri-spezzare
+  `display_name`. Intestatario e PEC finiscono anche nel PDF del fascicolo.
+- [x] **Prezzo = canone × mesi del termine** (`pricing.py::
+  contract_billing_periods`). Prima un contratto di 12 mesi valeva un mese:
+  12 rate da 1,25 € invece che da 15 €. Il wizard mostra "15,00 € /mese × 12
+  mesi = 180,00 €" con i numeri calcolati dal server
+  (`ProductVersionRead.contract_net_amount_cents`).
+- [x] **Pagamento prima dell'approvazione** (`PREPAYABLE_STATUSES`,
+  `is_payable`). Un pagamento confermato dal webhook su un contratto non
+  ancora approvato registra `paid_at`, accredita il cashback, avvisa lo staff
+  e **non cambia stato**; quando l'amministratore approva,
+  `transition_contract` trova `paid_at` e prosegue da solo
+  `PAYMENT_PENDING → PAID → ACTIVE` — l'unico punto in cui nascono snapshot
+  di rete e provvigioni, come prima. Respingere un contratto già pagato
+  avvisa lo staff (rimborso, LialCash, abbonamento da annullare: decisioni
+  umane, mai automatiche). Nell'elenco admin il badge verde **Pagato**.
+- [x] **Cashback rata per rata**: soluzione unica → tutto subito; 3/12 rate
+  → la prima dal `checkout.session.completed`, le successive da
+  `invoice.paid` (`subscription_cycle`), chiave di idempotenza per fattura.
+  L'`invoice.paid` della prima fattura non accredita niente, così non può
+  raddoppiare il primo mese. Il pannello pagamento mostra quanto LialCash si
+  riceve, e dopo il pagamento dice "Pagamento ricevuto" invece di
+  riproporre i piani; la scheda "Completa il contratto" dice "puoi già pagare".
+- [x] 10 test nuovi (`test_contract_prepayment.py`): canone × 12 con e senza
+  IVA, validazione intestatario/IBAN/PEC, pagamento a documenti mancanti che
+  non attiva niente, approvazione che attiva senza ri-accreditare, 12 rate
+  con la stessa fattura consegnata due volte e la fattura iniziale ignorata,
+  notifica sul respinto-già-pagato. Suite 325 → 335, verde.
+
+**Dati di produzione toccati** (backup `lial_energy_dev_20260916T124827Z`
+prima di tutto, ogni modifica con la sua riga in `audit_log`):
+- `contract_cashback_percentage` portato da 0 a **100** su tutte le versioni
+  dei 6 prodotti Lial Energy (`product.contract_cashback_updated`).
+- I **7 contratti non ancora pagati** in uno stato pagabile hanno avuto
+  l'importo ricalcolato con la regola nuova (`contract.amount_restated`):
+  3 erano congelati a un solo canone (15 €, 35 €, 42,70 €), 4 non avevano
+  proprio un importo e non erano pagabili. È un'eccezione esplicita alla
+  regola "gli snapshot non si ricalcolano": nessuno aveva pagato, lo
+  snapshot veniva da una lettura sbagliata del listino, e aprire il
+  pagamento anticipato senza correggerli avrebbe fatto pagare 15 € un
+  contratto da 180 €. I 14 contratti in `DRAFT` di fine agosto non sono
+  stati toccati.
+
 ## Session 48 — 2026-09-14 — Il fascicolo di un contratto: ZIP e Google Drive
 
 Un contratto non vive solo qui dentro: la pratica va mandata a un fornitore,

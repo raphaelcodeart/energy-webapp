@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ContractDocumentsPanel, useContractDocuments } from "@/components/contract-documents-panel";
 import { ContractPaymentPanel } from "@/components/contract-payment-panel";
 import { FullScreenPanel, FullScreenSteps } from "@/components/full-screen-panel";
+import type { ContractPaymentOptionsRead } from "@/lib/types";
 
 /** Statuses at which the contract is waiting on the customer (or on us) for
     something -- the ones worth putting a "finish this" button in front of.
@@ -43,6 +45,18 @@ export function ContractCompletionCard({
 }) {
   const [open, setOpen] = useState(false);
   const { data } = useContractDocuments(contractId);
+  // Same query key as ContractPaymentPanel, so the card and the panel share
+  // one fetch and can never disagree about whether it has been paid.
+  const { data: payment } = useQuery<ContractPaymentOptionsRead>({
+    queryKey: ["contract", contractId, "payment-options"],
+    queryFn: async () => {
+      const res = await fetch(`/api/proxy/contracts/mine/${contractId}/payment-options`);
+      if (!res.ok) throw new Error("Impossibile caricare le modalità di pagamento.");
+      return res.json();
+    },
+  });
+  const paid = Boolean(payment?.paid_at);
+  const canPayNow = Boolean(payment?.payable && payment?.card_available);
 
   const requiredRows = (data?.required ?? []).filter((row) => row.required !== false);
   const missing = requiredRows.filter((row) => row.document === null).length;
@@ -57,10 +71,11 @@ export function ContractCompletionCard({
       "I tuoi documenti sono stati approvati. Ultimo passaggio: scegli se pagare in soluzione unica, in 3 rate o in 12 rate mensili.";
     cta = "Paga e attiva il contratto";
   } else if (step === 1) {
-    headline = "Documenti in verifica";
-    body =
-      "Abbiamo ricevuto tutto. L'amministrazione sta controllando i documenti: appena sono approvati potrai scegliere come pagare.";
-    cta = "Vedi i documenti caricati";
+    headline = paid ? "Pagato — documenti in verifica" : "Documenti in verifica";
+    body = paid
+      ? "Abbiamo ricevuto documenti e pagamento. Il contratto si attiva appena l'amministrazione approva i documenti."
+      : "Abbiamo ricevuto i documenti e l'amministrazione li sta controllando. Intanto puoi già pagare: il contratto si attiva appena sono approvati.";
+    cta = paid ? "Vedi il contratto" : "Paga ora";
   } else if (!data) {
     // Still loading the document list -- say the true thing that needs no
     // count rather than flashing "Mancano 0 documenti".
@@ -68,9 +83,13 @@ export function ContractCompletionCard({
     body = "Carica i documenti dell'intestatario per completare l'attivazione.";
     cta = "Completa il contratto";
   } else if (missing > 0) {
-    headline = missing === 1 ? "Manca 1 documento" : `Mancano ${missing} documenti`;
-    body =
-      "Per completare l'attivazione servono i documenti dell'intestatario. Puoi caricarli anche in più momenti: quello che carichi resta salvato.";
+    headline =
+      (missing === 1 ? "Manca 1 documento" : `Mancano ${missing} documenti`) + (paid ? " — pagamento ricevuto" : "");
+    body = paid
+      ? "Hai già pagato: per attivare il contratto servono ancora i documenti dell'intestatario. Puoi caricarli anche in più momenti."
+      : canPayNow
+        ? "Per attivare il contratto servono i documenti dell'intestatario, ma puoi già pagare adesso e caricarli dopo."
+        : "Per completare l'attivazione servono i documenti dell'intestatario. Puoi caricarli anche in più momenti: quello che carichi resta salvato.";
     cta = "Completa il contratto";
   } else {
     headline = "Quasi fatto";
@@ -117,11 +136,9 @@ export function ContractCompletionCard({
 
             <section>
               <h3 className="text-sm font-bold text-white light:text-slate-900">Pagamento</h3>
-              {/* Rendered at every stage, not only at PAYMENT_PENDING: the
-                  panel's own job is to say what is still missing, and
-                  showing the step greyed-out with an explanation beats
-                  hiding it and leaving the customer wondering when, or
-                  whether, they will be asked to pay. */}
+              {/* Rendered at every stage: payment is accepted before the
+                  documents are approved (Session 49), and once paid the
+                  panel says so instead of offering the plans again. */}
               <div className="mt-3">
                 <ContractPaymentPanel contractId={contractId} />
               </div>

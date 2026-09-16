@@ -152,13 +152,33 @@ sponsor rather than block.
 separate, already-working flow and is untouched: an order is a purchase, a
 contract is a subscription to a service.
 
-### Quando si può pagare
+### Quando si può pagare {#contract-prepayment}
 
-Documents uploaded → the contract auto-advances to `UNDER_REVIEW` → an
-administrator clicks **Approva** → it cascades to `PAYMENT_PENDING`, and only
-then does the customer see the payment step on their own contract. Nothing
-about that sequence changed; what is new is that the customer can now pay it
-themselves instead of an admin confirming a transfer.
+**Changed in Session 49: subito, senza aspettare i documenti.** Per explicit
+business request, the customer can pay as soon as the contract exists —
+straight from the activation wizard, documents skipped, nothing approved yet.
+`contracts/service.py::PREPAYABLE_STATUSES` = `SUBMITTED`,
+`DOCUMENTS_PENDING`, `UNDER_REVIEW`, `APPROVED`, `PAYMENT_PENDING`;
+`is_payable()` also requires a frozen amount and `paid_at IS NULL`.
+
+**Paying is not activating.** Business rule, restated by the business in the
+same session: *le provvigioni partono solo all'approvazione*. So:
+
+- Payment confirmed while the documents are not yet approved → `paid_at` is
+  set, the LialCash is credited, staff are notified
+  (`CONTRACT_PAID_BEFORE_APPROVAL`, audit `contract.paid_before_approval`) —
+  and **the status does not move**.
+- Administrator approves → `APPROVED → PAYMENT_PENDING` as always, and
+  `transition_contract` sees `paid_at` already set and continues straight to
+  `PAID → ACTIVATION_PENDING → ACTIVE`. That is the only point commissions
+  and the network snapshot are produced, exactly as before.
+- Payment confirmed when the documents are already approved
+  (`PAYMENT_PENDING`) → unchanged: `PAID` → `ACTIVE` immediately.
+- **Rejecting a paid contract** notifies staff (`CONTRACT_PAID_REJECTED`):
+  refund, the credited LialCash and, on an instalment plan, cancelling the
+  Stripe subscription are human decisions, never automatic. A payment that
+  lands on a contract already rejected is still recorded (the money moved),
+  earns no LialCash, and raises the same notification.
 
 ### Le tre modalità
 
@@ -203,14 +223,67 @@ overcharges without saying so.
 ### Cosa rende un contratto pagato
 
 Only the **verified webhook**. The success URL is never proof — a customer
-can open it by hand. On `checkout.session.completed` the contract moves
-`PAYMENT_PENDING → PAID`, which auto-cascades to `ACTIVE` through the
+can open it by hand. On `checkout.session.completed` a contract already
+approved moves `PAYMENT_PENDING → PAID` (one not yet approved only gets
+`paid_at`, see above), which auto-cascades to `ACTIVE` through the
 existing state machine, so commissions are calculated at exactly the same
 point as for any other contract. For an instalment plan this happens on the
 **first** payment: the contract is in force and the rest is collected
 automatically.
 
+### Prezzo del contratto: il canone per tutti i mesi {#contract-price-periods}
+
+**Only for recurring product types** (`pricing.RECURRING_PRODUCT_TYPES` =
+`ENERGY_CONTRACT`, `SUBSCRIPTION`). A `PHYSICAL` or `DIGITAL` product always
+costs its listed price once, whatever `billing_period` / duration its version
+carries (the admin form defaults every version to MONTHLY / 12). Shop orders
+never went through this function and still charge `base_price_cents` once.
+
+Business decision, Session 49: `base_price_cents` is the **canone per
+billing period** (the catalog has always printed "/mese" next to it), and a
+contract costs that canone for every period of its term.
+`catalog/pricing.py::contract_net_amount_cents` = `base_price_cents ×
+contract_billing_periods(version)` where the periods are
+`contract_duration_months / months-per-period` (MONTHLY 1, QUARTERLY 3,
+ANNUAL 12), or 1 when the version has no duration. Example: *Luce Energia
+Circolare privati*, 15 € /mese × 12 = **180 €** (+ IVA 22% = 219,60 € for a
+business; a privato still pays no VAT, unchanged). 12 rate therefore charge
+exactly the monthly canone, 3 rate a quarter of the year, soluzione unica the
+year.
+
+Before this, a 12-month contract was priced as one month. Contracts not yet
+paid at deploy time had their frozen amounts recomputed once (see
+`implementation-progress.md`, Session 49); a paid contract is never restated.
+
+### Cashback LialCash sul contratto: quando arriva {#contract-cashback-timing}
+
+`product_versions.contract_cashback_percentage` of what the customer pays
+(VAT included) — set to **100** on the Lial Energy products in Session 49
+(*cashback dell'intero importo*). It is credited **when the money arrives**,
+not at activation:
+
+- **Soluzione unica** (or a bank transfer an admin confirms): the whole
+  amount at once, key `contract-cashback:{contract_id}`, guard
+  `contracts.cashback_credited_at`.
+- **3 / 12 rate**: **one instalment at a time** (business decision: a
+  customer who stops paying after month one must not already hold the year
+  in LialCash). The first instalment is credited by the
+  `checkout.session.completed` handler (key `…:first`); every later one by
+  `invoice.paid` with `billing_reason = subscription_cycle` (key
+  `…:{invoice_id}`). The first invoice's own `invoice.paid`
+  (`subscription_create`) deliberately credits nothing, so it can never
+  double the first month. The amount is the plan's instalment, never the
+  invoice's own figure. Approval of a prepaid instalment contract adds
+  nothing on top.
+
 ### Rate successive
+
+**Stripe configuration required**: the webhook endpoint must have
+`invoice.paid` and `invoice.payment_failed` enabled in addition to
+`checkout.session.completed` — without them Stripe still charges every month
+but the app never hears of it. The subscription id is read from both invoice
+shapes (`invoice.subscription` before API "basil",
+`invoice.parent.subscription_details.subscription` after).
 
 `invoice.paid` / `invoice.payment_failed` are recorded in the audit log. A
 failed monthly charge notifies **both** the staff and the customer and
@@ -227,6 +300,71 @@ idempotent on its own — true for the flows that existed, but an instalment
 plan fires `invoice.paid` every month for the same subscription, so "the same
 event again" and "the next instalment" had to stop being indistinguishable.
 Stripe promises at-least-once delivery, not exactly-once.
+
+## Anteprima provvigioni e provvigioni per rata (Session 50) {#commission-preview}
+
+Business rules stated by the business: *solo i contratti danno provvigioni*;
+the administrator's approval is what sets them going, so the administrator
+must **see and accept a preview** first; a contract paid in one go pays its
+commissions once, a contract paid in 3 or 12 instalments pays them 3 or 12
+times, **each slice when that instalment has really been paid**.
+
+### L'anteprima {#commission-preview-gate}
+
+- `GET /contracts/{id}/commission-preview` (`contracts.review`) —
+  `commissions/services/preview.py`, read-only. Same chain the activation
+  snapshot would freeze (ancestors of the producer, ACTIVE agents only), same
+  tokens (product `commission_tokens` first, rank default second), same pure
+  calculator, same `instalment_share`. Shows each beneficiary (role, rank,
+  movement type, total), the first-referrer bonus, how it is spread over the
+  customer's payments (schedule with dates if paid; every possible split if
+  not), the customer's LialCash cashback (explicitly *not* a commission) and
+  warnings (unpaid, inactive promoters skipped, no rank, empty chain).
+- **Server-enforced gate** (`contracts/router.py::transition_contract`): a
+  transition into `APPROVED / PAYMENT_PENDING / PAID / ACTIVATION_PENDING /
+  ACTIVE` on a contract never activated before (and not SUSPENDED) is refused
+  unless a preview was already accepted or the request carries
+  `accept_commission_preview_checksum`. The server **recomputes** the preview
+  and refuses (409) if the checksum no longer matches what was on screen.
+- Accepted previews are stored verbatim in `contract_commission_plans` (one
+  per contract, audit `contract.commission_preview_accepted`) and reopened
+  from the contract's **Provvigioni** button as a log, next to the movements
+  actually written. If the network changes between acceptance and activation
+  the frozen snapshot at activation wins — the log shows both, it does not
+  pretend they are the same.
+- A contract approved before this existed and paid through Stripe does **not**
+  activate on its own: the payment is recorded and it waits for an
+  administrator to accept the preview.
+
+### Le rate e le quote di provvigione {#commission-instalments}
+
+- `contract_instalments`: one row per payment owed (1, 3 or 12), created at the
+  first recorded payment (the count comes from the plan actually paid; a
+  bank transfer confirmed by staff is always 1).
+- Each beneficiary's commission is split with
+  `run_calculation.py::instalment_share`: equal shares, remainder on the last
+  one, so the slices add up **exactly** to the whole commission (e.g. 40,00 €
+  on 3 rate = 13,33 + 13,33 + 13,34). Never the whole commission N times. The
+  first-referrer bonus is a one-off and goes out whole with instalment 1.
+- **Nothing is released before ACTIVE.** At activation every instalment
+  already paid is released (`instalments.release_paid_instalments`); after
+  that each newly paid instalment releases immediately.
+- A paid instalment is released by emitting exactly one
+  `ContractInstalmentPaid` outbox event, claimed with a conditional UPDATE on
+  `contract_instalments.commission_event_id`; the dispatcher runs the engine
+  for that slice (`instalment_number` of `instalments_total`) against the
+  snapshot frozen at activation. `ContractActivated` no longer calculates
+  anything for a contract that has instalment rows (it would pay the first
+  slice twice); `ContractRenewed` is unchanged.
+- Who confirms a payment: instalment 1 → the checkout webhook (or staff
+  confirming a bank transfer); later ones → `invoice.paid`
+  (`billing_reason = subscription_cycle`), matched by Stripe invoice id.
+  A failed charge marks the row FAILED with its invoice id and releases
+  nothing; staff can confirm it by hand
+  (`POST /contracts/{id}/instalments/{n}/confirm`, audit
+  `contract.instalment_confirmed_manually`), and Stripe's later retry of that
+  same invoice then finds it already paid. `UNIQUE (contract_id, number)` and
+  `UNIQUE stripe_invoice_id` make a double release impossible.
 
 ## Contract economics: IVA, tipo cliente, cashback, bonus (Session 38) {#contract-economics}
 

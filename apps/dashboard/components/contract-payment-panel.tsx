@@ -6,29 +6,51 @@ import { friendlyApiError } from "@/lib/api-error";
 import { formatEuroCents as euro } from "@/lib/product-audience";
 import type { ContractPaymentOptionsRead } from "@/lib/types";
 
+function LialCashInline({ cents }: { cents: number }) {
+  return (
+    <span className="tabular-nums">
+      {(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash
+    </span>
+  );
+}
+
 async function fetchOptions(contractId: string): Promise<ContractPaymentOptionsRead> {
   const res = await fetch(`/api/proxy/contracts/mine/${contractId}/payment-options`);
   if (!res.ok) throw new Error("Impossibile caricare le modalità di pagamento.");
   return res.json();
 }
 
-/** "Paga il contratto": the step after the documents have been uploaded and
- *  an administrator has approved them.
+const PLAN_LABELS: Record<string, string> = {
+  FULL: "soluzione unica",
+  INSTALMENTS_3: "3 rate mensili",
+  MONTHLY_12: "12 rate mensili",
+};
+
+/** "Paga il contratto".
+ *
+ *  Available from the moment the contract exists -- the customer does not
+ *  have to wait for the documents, or for an administrator to approve them
+ *  (Session 49). Paying early records the payment and credits the LialCash;
+ *  the contract itself still activates, and commissions still fire, only
+ *  once the documents are approved.
  *
  *  Every amount on this screen comes from the server, computed from the
  *  figure frozen on this contract. The browser only ever sends back a plan
- *  key -- it never proposes a price, and it never marks anything paid: the
- *  contract stays in "attesa di pagamento" until Stripe's signed webhook
- *  says otherwise, so reloading the success page does nothing.
+ *  key -- it never proposes a price, and it never marks anything paid: only
+ *  Stripe's signed webhook does, so reloading the success page does nothing.
  */
 export function ContractPaymentPanel({ contractId }: { contractId: string }) {
   const { data, error } = useQuery({
     queryKey: ["contract", contractId, "payment-options"],
     queryFn: () => fetchOptions(contractId),
+    // Payment happens in another tab and is confirmed by a webhook a few
+    // seconds later: coming back to this tab must show it.
+    refetchOnWindowFocus: true,
   });
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [opened, setOpened] = useState(false);
 
   async function handlePay() {
     if (!selected) return;
@@ -52,6 +74,7 @@ export function ContractPaymentPanel({ contractId }: { contractId: string }) {
       // their mind, the dashboard they were on is still there. Same rule as
       // the Shop checkout.
       window.open(checkout_url, "_blank", "noopener,noreferrer");
+      setOpened(true);
     } catch (err: any) {
       setPayError(err.message || "Impossibile avviare il pagamento.");
     } finally {
@@ -62,17 +85,33 @@ export function ContractPaymentPanel({ contractId }: { contractId: string }) {
   if (error) return <p className="text-sm text-rose-400">Impossibile caricare le modalità di pagamento.</p>;
   if (!data) return <div className="h-32 rounded-2xl bg-white/5 light:bg-slate-900/5 animate-pulse" />;
 
+  if (data.paid_at) {
+    const waitingForApproval = !["ACTIVE", "RENEWED", "PAID", "ACTIVATION_PENDING"].includes(data.status);
+    return (
+      <div className="rounded-2xl p-5 border border-emerald-500/25 bg-emerald-500/10">
+        <p className="text-sm font-semibold text-emerald-400">
+          Pagamento ricevuto{data.payment_plan && PLAN_LABELS[data.payment_plan] ? ` — ${PLAN_LABELS[data.payment_plan]}` : ""}
+        </p>
+        <p className="text-xs text-slate-300 light:text-slate-600 mt-1">
+          {waitingForApproval
+            ? "Il contratto si attiva appena l'amministrazione approva i documenti. Se ne mancano ancora, puoi caricarli quando vuoi."
+            : "Il contratto è attivo."}
+          {data.cashback_total_cents > 0 &&
+            (data.payment_plan === "FULL"
+              ? " Il cashback LialCash è stato accreditato sul tuo wallet."
+              : " Il cashback LialCash viene accreditato sul tuo wallet a ogni rata pagata.")}
+        </p>
+      </div>
+    );
+  }
+
   if (!data.payable) {
     return (
       <div className="glass-card rounded-2xl p-5 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
         <p className="text-sm text-slate-400 light:text-slate-500">
           {data.missing_amount
-            ? "Questo contratto è pronto per il pagamento, ma non ha un importo registrato: è stato creato prima che il sistema iniziasse a fissare il prezzo sul contratto. Contatta l'assistenza, lo sistemiamo noi."
-            : data.status === "DOCUMENTS_PENDING" || data.status === "SUBMITTED"
-            ? "Carica i documenti richiesti: appena l'amministrazione li approva potrai scegliere come pagare."
-            : data.status === "UNDER_REVIEW"
-              ? "I tuoi documenti sono in verifica. Appena approvati potrai scegliere come pagare."
-              : "Questo contratto non è in attesa di pagamento."}
+            ? "Questo contratto non ha un importo registrato: è stato creato prima che il sistema iniziasse a fissare il prezzo sul contratto. Contatta l'assistenza, lo sistemiamo noi."
+            : "Questo contratto non è in attesa di pagamento."}
         </p>
       </div>
     );
@@ -92,9 +131,21 @@ export function ContractPaymentPanel({ contractId }: { contractId: string }) {
   return (
     <div className="glass-card rounded-2xl p-5 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
       <h4 className="text-sm font-semibold text-white light:text-slate-900">Scegli come pagare</h4>
-      <p className="text-xs text-slate-400 light:text-slate-500 mt-1 mb-4">
+      <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
         Totale del contratto: <strong className="text-white light:text-slate-900">{euro(data.gross_amount_cents ?? 0)}</strong>
       </p>
+      {data.cashback_total_cents > 0 && (
+        <div className="mt-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <p className="text-xs text-emerald-400 font-semibold">
+            Ricevi {data.cashback_percentage === 100 ? "l'intero importo" : `il ${data.cashback_percentage}%`} in cashback:{" "}
+            <LialCashInline cents={data.cashback_total_cents} />
+          </p>
+          <p className="text-[10px] text-slate-400 light:text-slate-500 mt-0.5">
+            Accreditato in automatico sul tuo wallet appena paghi — con le rate, a ogni rata pagata.
+          </p>
+        </div>
+      )}
+      <div className="mb-4" />
 
       <div className="space-y-2.5">
         {data.options.map((option) => {
@@ -160,8 +211,9 @@ export function ContractPaymentPanel({ contractId }: { contractId: string }) {
         {loading ? "Apertura del pagamento..." : "Paga con carta"}
       </button>
       <p className="text-[10px] text-slate-500 mt-2 text-center">
-        Il pagamento si apre in una nuova scheda. Il contratto risulta attivo solo quando la banca
-        conferma l&apos;addebito.
+        {opened
+          ? "Completa il pagamento nella scheda che si è aperta, poi torna qui: questa pagina si aggiorna da sola."
+          : "Il pagamento si apre in una nuova scheda. Non serve aspettare l'approvazione dei documenti: il contratto si attiva quando sono approvati."}
       </p>
     </div>
   );

@@ -20,6 +20,9 @@ class CustomerRead(BaseModel):
     pec: str | None
     photo_url: str | None
     display_name: str
+    #: None for a company/condominium with no person's profile.
+    first_name: str | None = None
+    last_name: str | None = None
     created_at: datetime
     # Account-gate visibility for the admin (docs/business-rules.md#account-gates)
     # -- None (not False) when the customer has no login of its own.

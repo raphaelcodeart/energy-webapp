@@ -137,6 +137,15 @@ async def _make_payable_contract(db, organization_id, *, gross_cents: int = 249_
         )
     # APPROVED auto-cascades to PAYMENT_PENDING -- the point a customer can pay.
     assert contract.status == "PAYMENT_PENDING"
+    # Since Session 50 an approved contract activates on payment only once an
+    # administrator has accepted the commission preview.
+    from app.domains.commissions.services.preview import build_commission_preview
+
+    preview = await build_commission_preview(db, organization_id=organization_id, contract=contract)
+    await contract_service.accept_commission_plan(
+        db, organization_id=organization_id, contract=contract, checksum=preview["checksum"],
+        actor_user_id=user.id,
+    )
     return contract
 
 

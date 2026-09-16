@@ -42,6 +42,9 @@ class ContractRead(BaseModel):
     notes: str | None = None
     iban: str | None = None
     email: str | None = None
+    holder_first_name: str | None = None
+    holder_last_name: str | None = None
+    pec: str | None = None
     created_at: datetime
     activated_at: datetime | None = None
     expires_at: datetime | None = None
@@ -114,6 +117,38 @@ class ContractSelfServiceCreate(BaseModel):
     supply_point: SupplyPointCreate
     email: str
 
+    # Intestatario (migration 0040). Name required, PEC and IBAN optional:
+    # not everyone has a PEC, and an IBAN can still be added later from
+    # "I miei Contratti" -- the wizard asks for it up front, but a contract
+    # must never be blocked on a bank detail someone does not have at hand.
+    holder_first_name: str
+    holder_last_name: str
+    pec: str | None = None
+    iban: str | None = None
+
+    @field_validator("holder_first_name", "holder_last_name", mode="before")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str:
+        cleaned = (v or "").strip()
+        if not cleaned:
+            raise ValueError("campo obbligatorio")
+        return cleaned
+
+    @field_validator("pec", "iban", mode="before")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
+
+    @field_validator("pec")
+    @classmethod
+    def validate_pec(cls, v: str | None) -> str | None:
+        return _validate_email(v)
+
+    @field_validator("iban")
+    @classmethod
+    def validate_iban(cls, v: str | None) -> str | None:
+        return _validate_iban(v)
+
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
@@ -135,6 +170,38 @@ class ContractForCustomerCreate(BaseModel):
     product_version_id: uuid.UUID
     supply_point: SupplyPointCreate
     email: str
+
+    # Intestatario (migration 0040). Name required, PEC and IBAN optional:
+    # not everyone has a PEC, and an IBAN can still be added later from
+    # "I miei Contratti" -- the wizard asks for it up front, but a contract
+    # must never be blocked on a bank detail someone does not have at hand.
+    holder_first_name: str
+    holder_last_name: str
+    pec: str | None = None
+    iban: str | None = None
+
+    @field_validator("holder_first_name", "holder_last_name", mode="before")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str:
+        cleaned = (v or "").strip()
+        if not cleaned:
+            raise ValueError("campo obbligatorio")
+        return cleaned
+
+    @field_validator("pec", "iban", mode="before")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
+
+    @field_validator("pec")
+    @classmethod
+    def validate_pec(cls, v: str | None) -> str | None:
+        return _validate_email(v)
+
+    @field_validator("iban")
+    @classmethod
+    def validate_iban(cls, v: str | None) -> str | None:
+        return _validate_iban(v)
 
     @field_validator("email")
     @classmethod
@@ -161,6 +228,11 @@ class ContractTransitionRequest(BaseModel):
     to_status: str
     reason: str | None = None
     notes: str | None = None
+    #: The checksum of the commission preview the administrator was shown
+    #: and is accepting with this transition (GET /contracts/{id}/
+    #: commission-preview). Required on the way to activation when no preview
+    #: has been accepted yet -- see contracts/router.py::transition_contract.
+    accept_commission_preview_checksum: str | None = None
 
 
 class ContractStatusHistoryRead(BaseModel):
@@ -206,6 +278,15 @@ class ContractPaymentOptionsRead(BaseModel):
     gross_amount_cents: int | None = None
     card_available: bool = False
     options: list[ContractPaymentOptionRead] = []
+    #: Set once Stripe has confirmed the (first) payment -- possibly while
+    #: the documents are still waiting for approval.
+    paid_at: datetime | None = None
+    payment_plan: str | None = None
+    #: The product's automatic LialCash percentage, and what it comes to on
+    #: the whole contract. On an instalment plan it is credited one
+    #: instalment at a time, adding up to this same total.
+    cashback_percentage: int = 0
+    cashback_total_cents: int = 0
 
 
 class ContractCheckoutRequest(BaseModel):

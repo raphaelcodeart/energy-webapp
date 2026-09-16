@@ -36,7 +36,11 @@ async def list_products(
     return [
         ProductCatalogRead(
             **ProductRead.model_validate(product).model_dump(),
-            current_version=ProductVersionRead.from_version(version) if version else None,
+            current_version=(
+                ProductVersionRead.from_version(version, category=product.category, product_type=product.product_type)
+                if version
+                else None
+            ),
         )
         for product, version in pairs
     ]
@@ -56,7 +60,10 @@ async def get_product(
     product, versions = result
     return ProductWithVersionsRead(
         **ProductRead.model_validate(product).model_dump(),
-        versions=[ProductVersionRead.from_version(v) for v in versions],
+        versions=[
+            ProductVersionRead.from_version(v, category=product.category, product_type=product.product_type)
+            for v in versions
+        ],
     )
 
 

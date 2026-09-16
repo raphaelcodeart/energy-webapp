@@ -2,6 +2,7 @@
 
 import type { ProductCatalogRead } from "@/lib/types";
 import { ProductThumbnail } from "@/components/product-thumbnail";
+import { isRecurringProductType } from "@/lib/product-audience";
 
 const BILLING_LABELS: Record<string, string> = {
   MONTHLY: "/mese",
@@ -69,7 +70,7 @@ export function ProductDetailModal({
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-3xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(v.base_price_cents)}</span>
-                <span className="text-xs text-slate-500">{BILLING_LABELS[v.billing_period] ?? ""}</span>
+                <span className="text-xs text-slate-500">{isRecurringProductType(product.product_type) ? BILLING_LABELS[v.billing_period] ?? "" : ""}</span>
               </div>
               {v.vat_percentage != null && (
                 <p className="text-[10px] text-slate-500 mt-0.5">

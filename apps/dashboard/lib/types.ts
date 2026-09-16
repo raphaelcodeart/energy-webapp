@@ -16,6 +16,11 @@ export type ContractRead = {
   supply_point_label: string | null;
   iban: string | null;
   email: string | null;
+  /** Intestatario as typed in the activation wizard (Session 49). Null on
+      older and staff-created contracts. */
+  holder_first_name: string | null;
+  holder_last_name: string | null;
+  pec: string | null;
 
   // --- Chi lo ha costruito (Session 38) ---
   /** CUSTOMER / PROMOTER / ADMIN. Null on contracts created before this
@@ -183,6 +188,9 @@ export type CustomerRead = {
   pec: string | null;
   photo_url: string | null;
   display_name: string;
+  /** Null for a company/condominium with no person's profile. */
+  first_name: string | null;
+  last_name: string | null;
   created_at: string;
   email_verified: boolean | null;
   privacy_accepted: boolean | null;
@@ -290,6 +298,11 @@ export type ProductVersionRead = {
   /** NO_CASHBACK / STANDARD / AUTOMATIC_INTERNAL_SERVICE -- derived server-side
       from the fields above plus the product's category, never stored. */
   cashback_mode: string;
+  /** How many canoni one contract is made of (12 for a monthly price on a
+      12-month contract) and the whole contract's price before VAT --
+      computed server-side (catalog/pricing.py::contract_net_amount_cents). */
+  contract_billing_periods: number;
+  contract_net_amount_cents: number;
   valid_from: string;
   valid_to: string | null;
   status: string;
@@ -778,4 +791,90 @@ export type ContractPaymentOptionsRead = {
   gross_amount_cents: number | null;
   card_available: boolean;
   options: ContractPaymentOptionRead[];
+  /** Set once Stripe confirmed the (first) payment -- possibly while the
+      documents are still waiting for approval (Session 49). */
+  paid_at: string | null;
+  payment_plan: string | null;
+  /** Automatic LialCash on this contract: the percentage, and what it comes
+      to on the whole amount. On instalments it is credited rata per rata. */
+  cashback_percentage: number;
+  cashback_total_cents: number;
+};
+
+
+// --- Anteprima provvigioni e rate del contratto (Session 50) ---------------
+// Computed entirely server-side (commissions/services/preview.py). The
+// dashboard only renders it and sends back its checksum on acceptance.
+
+export type CommissionPreviewBeneficiary = {
+  agent_id: string;
+  name: string;
+  rank_code: string;
+  depth: number;
+  role: string;
+  movement_type: string;
+  movement_label: string;
+  total_cents: number;
+  explanation: string;
+};
+
+export type CommissionPreviewScheduleRow = {
+  number: number;
+  due_date: string | null;
+  customer_amount_cents: number;
+  commission_cents: number;
+  per_beneficiary_cents: Record<string, number>;
+  release: string;
+};
+
+export type CommissionPreviewRead = {
+  contract_id: string;
+  customer_name: string;
+  gross_amount_cents: number;
+  beneficiaries: CommissionPreviewBeneficiary[];
+  first_referrer_bonus: { agent_id: string; name: string; amount_cents: number; note: string } | null;
+  total_commission_cents: number;
+  payment: {
+    paid: boolean;
+    paid_at: string | null;
+    plan_key: string | null;
+    plan_label: string | null;
+    instalments: number | null;
+    schedule: CommissionPreviewScheduleRow[];
+    last_release_date: string | null;
+    scenarios: { plan_key: string; plan_label: string; instalments: number; commission_per_instalment_cents: number }[];
+  };
+  customer_cashback_cents: number;
+  warnings: string[];
+  checksum: string;
+  /** Only on GET /commission-preview. */
+  already_accepted?: boolean;
+};
+
+export type ContractInstalmentRead = {
+  number: number;
+  instalments_total: number;
+  due_date: string;
+  amount_cents: number;
+  /** SCHEDULED / PAID / FAILED */
+  status: string;
+  paid_at: string | null;
+  /** STRIPE_CHECKOUT / STRIPE_INVOICE / ADMIN */
+  payment_source: string | null;
+  confirmed_by: string | null;
+  commission_released_at: string | null;
+  commission_pending: boolean;
+};
+
+export type ContractCommissionLogRead = {
+  contract_id: string;
+  status: string;
+  payment_plan: string | null;
+  accepted_plan: {
+    accepted_at: string;
+    accepted_by: string | null;
+    total_commission_cents: number;
+    preview: CommissionPreviewRead;
+  } | null;
+  instalments: ContractInstalmentRead[];
 };

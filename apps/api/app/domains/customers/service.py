@@ -73,6 +73,10 @@ async def list_customers(
             "pec": c.pec,
             "photo_url": c.photo_url,
             "display_name": display_name_for(c.kind, profiles.get(c.id), companies.get(c.id)),
+            # The two halves separately, never re-split out of display_name:
+            # the contract wizard pre-fills Nome and Cognome from these.
+            "first_name": profiles[c.id].first_name if c.id in profiles else None,
+            "last_name": profiles[c.id].last_name if c.id in profiles else None,
             "created_at": c.created_at,
             "email_verified": (
                 users_by_id[c.user_id].email_verified_at is not None if c.user_id in users_by_id else None

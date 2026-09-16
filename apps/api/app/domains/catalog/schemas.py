@@ -41,12 +41,20 @@ class ProductVersionRead(BaseModel):
     #: it can never disagree with the fields that actually drive behaviour.
     #: See catalog/pricing.py::cashback_mode_for.
     cashback_mode: str = pricing.CASHBACK_MODE_NONE
+    #: How many canoni one contract is made of, and what the whole contract
+    #: costs before VAT (catalog/pricing.py::contract_net_amount_cents) --
+    #: so the activation wizard can say "12 mesi, 180 € + IVA" without doing
+    #: the arithmetic in the browser.
+    contract_billing_periods: int = 1
+    contract_net_amount_cents: int = 0
     valid_from: datetime
     valid_to: datetime | None
     status: str
 
     @classmethod
-    def from_version(cls, version, *, category: str | None = None) -> "ProductVersionRead":
+    def from_version(
+        cls, version, *, category: str | None = None, product_type: str | None = None
+    ) -> "ProductVersionRead":
         """ProductVersion has no vat_percentage column -- it lives inside the
         tax_configuration JSONB blob (already present on the model, previously
         unused). from_attributes=True can't compute that, so every call site
@@ -71,6 +79,8 @@ class ProductVersionRead(BaseModel):
             first_referrer_bonus_enabled=version.first_referrer_bonus_enabled,
             first_referrer_bonus_cents=version.first_referrer_bonus_cents,
             cashback_mode=pricing.cashback_mode_for(category=category, version=version),
+            contract_billing_periods=pricing.contract_billing_periods(version, product_type=product_type),
+            contract_net_amount_cents=pricing.contract_net_amount_cents(version, product_type=product_type),
             valid_from=version.valid_from,
             valid_to=version.valid_to,
             status=version.status,
