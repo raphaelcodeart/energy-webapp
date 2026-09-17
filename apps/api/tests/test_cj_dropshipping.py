@@ -10,6 +10,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from app.core.db import utcnow
 from app.core.security import hash_otp_code, hash_password
 from app.domains.accounting import details as accounting_details
 from app.domains.accounting import service as accounting_service
@@ -38,9 +39,16 @@ class FakeCj:
         self.calls: list[tuple[str, dict | None]] = []
         self.fail_create: str | None = None
         self.fail_pay: str | None = None
+        self.lookup_error: str | None = None
+        self.timeout_after_create = False
+        self.autopay_on_create = False  # what CJ does with sandbox orders
+        self.balance = 0.0
+        self.orders_created = 0
         self.freight_options = [
-            {"logisticName": "CJPacket Ordinary", "logisticPrice": 7.81, "logisticAging": "4-8"},
-            {"logisticName": "Slow Post", "logisticPrice": 9.50, "logisticAging": "20-30"},
+            {"logisticName": "CJPacket Ordinary", "logisticPrice": 6.10, "totalPostageFee": 7.81, "logisticAging": "4-8"},
+            {"logisticName": "Slow Post", "logisticPrice": 9.50, "totalPostageFee": 9.50, "logisticAging": "20-30"},
+            # Cheapest base price, most expensive in reality: must not be chosen.
+            {"logisticName": "Trap Express", "logisticPrice": 5.00, "totalPostageFee": 12.00, "logisticAging": "3-5"},
         ]
         self.remote_orders: dict[str, dict] = {}
 
@@ -69,24 +77,60 @@ class FakeCj:
         if path == "/logistic/freightCalculate":
             return self.freight_options
         if path == "/shopping/order/getOrderDetail":
-            return self.remote_orders.get(params["orderId"]) or {}
+            if self.lookup_error:
+                raise cj_client.CjApiError(self.lookup_error)  # e.g. timeout: code None
+            item = self._find(params["orderId"])
+            if item is None:
+                raise cj_client.CjApiError("CJ: order not found", code=1600300)
+            return dict(item)
         if path == "/shopping/order/createOrderV2":
             if self.fail_create:
-                raise cj_client.CjApiError(self.fail_create)
-            self.remote_orders[body["orderNumber"]] = {"orderId": "CJ-1", "orderStatus": "CREATED"}
-            return {"orderId": "CJ-1", "orderStatus": "CREATED", "orderAmount": 17.81}
+                raise cj_client.CjApiError(self.fail_create, code=1600100)
+            self.orders_created += 1
+            n = self.orders_created
+            status = "UNSHIPPED" if self.autopay_on_create else "UNPAID"
+            item = {
+                "orderId": f"26091711{n:04d}", "cjOrderCode": f"SD{n:04d}", "orderNum": body["orderNumber"],
+                "orderStatus": status, "orderAmount": 17.81, "productAmount": 10.00, "postageAmount": 7.81,
+            }
+            self.remote_orders[body["orderNumber"]] = item
+            if self.timeout_after_create:
+                self.timeout_after_create = False
+                raise cj_client.CjApiError("CJ non risponde (ReadTimeout). Riprova tra poco.")
+            return {
+                "orderId": item["cjOrderCode"], "orderNumber": body["orderNumber"], "shipmentOrderId": f"CJ{n}",
+                "orderStatus": "", "orderAmount": 17.81, "productAmount": 10.00, "postageAmount": 7.81,
+                "cjPayUrl": None if self.autopay_on_create else f"https://pay.cj.example/{n}",
+            }
         if path == "/shopping/pay/payBalance":
             if self.fail_pay:
-                raise cj_client.CjApiError(self.fail_pay)
+                message, self.fail_pay = self.fail_pay, None
+                raise cj_client.CjApiError(message)
+            item = self._find(body["orderId"])
+            if item is None or item["orderStatus"] != "UNPAID":
+                raise cj_client.CjApiError("CJ: pay order fail, order status is not unpaid.", code=1603001)
+            if self.balance < item["orderAmount"]:
+                raise cj_client.CjApiError("CJ: Insufficient balance", code=1603001)
+            self.balance = round(self.balance - item["orderAmount"], 2)
+            item["orderStatus"] = "UNSHIPPED"
             return None
         if path == "/shopping/order/getOrderDetailBatch":
-            return [{"orderId": "CJ-1", "orderStatus": "SHIPPED", "trackNumber": "LP123IT", "trackingProvider": "PostNL"}]
+            return [dict(i) for i in (self._find(x) for x in body["orderIds"]) if i is not None]
         if path == "/shopping/pay/getBalance":
-            return {"amount": 25.5}
+            return {"amount": self.balance}
         raise AssertionError(f"unexpected CJ call {path}")
+
+    def _find(self, ref):
+        for item in self.remote_orders.values():
+            if ref in (item["orderId"], item["cjOrderCode"], item["orderNum"]):
+                return item
+        return None
 
     def count(self, path):
         return sum(1 for p, _ in self.calls if p == path)
+
+    def calls_to_orders(self):
+        return sum(1 for p, _ in self.calls if p.startswith("/shopping/"))
 
 
 @pytest.fixture
@@ -133,7 +177,10 @@ async def _shop(db, organization_id, admin, **settings_updates):
     row = await cj_service.get_settings_row(db, organization_id=organization_id)
     await cj_service.update_settings(
         db, row=row, actor_user_id=admin.id,
-        updates={"api_key": "CJ123@api@secret-abcd", "enabled": True, "markup_percentage": 40, **settings_updates},
+        updates={
+            "api_key": "CJ123@api@secret-abcd", "enabled": True, "markup_percentage": 40, "auto_forward": False,
+            **settings_updates,
+        },
     )
     product = await cj_service.import_product(
         db, row=row, actor_user_id=admin.id, pid="P1", name="Auricolari wireless", description=None,
@@ -336,9 +383,9 @@ async def test_cancel_gives_the_lialcash_back(db, organization_id, fake_cj):
     )).balance_cents == 500
 
 
-async def _paid_order(db, organization_id, fake_cj):
-    admin = await _user(db, organization_id, "ADMIN")
-    customer = await _user(db, organization_id)
+async def _paid_order(db, organization_id, fake_cj, admin=None, customer=None):
+    admin = admin or await _user(db, organization_id, "ADMIN")
+    customer = customer or await _user(db, organization_id)
     _row, _product, variants = await _shop(db, organization_id, admin)
     order = await cj_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id,
@@ -349,75 +396,176 @@ async def _paid_order(db, organization_id, fake_cj):
     return admin, customer, order
 
 
+async def _staff_notes(db, type_):
+    return (await db.execute(select(Notification).where(Notification.type == type_))).scalars().all()
+
+
+def test_shipping_is_chosen_and_charged_on_what_cj_really_bills():
+    options = FakeCj().freight_options
+    assert cj_service._cheapest(options)["logisticName"] == "CJPacket Ordinary"  # 7.81, not the 5.00 base price
+    assert cj_service.postage_usd({"logisticPrice": 9.39, "totalPostageFee": 12.89}) == Decimal("12.89")
+    assert cj_service.postage_usd({"logisticPrice": 9.39}) == Decimal("9.39")
+
+
 @pytest.mark.asyncio
-async def test_forward_creates_and_pays_once(db, organization_id, fake_cj):
-    admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
-    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
+async def test_scenario1_balance_covers_it_created_and_paid_automatically(db, organization_id, fake_cj):
+    fake_cj.balance = 100.0
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    assert order.cj_payment_status == "NOT_REQUIRED"
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
     assert order.fulfillment_status == "PROCESSING"
-    assert order.cj_order_id == "CJ-1"
+    assert order.cj_payment_status == "PAID" and order.cj_paid_at is not None
+    assert order.cj_order_code == "SD0001"
+    assert order.cj_amount_usd == Decimal("17.81")
     body = next(b for p, b in fake_cj.calls if p == "/shopping/order/createOrderV2")
-    assert body["orderNumber"] == f"LIAL-{order.id}"
-    assert body["isSandbox"] == 1  # sandbox is the default
-    assert body["logisticName"] == "CJPacket Ordinary"
-    assert body["shippingCity"] == "Milano"
-    assert body["iossType"] == 3  # from China into the EU
+    assert body["payType"] == 1 and body["orderNumber"] == f"LIAL-{order.id}"
+    assert body["isSandbox"] == 1 and body["logisticName"] == "CJPacket Ordinary" and body["iossType"] == 3
     assert fake_cj.count("/shopping/pay/payBalance") == 1
+    assert fake_cj.balance == 82.19
+    read = await cj_service.order_read_dict(db, order, admin=False)
+    assert read["delivery_status"] == "PREPARING"
+    assert "cj_payment_status" not in read and "fulfillment_status" not in read and "cj_pay_url" not in read
+    summary = await cj_service.cash_requirement(db, organization_id=organization_id, refresh_balance=False)
+    assert summary["orders_to_pay"] == 0 and summary["required_usd"] == 0
 
-    with pytest.raises(cj_service.CjValidationError):
-        await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
+
+@pytest.mark.asyncio
+async def test_scenario1b_sandbox_order_paid_by_cj_at_creation_is_not_paid_again(db, organization_id, fake_cj):
+    fake_cj.autopay_on_create = True
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert order.cj_payment_status == "PAID" and order.fulfillment_status == "PROCESSING"
+    assert fake_cj.count("/shopping/pay/payBalance") == 0 and fake_cj.count("/shopping/pay/getBalance") == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("balance", [0.0, 10.0])
+async def test_scenario2_3_balance_zero_or_short_order_waits_for_payment(db, organization_id, fake_cj, balance):
+    fake_cj.balance = balance
+    _admin, customer, order = await _paid_order(db, organization_id, fake_cj)
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert order.cj_order_id and order.fulfillment_status == "SENT"
+    assert order.cj_payment_status == "PAYMENT_REQUIRED"
+    assert order.last_error_kind == "INSUFFICIENT_BALANCE" and order.next_retry_at is not None
+    assert order.cj_pay_url == "https://pay.cj.example/1"
+    assert fake_cj.count("/shopping/pay/payBalance") == 0  # never tried with a balance that cannot cover it
+    read = await cj_service.order_read_dict(db, order, admin=False)
+    assert read["delivery_status"] == "RECEIVED"
+    admin_read = await cj_service.order_read_dict(db, order, admin=True)
+    assert admin_read["cj_payment_status"] == "PAYMENT_REQUIRED" and admin_read["cj_pay_url"]
+    alerts = await _staff_notes(db, "CJ_PAYMENT_REQUIRED")
+    assert len(alerts) >= 1 and "17.81" in alerts[0].title
+    assert f"{balance:.2f}" in alerts[0].body
+    # Nothing is said to the customer about it.
+    customer_notes = (await db.execute(select(Notification).where(Notification.recipient_user_id == customer.id))).scalars().all()
+    assert all("CJ" not in n.title and "saldo" not in (n.body or "").lower() for n in customer_notes)
+    # Asking again: same CJ order, no second alert.
+    before = len(await _staff_notes(db, "CJ_PAYMENT_REQUIRED"))
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
     assert fake_cj.count("/shopping/order/createOrderV2") == 1
+    assert len(await _staff_notes(db, "CJ_PAYMENT_REQUIRED")) == before
+    summary = await cj_service.cash_requirement(db, organization_id=organization_id, refresh_balance=True)
+    assert summary["orders_to_pay"] == 1 and summary["required_usd"] == 17.81
+    assert summary["balance_usd"] == balance and summary["shortfall_usd"] == round(17.81 - balance, 2)
 
 
 @pytest.mark.asyncio
-async def test_forward_failures_are_recorded_and_a_retry_never_duplicates(db, organization_id, fake_cj):
-    admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
-
-    fake_cj.fail_create = "CJ: address invalid"
-    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
-    assert order.fulfillment_status == "ERROR"
-    assert "address invalid" in order.forward_error
-    staff_alerts = (
-        await db.execute(select(Notification).where(Notification.type == "CJ_ORDER_FAILED"))
-    ).scalars().all()
-    assert staff_alerts
-
-    fake_cj.fail_create = None
-    fake_cj.fail_pay = "CJ: Insufficient balance"
-    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
-    assert order.fulfillment_status == "SENT"  # on CJ, not paid
-    assert order.cj_order_id == "CJ-1"
-
-    fake_cj.fail_pay = None
-    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
-    assert order.fulfillment_status == "PROCESSING"
-    assert order.forward_error is None
-    # One refused by CJ, one created; the last retry only paid.
-    assert fake_cj.count("/shopping/order/createOrderV2") == 2
+async def test_scenario4_create_times_out_but_cj_created_it_no_duplicate(db, organization_id, fake_cj):
+    fake_cj.balance = 100.0
+    fake_cj.timeout_after_create = True
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert order.fulfillment_status == "ERROR" and order.last_error_kind == "TEMPORARY"
+    assert order.next_retry_at is not None and order.cj_order_id is None
+    # A lookup that itself fails must not lead to creating blindly.
+    fake_cj.lookup_error = "CJ non risponde (ReadTimeout). Riprova tra poco."
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert fake_cj.count("/shopping/order/createOrderV2") == 1 and order.fulfillment_status == "ERROR"
+    fake_cj.lookup_error = None
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert fake_cj.count("/shopping/order/createOrderV2") == 1  # picked up by our order number
+    assert order.cj_order_code == "SD0001" and order.cj_payment_status == "PAID"
+    assert order.attempt_count == 3
 
 
 @pytest.mark.asyncio
-async def test_an_interrupted_send_is_taken_over_by_order_number(db, organization_id, fake_cj):
-    admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
-    # CJ already has the order, but the worker died before saving anything.
-    fake_cj.remote_orders[f"LIAL-{order.id}"] = {"orderId": "CJ-1", "orderStatus": "CREATED"}
-    order.fulfillment_status = "SENDING"
-    order.forwarded_at = datetime.now(UTC) - timedelta(minutes=30)
+async def test_scenario5_payment_fails_temporarily_and_is_recovered(db, organization_id, fake_cj):
+    fake_cj.balance = 100.0
+    fake_cj.fail_pay = "CJ non risponde (ConnectTimeout). Riprova tra poco."
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert order.fulfillment_status == "SENT" and order.cj_payment_status == "FAILED"
+    assert order.last_error_kind == "TEMPORARY" and order.next_retry_at is not None
+    assert (await cj_service.order_read_dict(db, order, admin=False))["delivery_status"] == "RECEIVED"
+    # The retry job picks it up when its time comes.
+    order.next_retry_at = utcnow() - timedelta(minutes=1)
     await db.commit()
-    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
-    assert order.fulfillment_status == "PROCESSING"
-    assert fake_cj.count("/shopping/order/createOrderV2") == 0
+    await cj_service.update_settings(
+        db, row=await cj_service.get_settings_row(db, organization_id=organization_id),
+        updates={"auto_forward": True}, actor_user_id=None,
+    )
+    assert await cj_service.retry_due_orders(db, organization_id=organization_id) == 1
+    await db.refresh(order)
+    assert order.cj_payment_status == "PAID" and order.fulfillment_status == "PROCESSING"
+    assert fake_cj.count("/shopping/order/createOrderV2") == 1 and fake_cj.count("/shopping/pay/payBalance") == 2
 
 
 @pytest.mark.asyncio
-async def test_sync_records_tracking_and_tells_the_customer(db, organization_id, fake_cj):
-    admin, customer, order = await _paid_order(db, organization_id, fake_cj)
-    await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=admin.id)
-    changed = await cj_service.sync_orders(db, organization_id=organization_id)
-    assert changed == 1
+async def test_scenario6_admin_pays_on_cj_page_and_sync_detects_it(db, organization_id, fake_cj):
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert order.cj_payment_status == "PAYMENT_REQUIRED"
+    fake_cj.remote_orders[f"LIAL-{order.id}"]["orderStatus"] = "UNSHIPPED"  # paid by card on CJ's page
+    assert await cj_service.sync_orders(db, organization_id=organization_id) == 1
     await db.refresh(order)
-    assert order.fulfillment_status == "SHIPPED"
-    assert order.tracking_number == "LP123IT"
-    assert order.shipped_at is not None
+    assert order.cj_payment_status == "PAID" and order.fulfillment_status == "PROCESSING"
+    assert (await cj_service.order_read_dict(db, order, admin=False))["delivery_status"] == "PREPARING"
+    with pytest.raises(cj_service.CjValidationError):
+        await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    fake_cj.balance = 100.0
+    assert await cj_service.retry_due_orders(db, organization_id=organization_id) == 0
+    assert fake_cj.count("/shopping/pay/payBalance") == 0 and fake_cj.balance == 100.0
+
+
+@pytest.mark.asyncio
+async def test_scenario6b_balance_topped_up_is_spent_once_oldest_first(db, organization_id, fake_cj):
+    admin = await _user(db, organization_id, "ADMIN")
+    customer = await _user(db, organization_id)
+    _row, _product, variants = await _shop(db, organization_id, admin, auto_forward=True)
+    orders = []
+    for _ in range(2):
+        order = await cj_service.create_order(
+            db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id,
+            quantity=1, address=ADDRESS, credit_applied_cents=0, payment_method="BANK_TRANSFER",
+            actor_user_id=customer.id, otp_code=None, note=None,
+        )
+        order.status, order.paid_at = "PAID", utcnow()
+        await db.commit()
+        orders.append(await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None))
+    assert [o.cj_payment_status for o in orders] == ["PAYMENT_REQUIRED", "PAYMENT_REQUIRED"]
+    summary = await cj_service.cash_requirement(db, organization_id=organization_id, refresh_balance=True)
+    assert summary["required_usd"] == 35.62 and summary["shortfall_usd"] == 35.62
+    fake_cj.balance = 20.0  # enough for one
+    for o in orders:
+        o.next_retry_at = utcnow() - timedelta(minutes=1)
+    await db.commit()
+    assert await cj_service.retry_due_orders(db, organization_id=organization_id) == 1
+    for o in orders:
+        await db.refresh(o)
+    assert [o.cj_payment_status for o in orders] == ["PAID", "PAYMENT_REQUIRED"]
+    assert fake_cj.count("/shopping/pay/payBalance") == 1 and fake_cj.balance == 2.19
+
+
+@pytest.mark.asyncio
+async def test_scenario7_tracking_reaches_the_customer(db, organization_id, fake_cj):
+    fake_cj.balance = 100.0
+    _admin, customer, order = await _paid_order(db, organization_id, fake_cj)
+    await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    remote = fake_cj.remote_orders[f"LIAL-{order.id}"]
+    remote.update({"orderStatus": "SHIPPED", "trackNumber": "LP123IT", "trackingProvider": "PostNL"})
+    assert await cj_service.sync_orders(db, organization_id=organization_id) == 1
+    await db.refresh(order)
+    assert order.fulfillment_status == "SHIPPED" and order.tracking_number == "LP123IT" and order.shipped_at
     notes = (
         await db.execute(
             select(Notification).where(Notification.recipient_user_id == customer.id, Notification.type == "ORDER_SHIPPED")
@@ -425,10 +573,38 @@ async def test_sync_records_tracking_and_tells_the_customer(db, organization_id,
     ).scalars().all()
     assert len(notes) == 1
     read = await cj_service.order_read_dict(db, order, admin=False)
-    assert read["tracking_url"].endswith("LP123IT")
-    assert "cj_order_id" not in read and "unit_cost_usd" not in read
-    # Nothing new on CJ: nothing changes, nobody is notified twice.
-    assert await cj_service.sync_orders(db, organization_id=organization_id) == 0
+    assert read["delivery_status"] == "SHIPPED" and read["tracking_url"].endswith("LP123IT")
+    assert await cj_service.sync_orders(db, organization_id=organization_id) == 0  # nobody told twice
+
+
+@pytest.mark.asyncio
+async def test_scenario8_two_processes_one_order_handled_once(db, organization_id, fake_cj):
+    fake_cj.balance = 100.0
+    _admin, _customer, order = await _paid_order(db, organization_id, fake_cj)
+    # Another process holds the order right now.
+    order.fulfillment_status = "SENDING"
+    order.last_attempt_at = utcnow()
+    await db.commit()
+    with pytest.raises(cj_service.CjValidationError):
+        await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert fake_cj.calls_to_orders() == 0
+    # That process died after CJ created the order: taken over after 10 minutes, no duplicate.
+    fake_cj.remote_orders[f"LIAL-{order.id}"] = {
+        "orderId": "999", "cjOrderCode": "SD0999", "orderNum": f"LIAL-{order.id}", "orderStatus": "UNPAID",
+        "orderAmount": 17.81,
+    }
+    order.last_attempt_at = utcnow() - timedelta(minutes=15)
+    await db.commit()
+    order = await cj_service.forward_order(db, organization_id=organization_id, order_id=order.id, actor_user_id=None)
+    assert fake_cj.count("/shopping/order/createOrderV2") == 0
+    assert order.cj_order_code == "SD0999" and order.cj_payment_status == "PAID"
+
+
+def test_error_classification():
+    assert cj_service.classify_error(cj_client.CjApiError("CJ non risponde (ReadTimeout).")) == "TEMPORARY"
+    assert cj_service.classify_error(cj_client.CjApiError("CJ: Insufficient balance", code=1603001)) == "INSUFFICIENT_BALANCE"
+    assert cj_service.classify_error(cj_client.CjApiError("CJ: token invalid", code=1600001)) == "AUTHENTICATION"
+    assert cj_service.classify_error(cj_client.CjApiError("CJ: Param error", code=1600100)) == "VALIDATION"
 
 
 @pytest.mark.asyncio

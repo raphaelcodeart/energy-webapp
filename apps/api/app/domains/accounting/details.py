@@ -332,15 +332,21 @@ async def _cj_order_detail(
             "Ordine annullato", order.cancelled_at, by=names.get(order.cancelled_by_user_id), tone="warning"
         ))
     if order.status == "PAID":
-        if order.forwarded_at and order.fulfillment_status not in ("NOT_SENT", "ERROR"):
+        # The customer sees "received" until the supplier is paid, whatever
+        # the reason (Session 63); staff see the supplier side step by step.
+        if owner_user_id is None:
+            if order.forwarded_at and order.cj_order_id:
+                timeline.append(_event("Creato su CJ", order.forwarded_at, by=names.get(order.forwarded_by_user_id) or "Automatico"))
+            if order.cj_payment_status == "PAYMENT_REQUIRED":
+                timeline.append(_event("Pagamento CJ richiesto", None, tone="warning"))
+            elif order.fulfillment_status == "ERROR":
+                timeline.append(_event("Invio a CJ non riuscito", None, by=order.forward_error, tone="warning"))
+        if order.cj_paid_at:
             timeline.append(_event(
-                "In preparazione presso il fornitore", order.forwarded_at,
-                by=None if owner_user_id is not None else (names.get(order.forwarded_by_user_id) or "Automatico"),
+                "In preparazione" if owner_user_id is not None else "Pagato su CJ: in preparazione", order.cj_paid_at
             ))
-        elif owner_user_id is None and order.fulfillment_status == "ERROR":
-            timeline.append(_event("Invio al fornitore non riuscito", None, by=order.forward_error, tone="warning"))
         else:
-            timeline.append(_event("In preparazione", None, tone="pending"))
+            timeline.append(_event("Ordine ricevuto: in attesa di preparazione", None, tone="pending"))
         if order.shipped_at:
             timeline.append(_event("Spedito", order.shipped_at, by=order.tracking_number))
         elif order.fulfillment_status != "CJ_CANCELLED":
@@ -354,8 +360,10 @@ async def _cj_order_detail(
         _fact("Cliente", names.get(order.customer_user_id)),
         _fact("Ordine CJ", order.cj_order_id, mono=True),
         _fact("Stato su CJ", order.cj_order_status),
+        _fact("Pagamento CJ", order.cj_payment_status),
+        _fact("Costo CJ reale (USD)", f"{order.cj_amount_usd:.2f}" if order.cj_amount_usd is not None else None),
         _fact("Corriere", order.logistic_name),
-        _fact("Costo CJ (USD)", f"{order.unit_cost_usd * order.quantity + order.shipping_cost_usd:.2f}"),
+        _fact("Costo CJ stimato (USD)", f"{order.unit_cost_usd * order.quantity + order.shipping_cost_usd:.2f}"),
         _fact("Sandbox", "Sì" if order.sandbox else None),
         _fact("Errore invio", order.forward_error),
     ]

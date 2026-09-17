@@ -6,6 +6,7 @@ import { friendlyApiError } from "@/lib/api-error";
 import { Pagination, usePagination } from "@/components/pagination";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import type {
+  CjCashSummary,
   CjCatalogPage,
   CjOrderRead,
   CjProductAdminRead,
@@ -245,7 +246,7 @@ function SettingsForm({ settings }: { settings: CjSettingsRead }) {
           <Switch checked={form.sandbox} onChange={(v) => setForm({ ...form, sandbox: v })}
             title="Modalità test (sandbox)" hint="Gli ordini inviati a CJ sono di prova: nessuna spedizione reale, nessun addebito. Spegnila quando sei pronto a vendere." />
           <Switch checked={form.auto_forward} onChange={(v) => setForm({ ...form, auto_forward: v })}
-            title="Invia a CJ in automatico" hint="Appena il cliente ha pagato, l'ordine parte verso CJ. Se è spento lo invii tu da “Ordini”." />
+            title="Evasione automatica (consigliata)" hint="Appena il cliente ha pagato, l'ordine viene creato su CJ e pagato dal saldo CJ se basta. Se il saldo non basta resta “Pagamento CJ richiesto”: lo paghi dalla pagina CJ dell'ordine o ricaricando il saldo, e riparte da solo." />
           {form.enabled && form.sandbox && (
             <p className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 light:text-amber-700">
               Attenzione: shop visibile ma in modalità test. I clienti possono comprare e pagare davvero, ma CJ non
@@ -806,25 +807,109 @@ function EditProductModal({ product, onClose }: { product: CjProductAdminRead; o
 }
 
 // --- Ordini ----------------------------------------------------------------------------------
+//
+// Session 63: three separate facts per order -- did the customer pay, is the
+// order on CJ, has CJ been paid -- and, on top, how much money CJ needs to
+// release every order customers have already paid.
 
-const FULFILLMENT: Record<string, { label: string; className: string }> = {
-  NOT_SENT: { label: "Da inviare a CJ", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" },
-  SENDING: { label: "Invio in corso", className: "bg-sky-500/10 border-sky-500/30 text-sky-400" },
-  SENT: { label: "Su CJ, da pagare", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" },
-  PROCESSING: { label: "In lavorazione su CJ", className: "bg-sky-500/10 border-sky-500/30 text-sky-400" },
-  SHIPPED: { label: "Spedito", className: "bg-indigo-500/10 border-indigo-500/30 text-indigo-400" },
-  DELIVERED: { label: "Consegnato", className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" },
-  ERROR: { label: "Errore invio", className: "bg-rose-500/10 border-rose-500/30 text-rose-400" },
-  CJ_CANCELLED: { label: "Annullato da CJ", className: "bg-rose-500/10 border-rose-500/30 text-rose-400" },
+type Badge = { label: string; className: string };
+
+const TONE = {
+  ok: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
+  info: "bg-sky-500/10 border-sky-500/30 text-sky-400",
+  warn: "bg-amber-500/10 border-amber-500/30 text-amber-400",
+  bad: "bg-rose-500/10 border-rose-500/30 text-rose-400",
+  muted: "bg-white/5 border-white/10 light:border-slate-300 text-slate-400",
+};
+
+const CUSTOMER_PAYMENT: Record<string, Badge> = {
+  AWAITING_PAYMENT: { label: "Cliente: da pagare", className: TONE.warn },
+  PAID: { label: "Cliente: pagato", className: TONE.ok },
+  CANCELLED: { label: "Annullato", className: TONE.bad },
+};
+
+const CJ_ORDER: Record<string, Badge> = {
+  NOT_SENT: { label: "CJ: non creato", className: TONE.muted },
+  SENDING: { label: "CJ: in corso", className: TONE.info },
+  SENT: { label: "CJ: creato", className: TONE.info },
+  PROCESSING: { label: "CJ: in preparazione", className: TONE.info },
+  SHIPPED: { label: "Spedito", className: TONE.info },
+  DELIVERED: { label: "Consegnato", className: TONE.ok },
+  ERROR: { label: "CJ: errore", className: TONE.bad },
+  CJ_CANCELLED: { label: "Annullato da CJ", className: TONE.bad },
+};
+
+const CJ_PAYMENT: Record<string, Badge> = {
+  PENDING: { label: "Pagamento CJ: in attesa", className: TONE.muted },
+  PAYMENT_REQUIRED: { label: "Pagamento CJ richiesto", className: "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-500/30" },
+  PAID: { label: "CJ pagato", className: TONE.ok },
+  FAILED: { label: "Pagamento CJ non riuscito", className: TONE.bad },
+};
+
+const ERROR_KIND: Record<string, string> = {
+  TEMPORARY: "temporaneo, si riprova da solo",
+  AUTHENTICATION: "chiave API / accesso",
+  VALIDATION: "dati rifiutati da CJ",
+  INSUFFICIENT_BALANCE: "saldo CJ insufficiente",
+  FATAL: "da verificare",
 };
 
 const ORDER_FILTERS: { key: string; label: string; match: (o: CjOrderRead) => boolean }[] = [
-  { key: "todo", label: "Da gestire", match: (o) => o.status === "PAID" && ["NOT_SENT", "ERROR", "SENT", "CJ_CANCELLED"].includes(o.fulfillment_status) },
-  { key: "unpaid", label: "In attesa di pagamento", match: (o) => o.status === "AWAITING_PAYMENT" },
-  { key: "moving", label: "In viaggio", match: (o) => o.status === "PAID" && ["SENDING", "PROCESSING", "SHIPPED"].includes(o.fulfillment_status) },
+  { key: "pay", label: "Da pagare su CJ", match: (o) => o.status === "PAID" && o.cj_payment_status !== "PAID" && o.fulfillment_status !== "CJ_CANCELLED" },
+  { key: "problems", label: "Problemi", match: (o) => o.status === "PAID" && ["ERROR", "CJ_CANCELLED"].includes(o.fulfillment_status ?? "") },
+  { key: "unpaid", label: "Cliente non ha pagato", match: (o) => o.status === "AWAITING_PAYMENT" },
+  { key: "moving", label: "In preparazione / in viaggio", match: (o) => o.cj_payment_status === "PAID" && ["PROCESSING", "SHIPPED"].includes(o.fulfillment_status ?? "") },
   { key: "delivered", label: "Consegnati", match: (o) => o.fulfillment_status === "DELIVERED" },
   { key: "all", label: "Tutti", match: () => true },
 ];
+
+function Pill({ badge }: { badge?: Badge }) {
+  if (!badge) return null;
+  return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.className}`}>{badge.label}</span>;
+}
+
+function CashSummary() {
+  const queryClient = useQueryClient();
+  const { data, isFetching } = useQuery({
+    queryKey: ["admin", "cj", "orders", "summary"],
+    queryFn: () => getJson<CjCashSummary>("/api/proxy/cj/orders/summary"),
+    refetchInterval: 60_000,
+  });
+  async function refresh() {
+    const fresh = await getJson<CjCashSummary>("/api/proxy/cj/orders/summary?refresh=true");
+    queryClient.setQueryData(["admin", "cj", "orders", "summary"], fresh);
+  }
+  if (!data) return <div className={`${card} h-24 animate-pulse`} />;
+  const stat = (title: string, value: string, sub?: string, tone = "text-white light:text-slate-900") => (
+    <div className={`${card} p-4`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      <p className={`text-xl font-extrabold tabular-nums mt-0.5 ${tone}`}>{value}</p>
+      {sub && <p className="text-[11px] text-slate-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {stat("Ordini CJ da pagare", String(data.orders_to_pay),
+          data.orders_payment_required ? `${data.orders_payment_required} con pagamento richiesto` : "pagati dai clienti, non ancora a CJ",
+          data.orders_to_pay ? "text-amber-400" : undefined)}
+        {stat("Totale da pagare a CJ", `$${data.required_usd.toFixed(2)}`, `≈ ${euro(data.required_cents)}`)}
+        {stat("Saldo CJ", data.balance_usd === null ? "—" : `$${data.balance_usd.toFixed(2)}`,
+          data.balance_at ? `letto ${formatDate(data.balance_at)}` : "non ancora letto")}
+        {stat("Da ricaricare / pagare", `$${data.shortfall_usd.toFixed(2)}`, `≈ ${euro(data.shortfall_cents)}`,
+          data.shortfall_usd > 0 ? "text-rose-400" : "text-emerald-400")}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>
+          Nessuna ricarica automatica: paghi tu ogni ordine dalla pagina CJ, oppure ricarichi il saldo e gli ordini in attesa
+          {data.auto_forward ? " si pagano da soli (dal più vecchio) entro 10 minuti." : " si pagano con “Paga con saldo CJ”."}
+          {data.sandbox && " Modalità test: CJ considera pagati gli ordini sandbox appena creati."}
+        </span>
+        <button className={btnGhost} disabled={isFetching} onClick={refresh}>Aggiorna saldo CJ</button>
+      </div>
+    </div>
+  );
+}
 
 function OrdersTab() {
   const queryClient = useQueryClient();
@@ -833,10 +918,11 @@ function OrdersTab() {
     queryFn: () => getJson<CjOrderRead[]>("/api/proxy/cj/orders"),
     refetchInterval: 60_000,
   });
-  const [filter, setFilter] = useState("todo");
+  const [filter, setFilter] = useState("pay");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const active = ORDER_FILTERS.find((f) => f.key === filter) ?? ORDER_FILTERS[0]!;
@@ -846,6 +932,7 @@ function OrdersTab() {
     || o.id.slice(0, 8).toLowerCase().includes(needle)
     || o.product_name.toLowerCase().includes(needle)
     || o.customer_display_name.toLowerCase().includes(needle)
+    || (o.cj_order_code ?? "").toLowerCase().includes(needle)
     || (o.tracking_number ?? "").toLowerCase().includes(needle)
   );
   const pagination = usePagination(filtered);
@@ -853,9 +940,12 @@ function OrdersTab() {
   async function act(order: CjOrderRead, action: "forward" | "sync") {
     setBusyId(order.id);
     setActionError(null);
+    setActionNotice(null);
     try {
       const updated = await postJson<CjOrderRead>(`/api/proxy/cj/orders/${order.id}/${action}`);
-      if (action === "forward" && updated.forward_error) setActionError(updated.forward_error);
+      if (updated.cj_payment_status === "PAID") setActionNotice(`Ordine #${order.id.slice(0, 8).toUpperCase()}: CJ pagato, in preparazione.`);
+      else if (updated.cj_payment_status === "PAYMENT_REQUIRED") setActionNotice("CJ non risulta ancora pagato: pagalo dalla pagina CJ o ricarica il saldo, poi premi “Verifica pagamento CJ”.");
+      else if (updated.forward_error) setActionError(updated.forward_error);
       await queryClient.invalidateQueries({ queryKey: ["admin", "cj", "orders"] });
       await queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
     } catch (err: any) {
@@ -870,6 +960,7 @@ function OrdersTab() {
 
   return (
     <div className="space-y-3">
+      <CashSummary />
       <div className="flex flex-wrap gap-2">
         {ORDER_FILTERS.map((f) => {
           const count = orders.filter(f.match).length;
@@ -883,59 +974,81 @@ function OrdersTab() {
           );
         })}
       </div>
-      <input className={input} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cerca per ordine, cliente, prodotto o tracking..." />
-      <p className="text-[11px] text-slate-500">
-        Il pagamento dei clienti (bonifico da confermare, annullamenti) si gestisce anche da “Ordini”. Stato e tracking si aggiornano da CJ ogni 30 minuti.
-      </p>
+      <input className={input} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cerca per ordine, cliente, prodotto, codice CJ o tracking..." />
       <ErrorBox message={actionError} />
+      {actionNotice && <div className="p-3 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs">{actionNotice}</div>}
 
       {filtered.length === 0 ? (
         <p className={`${card} p-8 text-center text-sm text-slate-500`}>Nessun ordine qui.</p>
       ) : (
         <div className={`${card} divide-y divide-white/5 light:divide-slate-200 overflow-hidden`}>
           {pagination.pageItems.map((o) => {
-            const f = FULFILLMENT[o.fulfillment_status];
-            const canForward = o.status === "PAID" && ["NOT_SENT", "ERROR", "SENT"].includes(o.fulfillment_status);
+            const customerPaid = o.status === "PAID";
+            const cjPaid = o.cj_payment_status === "PAID";
+            const needsPayment = customerPaid && !cjPaid && o.fulfillment_status !== "CJ_CANCELLED";
+            const canCreate = customerPaid && ["NOT_SENT", "ERROR"].includes(o.fulfillment_status ?? "") && !o.cj_order_id;
+            const canPay = needsPayment && !!o.cj_order_id && o.fulfillment_status !== "SENDING";
             const open = openId === o.id;
             return (
-              <div key={o.id} className="p-4">
+              <div key={o.id} className={`p-4 ${o.cj_payment_status === "PAYMENT_REQUIRED" ? "bg-amber-500/[0.04]" : ""}`}>
                 <div className="flex flex-wrap items-start gap-4">
                   <div className="w-12 h-12 rounded-lg overflow-hidden bg-white shrink-0">
                     <ProductThumbnail imageUrl={o.product_image_url} alt="" className="w-full h-full object-cover" />
                   </div>
-                  <div className="flex-1 min-w-[220px]">
+                  <div className="flex-1 min-w-[240px]">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-white light:text-slate-900">{o.customer_display_name}</span>
                       <span className="text-xs text-slate-500 font-mono">#{o.id.slice(0, 8).toUpperCase()}</span>
-                      {o.status === "AWAITING_PAYMENT" && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 border-amber-500/30 text-amber-400">Non pagato</span>}
-                      {o.status === "CANCELLED" && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-rose-500/10 border-rose-500/30 text-rose-400">Annullato</span>}
-                      {o.status === "PAID" && f && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${f.className}`}>{f.label}</span>}
-                      {o.sandbox && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white/5 border-white/10 text-slate-400">sandbox</span>}
+                      {o.sandbox && <Pill badge={{ label: "sandbox", className: TONE.muted }} />}
                     </div>
-                    <p className="text-xs text-slate-400 light:text-slate-500 mt-0.5">
-                      {o.product_name} · {o.variant_label} × {o.quantity} · {euro(o.amount_cents)}
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                      <Pill badge={CUSTOMER_PAYMENT[o.status]} />
+                      {customerPaid && <Pill badge={CJ_ORDER[o.fulfillment_status ?? ""]} />}
+                      {customerPaid && <Pill badge={CJ_PAYMENT[o.cj_payment_status ?? ""]} />}
+                    </div>
+                    <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
+                      {o.product_name} · {o.variant_label} × {o.quantity} · cliente {euro(o.amount_cents)}
+                      {o.cj_cost_usd !== undefined && (
+                        <> · CJ ${o.cj_cost_usd.toFixed(2)}{o.cj_cost_is_actual ? "" : " (stima)"}</>
+                      )}
                       {o.estimated_margin_cents !== undefined && (
                         <span className={o.estimated_margin_cents >= 0 ? "text-emerald-400" : "text-rose-400"}> · margine ≈ {euro(o.estimated_margin_cents)}</span>
                       )}
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      {formatDate(o.created_at)} · {o.city} ({o.province}) · {o.logistic_name}
+                      {formatDate(o.paid_at ?? o.created_at)} · {o.city} ({o.province})
+                      {o.cj_order_code && <> · CJ <span className="font-mono">{o.cj_order_code}</span></>}
                       {o.tracking_number && <> · tracking <span className="font-mono">{o.tracking_number}</span></>}
                     </p>
-                    {o.forward_error && <p className="text-[11px] text-rose-400 mt-0.5">{o.forward_error}</p>}
+                    {o.forward_error && o.cj_payment_status !== "PAYMENT_REQUIRED" && (
+                      <p className="text-[11px] text-rose-400 mt-0.5">
+                        {o.forward_error}{o.last_error_kind ? ` (${ERROR_KIND[o.last_error_kind] ?? o.last_error_kind})` : ""}
+                      </p>
+                    )}
+                    {o.next_retry_at && !cjPaid && (
+                      <p className="text-[11px] text-slate-500">Prossimo controllo automatico {formatDate(o.next_retry_at)} · tentativi {o.attempt_count}</p>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {canForward && (
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {canCreate && (
                       <button className={btnPrimary} disabled={busyId === o.id} onClick={() => act(o, "forward")}>
-                        {busyId === o.id ? "Invio..." : o.fulfillment_status === "SENT" ? "Paga su CJ" : o.fulfillment_status === "ERROR" ? "Riprova invio" : "Invia a CJ"}
+                        {busyId === o.id ? "Invio..." : o.fulfillment_status === "ERROR" ? "Riprova su CJ" : "Crea su CJ"}
                       </button>
                     )}
-                    {o.cj_order_id && (
-                      <button className={btnGhost} disabled={busyId === o.id} onClick={() => act(o, "sync")}>Aggiorna stato</button>
+                    {canPay && o.cj_pay_url && (
+                      <a className={btnPrimary} href={o.cj_pay_url} target="_blank" rel="noopener noreferrer">Apri pagamento CJ</a>
                     )}
-                    {o.tracking_url && (
-                      <a className={btnGhost} href={o.tracking_url} target="_blank" rel="noopener noreferrer">Traccia</a>
+                    {canPay && (
+                      <button className={o.cj_pay_url ? btnGhost : btnPrimary} disabled={busyId === o.id} onClick={() => act(o, "forward")}>
+                        {busyId === o.id ? "..." : "Paga con saldo CJ"}
+                      </button>
                     )}
+                    {o.cj_order_id && o.fulfillment_status !== "DELIVERED" && (
+                      <button className={btnGhost} disabled={busyId === o.id} onClick={() => act(o, "sync")}>
+                        {needsPayment ? "Verifica pagamento CJ" : "Aggiorna stato"}
+                      </button>
+                    )}
+                    {o.tracking_url && <a className={btnGhost} href={o.tracking_url} target="_blank" rel="noopener noreferrer">Traccia</a>}
                     <button className={btnGhost} onClick={() => setOpenId(open ? null : o.id)}>{open ? "Chiudi" : "Dettagli"}</button>
                   </div>
                 </div>
@@ -946,19 +1059,30 @@ function OrdersTab() {
                       <p>{o.recipient_name} · {o.recipient_phone}</p>
                       <p>{o.address_line1}{o.address_line2 ? `, ${o.address_line2}` : ""}</p>
                       <p>{o.postal_code} {o.city} ({o.province}) {o.country_code}</p>
+                      <p>{o.logistic_name} · parte da {o.origin_country} · {o.shipping_days ?? "?"} giorni</p>
                     </div>
                     <div className="space-y-0.5">
-                      <p className="font-semibold text-slate-300 light:text-slate-700">Importi</p>
-                      <p>Prezzo {o.quantity} × {euro(o.unit_price_cents)} + spedizione {euro(o.shipping_cents)}</p>
+                      <p className="font-semibold text-slate-300 light:text-slate-700">Cliente</p>
+                      <p>{o.quantity} × {euro(o.unit_price_cents)} + spedizione {euro(o.shipping_cents)} = {euro(o.amount_cents)}</p>
                       <p>LialCash {euro(o.credit_applied_cents)} · in euro {euro(o.residual_amount_cents)} ({o.payment_method === "CARD" ? "carta" : "bonifico"})</p>
-                      <p>Costo CJ {usd(((o.unit_cost_usd ?? 0) * o.quantity).toFixed(2))} + sped. {usd((o.shipping_cost_usd ?? 0).toFixed(2))} · cambio {o.usd_eur_rate}</p>
-                      {o.cj_amount_usd != null && <p>Addebitato da CJ {usd(o.cj_amount_usd.toFixed(2))}</p>}
+                      <p>Pagato {formatDate(o.paid_at)}</p>
+                      <p className="font-semibold text-slate-300 light:text-slate-700 pt-1">Costo CJ</p>
+                      {o.cj_cost_is_actual ? (
+                        <p>Prodotti {usd(o.cj_product_amount_usd?.toFixed(2))} · spedizione {usd(o.cj_postage_amount_usd?.toFixed(2))}
+                          {o.cj_ioss_amount_usd ? ` · IVA IOSS ${usd(o.cj_ioss_amount_usd.toFixed(2))}` : ""} · totale {usd(o.cj_amount_usd?.toFixed(2))}</p>
+                      ) : (
+                        <p>Stima: prodotti {usd(((o.unit_cost_usd ?? 0) * o.quantity).toFixed(2))} + spedizione {usd((o.shipping_cost_usd ?? 0).toFixed(2))} + IVA IOSS stimata = {usd(o.cj_cost_usd?.toFixed(2))}</p>
+                      )}
+                      <p>≈ {euro(o.cj_cost_cents ?? 0)} al cambio {o.usd_eur_rate}</p>
                     </div>
                     <div className="space-y-0.5">
                       <p className="font-semibold text-slate-300 light:text-slate-700">CJ</p>
-                      <p>Ordine CJ <span className="font-mono">{o.cj_order_id ?? "—"}</span> · {o.cj_order_status ?? "—"}</p>
-                      <p>Parte da {o.origin_country} · {o.shipping_days ?? "?"} giorni</p>
-                      <p>Inviato {formatDate(o.forwarded_at)} · ultimo controllo {formatDate(o.last_cj_sync_at)}</p>
+                      <p>Codice <span className="font-mono">{o.cj_order_code ?? "—"}</span> · id <span className="font-mono">{o.cj_order_id ?? "—"}</span></p>
+                      <p>Stato CJ {o.cj_order_status ?? "—"} · pagamento {o.cj_payment_status}</p>
+                      <p>Creato {formatDate(o.forwarded_at)} · pagato {formatDate(o.cj_paid_at)}</p>
+                      <p>Tentativi {o.attempt_count ?? 0} · ultimo {formatDate(o.last_attempt_at)}</p>
+                      {o.last_error_kind && <p>Ultimo errore: {ERROR_KIND[o.last_error_kind] ?? o.last_error_kind}</p>}
+                      <p>Ultimo controllo {formatDate(o.last_cj_sync_at)}</p>
                       {o.shipped_at && <p>Spedito {formatDate(o.shipped_at)}</p>}
                       {o.delivered_at && <p>Consegnato {formatDate(o.delivered_at)}</p>}
                     </div>

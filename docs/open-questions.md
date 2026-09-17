@@ -211,8 +211,16 @@ fit the current calculator extension points).
 Collegamento a CJ fatto e verificato; lo shop è **spento e in sandbox**.
 Decisioni e azioni che restano all'azienda:
 
-- **Saldo CJ**: gli ordini si pagano dal saldo dell'account CJ, oggi 0 USD.
-  Va ricaricato sul sito CJ, altrimenti ogni ordine resta "Su CJ, da pagare".
+- **Saldo CJ**: non serve più precaricarlo (Session 63). Con saldo a zero
+  ogni ordine pagato dal cliente viene creato su CJ e resta "Pagamento CJ
+  richiesto" finché non lo paghi dalla pagina CJ dell'ordine. Da verificare al
+  primo ordine reale (non sandbox) che CJ restituisca davvero la pagina di
+  pagamento (`cjPayUrl`): in sandbox CJ paga da sé e non la restituisce. Se
+  mancasse, l'ordine si paga comunque dalla lista ordini del sito CJ.
+- **Margini**: CJ addebita spedizione con sdoganamento e IVA IOSS (~22% del
+  prodotto). Sull'unico prodotto importato: costo reale circa 29,62 $
+  (≈ 27,25 €) contro 25,90 € di prezzo + spedizione pagata dal cliente.
+  Controllare il margine stimato in "Ordini" e, se serve, alzare il ricarico.
 - **IVA e dogana**: la merce parte quasi sempre dalla Cina. Gli ordini sono
   inviati con `iossType=3` (IVA all'importazione riscossa tramite l'IOSS di
   CJ), così il cliente non paga dazi alla consegna. Da confermare con il

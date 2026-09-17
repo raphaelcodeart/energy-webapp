@@ -60,6 +60,18 @@ CJ_ORDER_PAYMENT_METHODS = ("BANK_TRANSFER", "CARD")
 FULFILLMENT_STATUSES = (
     "NOT_SENT", "SENDING", "SENT", "PROCESSING", "SHIPPED", "DELIVERED", "ERROR", "CJ_CANCELLED",
 )
+#: The order on CJ and the payment to CJ are separate facts (Session 63):
+#: an order can be on CJ and waiting for money for days, and that must never
+#: look like "in preparation" to anyone.
+#:   NOT_REQUIRED       nothing to pay yet (customer not paid / not on CJ)
+#:   PENDING            on CJ, payment not attempted yet
+#:   PAYMENT_REQUIRED   the CJ balance does not cover it: pay on CJ's payment
+#:                      page or top up the balance -- not an error
+#:   PAID               CJ has the money (seen from CJ's own order status)
+#:   FAILED             a payment attempt failed for another reason
+CJ_PAYMENT_STATUSES = ("NOT_REQUIRED", "PENDING", "PAYMENT_REQUIRED", "PAID", "FAILED")
+#: What went wrong last, which decides whether retrying makes sense.
+CJ_ERROR_KINDS = ("TEMPORARY", "AUTHENTICATION", "VALIDATION", "INSUFFICIENT_BALANCE", "FATAL")
 
 
 class CjSettings(UUIDPKMixin, TimestampMixin, Base):
@@ -95,8 +107,9 @@ class CjSettings(UUIDPKMixin, TimestampMixin, Base):
     #: Default "pagabile in LialCash" percentage of a newly imported product.
     default_credit_percentage: Mapped[int] = mapped_column(Integer, default=100)
     destination_country: Mapped[str] = mapped_column(String(2), default="IT")
-    #: Send a paid order to CJ (and pay it from the CJ balance) by itself.
-    auto_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Create a paid order on CJ by itself, and pay it from the CJ balance when
+    #: the balance covers it (otherwise it waits as PAYMENT_REQUIRED).
+    auto_forward: Mapped[bool] = mapped_column(Boolean, default=True)
     last_balance_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     last_balance_at: Mapped[datetime | None] = mapped_column(nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -246,3 +259,18 @@ class CjOrder(UUIDPKMixin, TimestampMixin, Base):
     shipped_at: Mapped[datetime | None] = mapped_column(nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_cj_sync_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # --- Session 63: payment to CJ, tracked on its own --------------------------------
+    #: CJ's "SD..." order code; cj_order_id holds CJ's numeric order id.
+    cj_order_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cj_shipment_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: CJ's page to pay this one order (card/PayPal), when CJ returns it.
+    cj_pay_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    cj_payment_status: Mapped[str] = mapped_column(String(24), default="NOT_REQUIRED", index=True)
+    cj_product_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cj_postage_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cj_ioss_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    cj_paid_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    last_error_kind: Mapped[str | None] = mapped_column(String(24), nullable=True)

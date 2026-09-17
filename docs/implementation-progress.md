@@ -4,6 +4,65 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 63 — 2026-09-17 — Shop Lial Partner: si parte con saldo CJ a zero (flusso ibrido)
+
+Richiesta dell'utente (con un prompt di specifica): non avere soldi da
+precaricare su CJ senza perdere, duplicare o bloccare ordini, e senza mai
+promettere al cliente una preparazione che non è partita.
+
+Verifiche sulla documentazione e **dal vivo** (un ordine sandbox di prova,
+`LIAL-PROBE-8835ef5508`, rimasto nell'account CJ come ordine di test):
+- `createOrderV2` con `payType=1` conferma l'ordine e restituisce `cjPayUrl`,
+  la pagina CJ per pagare quel singolo ordine (carta/PayPal): **non serve
+  saldo**. `payType=3` (usato finora) crea soltanto, senza conferma: rischio
+  che `payBalance` fallisse sempre.
+- `getOrderDetail` con il nostro numero `LIAL-<id>` risponde `1600300` quando
+  l'ordine non esiste; CJ usa due identificativi (codice `SD…` e id numerico).
+- In sandbox CJ paga da sé alla creazione (`UNSHIPPED`), senza `cjPayUrl`;
+  `payBalance` su un ordine già pagato risponde "order status is not unpaid".
+- **Bug trovato**: la spedizione usava `logisticPrice`, ma CJ addebita
+  `totalPostageFee` (sdoganamento e supplementi inclusi): CJPacket Ordinary
+  stimato 9,39 $, addebitato 12,89 $; YunExpress 8,74 $ → 14,64 $, cioè il
+  "più economico" era il più caro. Il totale CJ include anche l'IVA IOSS
+  (~22% del prodotto, 3,09 $ sull'ordine di prova).
+
+- [x] Migrazione `0046_cj_payment_tracking`: su `cj_orders` stato del
+  pagamento a CJ separato (`cj_payment_status`: NOT_REQUIRED / PENDING /
+  PAYMENT_REQUIRED / PAID / FAILED), `cj_order_code`, `cj_shipment_order_id`,
+  `cj_pay_url`, importi reali CJ (prodotti, spedizione, IOSS), `cj_paid_at`,
+  `attempt_count`, `last_attempt_at`, `next_retry_at`, `last_error_kind`.
+  `auto_forward` acceso di default (e in produzione).
+- [x] Flusso: cliente paga → ordine creato su CJ una volta (`payType=1`) →
+  si legge lo stato su CJ → se non pagato, si legge il saldo: basta → 
+  `payBalance`; non basta → PAYMENT_REQUIRED (non è un errore), notifica allo
+  staff con importo e saldo, il cliente vede "Ordine ricevuto".
+- [x] Idempotenza: presa in carico con UPDATE condizionale; prima di creare si
+  cerca su CJ il nostro numero e si crea solo con "order not found" (ogni altra
+  risposta ferma e riprova); prima di pagare si legge lo stato CJ (un ordine
+  pagato a mano sulla pagina CJ viene solo registrato come pagato).
+- [x] Errori classificati (TEMPORARY, AUTHENTICATION, VALIDATION,
+  INSUFFICIENT_BALANCE, FATAL); nuovi tentativi solo per temporanei/accesso,
+  con attesa crescente e al massimo 6.
+- [x] Celery `cj_retry_orders_task` ogni 10 minuti: ordini pagati mai inviati,
+  errori temporanei scaduti, ordini in attesa di saldo pagati appena il saldo
+  li copre (dal più vecchio, saldo letto una volta e scalato localmente).
+  Nessuna ricarica automatica.
+- [x] `GET /cj/orders/summary`: ordini da pagare a CJ, totale necessario, saldo,
+  differenza da coprire (USD ed EUR).
+- [x] Admin "Ordini": riepilogo di cassa, filtri "Da pagare su CJ" /
+  "Problemi" / …, tre badge separati (cliente, ordine CJ, pagamento CJ),
+  "Pagamento CJ richiesto" in evidenza, "Apri pagamento CJ", "Paga con saldo
+  CJ", "Verifica pagamento CJ", costo CJ reale o stimato, margine, tentativi,
+  ultimo errore, prossimo controllo.
+- [x] Cliente: `delivery_status` (Ordine ricevuto → In preparazione → Spedito →
+  Consegnato); nessun dato tecnico CJ nelle risposte al cliente.
+- [x] Spedizione e margini su `totalPostageFee`; costo stimato con IOSS finché
+  CJ non restituisce quello reale. Prodotto in produzione risincronizzato
+  (spedizione stimata 10,82 $, CJPacket Euro Ordinary).
+- [x] Test: gli 8 scenari richiesti più saldo speso una volta sola, ordine
+  sandbox pagato alla creazione, scelta della spedizione e classificazione
+  errori (23 test CJ, suite 397 verde).
+
 ## Session 62 — 2026-09-17 — Shop Lial Partner dentro "Fai la spesa con Lial"; stock CJ corretto
 
 Richiesta dell'utente: il cliente non vedeva i prodotti CJ nello Shop, e al

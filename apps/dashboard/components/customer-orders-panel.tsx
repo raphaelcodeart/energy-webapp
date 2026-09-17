@@ -52,7 +52,7 @@ type UnifiedOrder = {
   /** Shop Lial Partner only: what travels to the customer's door. */
   shipping?: Pick<
     CjOrderRead,
-    | "quantity" | "variant_label" | "shipping_cents" | "fulfillment_status" | "tracking_number" | "tracking_url"
+    | "quantity" | "variant_label" | "shipping_cents" | "delivery_status" | "tracking_number" | "tracking_url"
     | "shipping_days" | "shipped_at" | "delivered_at" | "recipient_name" | "address_line1" | "address_line2"
     | "postal_code" | "city" | "province"
   >;
@@ -84,15 +84,17 @@ function ordersBasePath(source: UnifiedOrder["source"]): string {
 /** Where a paid Shop Lial Partner order is, in the customer's words. */
 function shippingState(order: UnifiedOrder): { label: string; className: string } | null {
   if (!order.shipping || order.status !== "PAID") return null;
-  switch (order.shipping.fulfillment_status) {
+  switch (order.shipping.delivery_status) {
     case "SHIPPED":
       return { label: "Spedito", className: "bg-sky-500/10 border-sky-500/30 text-sky-400" };
     case "DELIVERED":
       return { label: "Consegnato", className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" };
-    case "CJ_CANCELLED":
+    case "PROBLEM":
       return { label: "Problema con la spedizione: ti contattiamo", className: "bg-rose-500/10 border-rose-500/30 text-rose-400" };
-    default:
+    case "PREPARING":
       return { label: "In preparazione", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" };
+    default:
+      return { label: "Ordine ricevuto", className: "bg-white/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600" };
   }
 }
 

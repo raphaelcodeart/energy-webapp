@@ -1852,7 +1852,11 @@ obbligatorio per il corriere), stato della spedizione e tracking.
 **Nessun importo arriva dal browser.** Prezzo della variante e spedizione si
 ricalcolano sul server alla creazione dell'ordine; la spedizione è il
 preventivo reale di CJ per quella variante, quantità e destinazione (l'opzione
-più economica), con cache di 30 minuti.
+più economica), con cache di 30 minuti. Conta `totalPostageFee`, ciò che CJ
+addebita davvero (sdoganamento incluso), non il prezzo base `logisticPrice`
+(Session 63). Il costo CJ di un ordine comprende anche l'IVA di importazione
+IOSS (~22% del prodotto): stimata per i margini finché CJ non restituisce
+l'importo reale.
 
 **Prezzo di vendita.** `costo CJ (USD) × cambio × (1 + ricarico%) + ricarico
 fisso`, poi arrotondato **sempre per eccesso** a ,90 / ,99 o al centesimo: un
@@ -1874,6 +1878,40 @@ calcolata sul totale compresa la spedizione.
 → PROCESSING (pagato su CJ) → SHIPPED → DELIVERED, oppure ERROR (invio
 rifiutato) / CJ_CANCELLED. Un ordine si invia a CJ **solo se pagato dal
 cliente**. Si annulla (con restituzione dei LialCash) solo finché non è pagato.
+
+**Pagamento a CJ senza saldo precaricato (Session 63) {#partner-shop-payment}.**
+Tre fatti distinti per ogni ordine: pagamento del cliente (`status`), ordine su
+CJ (`fulfillment_status`), pagamento a CJ (`cj_payment_status`). Flusso
+ibrido, automatico di default:
+
+1. Il cliente paga (bonifico confermato, Stripe, o tutto in LialCash).
+2. L'ordine si crea su CJ **una sola volta** con `payType=1`: CJ lo conferma e
+   restituisce la sua pagina di pagamento (`cjPayUrl`).
+3. Si legge lo stato su CJ: se risulta già pagato (sandbox, oppure pagato a
+   mano sulla pagina CJ) si registra e basta.
+4. Altrimenti si legge il saldo CJ: se copre il costo reale dell'ordine si paga
+   dal saldo; se no l'ordine resta **Pagamento CJ richiesto**. Non è un errore:
+   nessun messaggio al cliente, una notifica allo staff ("CJ richiede $X; saldo
+   $Y, mancano $Z").
+5. Lo sblocchi pagando dalla pagina CJ dell'ordine ("Apri pagamento CJ") o
+   ricaricando il saldo: il controllo ogni 10 minuti (o "Verifica pagamento
+   CJ") vede il pagamento, oppure paga dal saldo appena basta, dal più vecchio,
+   senza mai spendere due volte la stessa ricarica.
+
+Il cliente vede **Ordine ricevuto** finché CJ non è pagato, poi **In
+preparazione**, **Spedito** (con tracking solo quando esiste), **Consegnato**.
+Mai ricariche automatiche. Riepilogo di cassa in admin: ordini da pagare a CJ,
+totale necessario, saldo, differenza.
+
+**Mai due ordini, mai due pagamenti.** Presa in carico con UPDATE
+condizionale. Prima di creare si chiede a CJ il nostro numero `LIAL-<id>`: si
+crea solo se CJ risponde "order not found"; timeout o CJ occupato fermano e si
+riprova dopo. Prima di pagare si rilegge lo stato su CJ.
+
+**Errori.** Classificati: temporanei e di accesso si riprovano da soli (attesa
+crescente, massimo 6 tentativi); dati rifiutati e casi non riconosciuti
+chiedono un controllo dello staff (notifica); saldo insufficiente è uno stato,
+non un errore.
 
 **Invio a CJ.** A mano ("Invia a CJ") o automatico dopo il pagamento
 (impostazione). L'ordine viene creato su CJ con numero `LIAL-<id>` e pagato dal

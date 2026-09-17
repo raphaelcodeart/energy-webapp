@@ -346,9 +346,28 @@ def _choose_origin(stock: dict[str, dict[str, int]], inventory: dict | None) -> 
     return next(iter(sorted(c for c in countries if c)), "CN")
 
 
+def postage_usd(option: dict) -> Decimal:
+    """What CJ really charges for a shipping option. `logisticPrice` is only
+    the carrier's base price: `totalPostageFee` adds customs clearance and
+    the other fees, and is what a created order costs (verified live in
+    Session 63: CJPacket Ordinary quoted 9.39, order charged 12.89 = its
+    totalPostageFee; YunExpress quoted 8.74, total 14.64)."""
+    total = option.get("totalPostageFee")
+    return _decimal(total if total not in (None, "", 0) else option.get("logisticPrice"))
+
+
 def _cheapest(options: list[dict]) -> dict | None:
-    priced = [o for o in options if o.get("logisticPrice") is not None]
-    return min(priced, key=lambda o: Decimal(str(o["logisticPrice"]))) if priced else None
+    priced = [o for o in options if o.get("totalPostageFee") is not None or o.get("logisticPrice") is not None]
+    return min(priced, key=postage_usd) if priced else None
+
+
+def estimated_ioss_usd(*, product_usd: Decimal, origin: str, destination: str) -> Decimal:
+    """Import VAT CJ adds through its IOSS when goods enter the EU from
+    outside (22%, Italian rate; about 3.09 on 13.64 in the live order). An
+    estimate for margins only: the real amount comes back on the CJ order."""
+    if destination in EU_COUNTRIES and origin not in EU_COUNTRIES:
+        return (product_usd * Decimal("0.22")).quantize(Decimal("0.01"))
+    return Decimal(0)
 
 
 async def preview_product(db: AsyncSession, *, row: CjSettings, pid: str) -> dict:
@@ -372,7 +391,7 @@ async def preview_product(db: AsyncSession, *, row: CjSettings, pid: str) -> dic
             ))
         except cj.CjApiError:
             shipping = None
-    shipping_usd = _decimal(shipping["logisticPrice"]) if shipping else None
+    shipping_usd = postage_usd(shipping) if shipping else None
     images = list(dict.fromkeys([detail.get("bigImage"), *(detail.get("productImageSet") or [])]))
     return {
         "pid": detail.get("pid"),
@@ -676,7 +695,7 @@ async def shipping_quote(
     """The cheapest CJ shipping for this variant and quantity to the
     destination, cached half an hour: a customer changing the quantity back
     and forth must not spend a CJ call every time."""
-    key = f"cj:freight:{row.organization_id}:{variant.cj_vid}:{quantity}:{product.origin_country}:{row.destination_country}"
+    key = f"cj:freight2:{row.organization_id}:{variant.cj_vid}:{quantity}:{product.origin_country}:{row.destination_country}"
     option = await _cache_get(key)
     if option is None:
         options = await cj.freight(
@@ -686,9 +705,9 @@ async def shipping_quote(
         option = _cheapest(options)
         if option is None:
             raise CjValidationError("La spedizione di questo prodotto non è disponibile in questo momento.")
-        option = {k: option.get(k) for k in ("logisticName", "logisticPrice", "logisticAging")}
+        option = {k: option.get(k) for k in ("logisticName", "logisticPrice", "totalPostageFee", "logisticAging")}
         await _cache_set(key, option, FREIGHT_CACHE_SECONDS)
-    shipping_usd = _decimal(option["logisticPrice"])
+    shipping_usd = postage_usd(option)
     return {
         "logistic_name": option["logisticName"],
         "shipping_days": option.get("logisticAging"),
@@ -946,17 +965,31 @@ async def order_read_dict(db: AsyncSession, order: CjOrder, *, admin: bool) -> d
         "postal_code": order.postal_code,
         "country_code": order.country_code,
         "shipping_days": order.shipping_days,
-        "fulfillment_status": order.fulfillment_status,
+        "delivery_status": delivery_status(order),
         "tracking_number": order.tracking_number,
         "tracking_url": tracking_url(order.tracking_number),
         "shipped_at": order.shipped_at,
         "delivered_at": order.delivered_at,
     }
     if admin:
-        cost_cents = pricing.usd_to_eur_cents(
-            Decimal(order.unit_cost_usd) * order.quantity + Decimal(order.shipping_cost_usd), Decimal(order.usd_eur_rate)
-        )
+        cost_usd = cj_cost_usd(order)
+        cost_cents = pricing.usd_to_eur_cents(cost_usd, Decimal(order.usd_eur_rate))
         out.update({
+            "fulfillment_status": order.fulfillment_status,
+            "cj_payment_status": order.cj_payment_status,
+            "cj_cost_usd": float(cost_usd),
+            "cj_cost_is_actual": order.cj_amount_usd is not None,
+            "cj_cost_cents": cost_cents,
+            "cj_order_code": order.cj_order_code,
+            "cj_pay_url": order.cj_pay_url,
+            "cj_product_amount_usd": _float(order.cj_product_amount_usd),
+            "cj_postage_amount_usd": _float(order.cj_postage_amount_usd),
+            "cj_ioss_amount_usd": _float(order.cj_ioss_amount_usd),
+            "cj_paid_at": order.cj_paid_at,
+            "attempt_count": order.attempt_count,
+            "last_attempt_at": order.last_attempt_at,
+            "next_retry_at": order.next_retry_at,
+            "last_error_kind": order.last_error_kind,
             "cj_order_id": order.cj_order_id,
             "cj_order_status": order.cj_order_status,
             "cj_amount_usd": float(order.cj_amount_usd) if order.cj_amount_usd is not None else None,
@@ -1175,122 +1208,320 @@ async def _send_order_email(db: AsyncSession, *, order: CjOrder, product: CjProd
 
 
 # --- Evasione su CJ ----------------------------------------------------------------------------------------
+#
+# Session 63, "hybrid": the order is created on CJ once, as soon as the
+# customer has paid; it is paid from the CJ balance only when the balance
+# covers it. Otherwise it waits as PAYMENT_REQUIRED -- payable on CJ's own
+# page for that order, or from the balance once topped up -- and the customer
+# keeps seeing "Ordine ricevuto". Nothing is ever shown as in preparation
+# before CJ has the money, and a missing balance is never an error.
+#
+# Facts verified against the live API (sandbox order, Session 63):
+# - getOrderDetail with our own number answers code 1600300 when the order
+#   does not exist: only that answer allows creating it.
+# - createOrderV2 returns CJ's "SD..." code as orderId and the amounts
+#   (orderAmount = product + postage + IOSS VAT); payType=1 returns cjPayUrl
+#   for real orders (sandbox orders are paid by CJ at creation instead).
+# - payBalance on an order already paid answers "order status is not unpaid".
+
+#: CJ order statuses meaning CJ has been paid.
+CJ_PAID_STATUSES = {"UNSHIPPED", "PENDING", "PROCESSING", "SHIPPED", "DELIVERED"}
+#: getOrderDetail's answer for an order that does not exist.
+CJ_NOT_FOUND_CODES = {1600300, 803}
+MAX_ATTEMPTS = 6
+PAYMENT_RECHECK_MINUTES = 30
+
+
+def _float(value) -> float | None:
+    return float(value) if value is not None else None
+
+
+def cj_cost_usd(order: CjOrder) -> Decimal:
+    """What CJ charges for this order: the real amount once CJ has created
+    it, until then the estimate frozen at checkout (with estimated IOSS)."""
+    if order.cj_amount_usd is not None:
+        return Decimal(order.cj_amount_usd)
+    product = Decimal(order.unit_cost_usd) * order.quantity
+    return product + Decimal(order.shipping_cost_usd) + estimated_ioss_usd(
+        product_usd=product, origin=order.origin_country, destination=order.country_code
+    )
+
+
+def delivery_status(order: CjOrder) -> str | None:
+    """The only shipping state a customer ever sees. "RECEIVED" covers
+    everything before CJ is paid, whatever the reason."""
+    if order.status != "PAID":
+        return None
+    if order.fulfillment_status == "CJ_CANCELLED":
+        return "PROBLEM"
+    if order.fulfillment_status == "DELIVERED":
+        return "DELIVERED"
+    if order.fulfillment_status == "SHIPPED":
+        return "SHIPPED"
+    if order.cj_payment_status == "PAID":
+        return "PREPARING"
+    return "RECEIVED"
+
+
+def classify_error(exc: Exception) -> str:
+    code = getattr(exc, "code", None)
+    text = str(exc).lower()
+    if "balance" in text or "insufficient" in text or "余额" in text:
+        return "INSUFFICIENT_BALANCE"
+    if code in cj.TOKEN_ERROR_CODES or isinstance(exc, cj.CjNotConfiguredError) or "chiave api" in text:
+        return "AUTHENTICATION"
+    if code in (None, 429, 1600000, 1600200) or "non risponde" in text or "occupato" in text or "troppe richieste" in text:
+        return "TEMPORARY"
+    if code in (1600100, 1600300, 1603001) or "param" in text or "address" in text or "non ha creato" in text:
+        return "VALIDATION"
+    return "FATAL"
+
+
+def _schedule_retry(order: CjOrder, kind: str) -> None:
+    order.last_error_kind = kind
+    if kind in ("TEMPORARY", "AUTHENTICATION") and order.attempt_count < MAX_ATTEMPTS:
+        minutes = min(5 * 2 ** max(order.attempt_count - 1, 0), 360)
+        order.next_retry_at = utcnow() + timedelta(minutes=minutes)
+    else:
+        order.next_retry_at = None
+
+
+async def _staff_alert(db: AsyncSession, *, order: CjOrder, type_: str, title: str, body: str) -> None:
+    await notifications_service.notify_roles(
+        db, organization_id=order.organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_=type_, entity_type="cj_order", entity_id=order.id, title=title[:255], body=body[:1000],
+    )
+
+
+def _apply_remote(order: CjOrder, item: dict) -> None:
+    """Identifiers, amounts and status as CJ reports them."""
+    code = item.get("cjOrderCode")
+    if item.get("orderId"):
+        order.cj_order_id = str(item["orderId"])
+    if code:
+        order.cj_order_code = str(code)
+    if item.get("orderStatus"):
+        order.cj_order_status = item["orderStatus"]
+    if item.get("orderAmount") not in (None, ""):
+        order.cj_amount_usd = _decimal(item["orderAmount"])
+    if item.get("productAmount") not in (None, ""):
+        order.cj_product_amount_usd = _decimal(item["productAmount"])
+    if item.get("postageAmount") not in (None, ""):
+        order.cj_postage_amount_usd = _decimal(item["postageAmount"])
+
+
+def _mark_cj_paid(order: CjOrder) -> None:
+    if order.cj_payment_status != "PAID":
+        order.cj_payment_status = "PAID"
+        order.cj_paid_at = utcnow()
+    if order.fulfillment_status in ("SENDING", "SENT"):
+        order.fulfillment_status = "PROCESSING"
+    order.forward_error = None
+    order.last_error_kind = None
+    order.next_retry_at = None
+
+
+async def _require_payment(
+    db: AsyncSession, *, order: CjOrder, row: CjSettings, balance_usd: Decimal | None, reason: str | None = None
+) -> None:
+    """Waiting for money is a state, not an error: no customer message, one
+    staff notification when the order starts waiting."""
+    first_time = order.cj_payment_status != "PAYMENT_REQUIRED"
+    order.cj_payment_status = "PAYMENT_REQUIRED"
+    order.last_error_kind = "INSUFFICIENT_BALANCE"
+    order.forward_error = reason
+    order.next_retry_at = utcnow() + timedelta(minutes=PAYMENT_RECHECK_MINUTES)
+    if first_time:
+        cost = cj_cost_usd(order)
+        euros = pricing.usd_to_eur_cents(cost, Decimal(row.usd_eur_rate)) / 100
+        balance_line = (
+            f"Saldo CJ ${balance_usd:.2f}: mancano ${max(cost - balance_usd, Decimal(0)):.2f}. "
+            if balance_usd is not None else ""
+        )
+        await _staff_alert(
+            db, order=order, type_="CJ_PAYMENT_REQUIRED",
+            title=f"Ordine #{str(order.id)[:8].upper()} pagato dal cliente: CJ richiede ${cost:.2f} (≈ {euros:.2f} €)",
+            body=balance_line + "Pagalo dalla pagina di pagamento CJ o ricarica il saldo: Shop Lial Partner → Ordini.",
+        )
+
+
+async def _create_body(db: AsyncSession, order: CjOrder) -> dict:
+    variant = await db.get(CjVariant, order.cj_variant_id)
+    user = await db.get(User, order.customer_user_id)
+    body = {
+        "orderNumber": order_number(order),
+        "shippingCountryCode": order.country_code,
+        "shippingCountry": COUNTRY_NAMES.get(order.country_code, order.country_code),
+        "shippingProvince": order.province[:50],
+        "shippingCity": order.city[:50],
+        "shippingZip": order.postal_code,
+        "shippingPhone": (order.recipient_phone or "")[:20],
+        "shippingCustomerName": order.recipient_name[:50],
+        "shippingAddress": order.address_line1,
+        "shippingAddress2": order.address_line2 or "",
+        "email": (user.email if user else "")[:50],
+        "remark": f"Lial Energy {str(order.id)[:8].upper()}",
+        "logisticName": order.logistic_name,
+        "fromCountryCode": order.origin_country,
+        # 1 = page payment: CJ confirms the order and returns a payment page
+        # for it (cjPayUrl), so it can be paid without any balance. Paying
+        # from the balance, when it is enough, is a separate call.
+        "payType": 1,
+        "isSandbox": 1 if order.sandbox else 0,
+        "products": [{"vid": variant.cj_vid, "quantity": order.quantity, "storeLineItemId": str(order.id)}],
+    }
+    if order.country_code in EU_COUNTRIES and order.origin_country not in EU_COUNTRIES:
+        # VAT on imports into the EU collected through CJ's IOSS.
+        body["iossType"] = 3
+    return body
 
 
 async def forward_order(
-    db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID, actor_user_id: uuid.UUID | None
+    db: AsyncSession, *, organization_id: uuid.UUID, order_id: uuid.UUID, actor_user_id: uuid.UUID | None,
+    balance_usd: Decimal | None = None,
 ) -> CjOrder:
-    """Creates the order on CJ and pays it from the CJ balance.
+    """Brings a paid order as far as it can go on CJ: created (once), then
+    paid if the balance allows. Safe to call any number of times, by the
+    automatic flow, the retry job or an administrator.
 
-    Claimed first with a conditional UPDATE (NOT_SENT/ERROR/SENT -> SENDING):
-    an automatic send and an administrator's click can never both create the
-    order on CJ. A retry after a failure never creates a second CJ order:
-    if CJ already has it (by our order number) it is picked up, and an order
-    created but not paid is only paid."""
+    - One process at a time: a conditional UPDATE claims the order
+      (-> SENDING); a claim older than 10 minutes (worker died) is taken over.
+    - Never two CJ orders: before creating, CJ is asked for our own order
+      number; only CJ's "order not found" allows creating. Any other answer
+      (timeout, busy) stops here and retries later.
+    - Never two payments: before paying, CJ's own status is read; an order
+      already paid on CJ (e.g. by hand on CJ's page) is only recorded as paid.
+    """
     order = await get_org_scoped(db, organization_id=organization_id, order_id=order_id)
     if order is None:
         raise CjNotFoundError("Ordine non trovato.")
     if order.status != "PAID":
         raise CjValidationError("Si invia a CJ solo un ordine già pagato dal cliente.")
+    if order.cj_payment_status == "PAID" or order.fulfillment_status in ("PROCESSING", "SHIPPED", "DELIVERED", "CJ_CANCELLED"):
+        raise CjValidationError("Questo ordine è già pagato su CJ.")
     now = utcnow()
     claimed = await db.execute(
         update(CjOrder)
         .where(
             CjOrder.id == order.id,
+            CjOrder.cj_payment_status != "PAID",
             or_(
                 CjOrder.fulfillment_status.in_(("NOT_SENT", "ERROR", "SENT")),
-                # A send interrupted half way (worker restarted) is taken over
-                # after a while; the lookup by order number below keeps it safe.
-                and_(CjOrder.fulfillment_status == "SENDING", CjOrder.forwarded_at < now - timedelta(minutes=10)),
+                and_(CjOrder.fulfillment_status == "SENDING", CjOrder.last_attempt_at < now - timedelta(minutes=10)),
             ),
         )
-        .values(fulfillment_status="SENDING", forwarded_at=now)
+        .values(fulfillment_status="SENDING", last_attempt_at=now, attempt_count=CjOrder.attempt_count + 1)
     )
     await db.commit()
     if claimed.rowcount != 1:
         await db.refresh(order)
-        raise CjValidationError("Questo ordine è già su CJ o in invio proprio ora.")
+        raise CjValidationError("Questo ordine è già in lavorazione proprio ora.")
     await db.refresh(order)
-
     row = await get_settings_row(db, organization_id=organization_id)
-    product = await db.get(CjProduct, order.cj_product_id)
-    variant = await db.get(CjVariant, order.cj_variant_id)
-    user = await db.get(User, order.customer_user_id)
+    step = "create"
     try:
         if not order.cj_order_id:
             try:
                 found = await cj.get_order(db, row, cj_order_id=order_number(order))
-            except cj.CjApiError:
+            except cj.CjApiError as exc:
+                if exc.code not in CJ_NOT_FOUND_CODES:
+                    raise  # unknown: never create blindly
                 found = {}
-            if found.get("orderId"):
-                order.cj_order_id = str(found["orderId"])
-                order.cj_order_status = found.get("orderStatus")
+            if found and (found.get("orderId") or found.get("cjOrderCode")):
+                _apply_remote(order, found)
+                logger.info("CJ order %s already on CJ as %s: picked up", order.id, order.cj_order_id)
             else:
-                body = {
-                    "orderNumber": order_number(order),
-                    "shippingCountryCode": order.country_code,
-                    "shippingCountry": COUNTRY_NAMES.get(order.country_code, order.country_code),
-                    "shippingProvince": order.province[:50],
-                    "shippingCity": order.city[:50],
-                    "shippingZip": order.postal_code,
-                    "shippingPhone": (order.recipient_phone or "")[:20],
-                    "shippingCustomerName": order.recipient_name[:50],
-                    "shippingAddress": order.address_line1,
-                    "shippingAddress2": order.address_line2 or "",
-                    "email": (user.email if user else "")[:50],
-                    "remark": f"Lial Energy {str(order.id)[:8].upper()}",
-                    "logisticName": order.logistic_name,
-                    "fromCountryCode": order.origin_country,
-                    "payType": 3,
-                    "isSandbox": 1 if order.sandbox else 0,
-                    "products": [{"vid": variant.cj_vid, "quantity": order.quantity, "storeLineItemId": str(order.id)}],
-                }
-                if order.country_code in EU_COUNTRIES and order.origin_country not in EU_COUNTRIES:
-                    # VAT on imports into the EU collected through CJ's IOSS.
-                    body["iossType"] = 3
-                created = await cj.create_order(db, row, body=body)
+                created = await cj.create_order(db, row, body=await _create_body(db, order))
                 if not created.get("orderId"):
                     reasons = "; ".join(r.get("message", "") for r in created.get("interceptOrderReasons") or [])
-                    raise cj.CjApiError(f"CJ non ha creato l'ordine. {reasons}".strip())
+                    raise cj.CjApiError(f"CJ non ha creato l'ordine. {reasons}".strip(), code=1600100)
+                order.cj_order_code = str(created["orderId"])
                 order.cj_order_id = str(created["orderId"])
-                order.cj_order_status = created.get("orderStatus")
-                if created.get("orderAmount"):
-                    order.cj_amount_usd = _decimal(created.get("orderAmount"))
-            order.forwarded_at = utcnow()
-            order.forwarded_by_user_id = actor_user_id
+                order.cj_shipment_order_id = created.get("shipmentOrderId") or None
+                order.cj_pay_url = created.get("cjPayUrl") or None
+                if created.get("orderStatus"):
+                    order.cj_order_status = created["orderStatus"]
+                for field, key in (
+                    ("cj_amount_usd", "orderAmount"), ("cj_product_amount_usd", "productAmount"),
+                    ("cj_postage_amount_usd", "postageAmount"), ("cj_ioss_amount_usd", "iossAmount"),
+                ):
+                    if created.get(key) not in (None, ""):
+                        setattr(order, field, _decimal(created[key]))
+                logger.info("CJ order %s created on CJ as %s", order.id, order.cj_order_id)
             order.fulfillment_status = "SENT"
+            order.forwarded_at = order.forwarded_at or utcnow()
+            order.forwarded_by_user_id = actor_user_id
+            if order.cj_payment_status == "NOT_REQUIRED":
+                order.cj_payment_status = "PENDING"
+            order.forward_error = None
+            await audit_service.record(
+                db, organization_id=organization_id, actor_user_id=actor_user_id,
+                action="cj.order_created", entity_type="cj_order", entity_id=str(order.id),
+                new_value={"cj_order_id": order.cj_order_id, "sandbox": order.sandbox},
+            )
             await db.commit()
 
-        await cj.pay_balance(db, row, cj_order_id=order.cj_order_id)
-        order.fulfillment_status = "PROCESSING"
-        order.cj_order_status = "UNSHIPPED"
-        order.forward_error = None
-        await audit_service.record(
-            db, organization_id=organization_id, actor_user_id=actor_user_id,
-            action="cj.order_forwarded", entity_type="cj_order", entity_id=str(order.id),
-            new_value={"cj_order_id": order.cj_order_id, "sandbox": order.sandbox},
-        )
+        step = "pay"
+        # What CJ says now: paid at creation (sandbox), paid by hand on CJ's
+        # page, or still waiting.
+        remote = await cj.get_order(db, row, cj_order_id=order_number(order))
+        if remote:
+            _apply_remote(order, remote)
+        if order.cj_order_status in CJ_PAID_STATUSES:
+            _mark_cj_paid(order)
+        else:
+            if balance_usd is None:
+                balance = await cj.get_balance(db, row)
+                balance_usd = _decimal(balance.get("amount"))
+                row.last_balance_usd = balance_usd
+                row.last_balance_at = utcnow()
+            cost = cj_cost_usd(order)
+            if balance_usd < cost:
+                order.fulfillment_status = "SENT"
+                await _require_payment(db, order=order, row=row, balance_usd=balance_usd)
+            else:
+                try:
+                    await cj.pay_balance(db, row, cj_order_id=order.cj_order_code or order.cj_order_id)
+                except cj.CjApiError as exc:
+                    if "not unpaid" in str(exc).lower():
+                        _mark_cj_paid(order)  # paid meanwhile: nothing to do
+                    else:
+                        raise
+                else:
+                    _mark_cj_paid(order)
+                    order.cj_order_status = "UNSHIPPED"
+                    logger.info("CJ order %s paid from the CJ balance ($%s)", order.id, cost)
+        if order.fulfillment_status == "SENDING":
+            order.fulfillment_status = "SENT"
         await db.commit()
     except cj.CjApiError as exc:
-        # Created but not paid (typically: CJ balance too low) stays SENT and
-        # a retry only pays; nothing created at all goes back to ERROR.
+        kind = classify_error(exc)
+        logger.warning("CJ %s failed for order %s (%s): %s", step, order.id, kind, exc)
         order.fulfillment_status = "SENT" if order.cj_order_id else "ERROR"
-        order.forward_error = str(exc)[:500]
-        await notifications_service.notify_roles(
-            db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
-            type_="CJ_ORDER_FAILED", entity_type="cj_order", entity_id=order.id,
-            title=f"Ordine Shop Lial Partner non inviato a CJ: {product.name if product else ''}",
-            body=f"{exc}. Controlla il saldo CJ e riprova da Shop Lial Partner → Ordini.",
-        )
+        if order.cj_order_id and kind == "INSUFFICIENT_BALANCE":
+            await _require_payment(db, order=order, row=row, balance_usd=row.last_balance_usd, reason=str(exc)[:500])
+        else:
+            order.forward_error = str(exc)[:500]
+            if order.cj_order_id:
+                order.cj_payment_status = "FAILED"
+            _schedule_retry(order, kind)
+            if order.next_retry_at is None:
+                await _staff_alert(
+                    db, order=order, type_="CJ_ORDER_FAILED",
+                    title=f"Ordine #{str(order.id)[:8].upper()}: serve un controllo su CJ",
+                    body=f"{exc}. Il cliente ha pagato e vede \"Ordine ricevuto\". Shop Lial Partner → Ordini.",
+                )
         await db.commit()
     await db.refresh(order)
     return order
 
 
 async def sync_orders(db: AsyncSession, *, organization_id: uuid.UUID, orders: list[CjOrder] | None = None) -> int:
-    """Asks CJ where each order still on its way is, and records status,
-    tracking and delivery. Tells the customer when their parcel leaves and
-    when it arrives. Returns how many orders changed."""
+    """Asks CJ about every order still open (waiting for payment on CJ, in
+    preparation, shipped): payment seen on CJ, status, tracking, delivery.
+    Tells the customer when their parcel leaves and when it arrives. Closed
+    orders (delivered, cancelled) are never asked about. Returns how many
+    orders changed."""
     row = await get_settings_row(db, organization_id=organization_id)
     if not row.api_key:
         return 0
@@ -1316,38 +1547,163 @@ async def sync_orders(db: AsyncSession, *, organization_id: uuid.UUID, orders: l
                 if item.get(key):
                     by_id[str(item[key])] = item
         for order in batch:
-            item = by_id.get(order.cj_order_id) or by_id.get(order_number(order))
+            item = (
+                by_id.get(order.cj_order_id or "") or by_id.get(order.cj_order_code or "")
+                or by_id.get(order_number(order))
+            )
             order.last_cj_sync_at = utcnow()
             if not item:
                 continue
             status = item.get("orderStatus")
-            new_fulfillment = CJ_STATUS_TO_FULFILLMENT.get(status or "", order.fulfillment_status)
-            tracking = item.get("trackNumber")
-            if new_fulfillment == order.fulfillment_status and tracking == order.tracking_number:
-                continue
             previous = order.fulfillment_status
-            order.cj_order_status = status
-            order.fulfillment_status = new_fulfillment
+            previous_payment = order.cj_payment_status
+            previous_tracking = order.tracking_number
+            _apply_remote(order, item)
+            if status in CJ_PAID_STATUSES:
+                _mark_cj_paid(order)
+            new_fulfillment = CJ_STATUS_TO_FULFILLMENT.get(status or "", order.fulfillment_status)
+            if order.fulfillment_status != "SENDING":
+                order.fulfillment_status = new_fulfillment
+            tracking = item.get("trackNumber")
             if tracking:
                 order.tracking_number = tracking
                 order.tracking_provider = item.get("trackingProvider") or item.get("logisticName")
+            if (
+                order.fulfillment_status == previous and order.cj_payment_status == previous_payment
+                and order.tracking_number == previous_tracking
+            ):
+                continue
             changed += 1
-            if new_fulfillment == "SHIPPED" and previous != "SHIPPED":
+            if order.fulfillment_status == "SHIPPED" and previous != "SHIPPED":
                 order.shipped_at = utcnow()
                 await _notify_customer_shipping(db, order=order, delivered=False)
-            elif new_fulfillment == "DELIVERED" and previous != "DELIVERED":
+            elif order.fulfillment_status == "DELIVERED" and previous != "DELIVERED":
                 order.delivered_at = utcnow()
                 order.shipped_at = order.shipped_at or utcnow()
                 await _notify_customer_shipping(db, order=order, delivered=True)
-            elif new_fulfillment == "CJ_CANCELLED":
-                await notifications_service.notify_roles(
-                    db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
-                    type_="CJ_ORDER_FAILED", entity_type="cj_order", entity_id=order.id,
+            elif order.fulfillment_status == "CJ_CANCELLED" and previous != "CJ_CANCELLED":
+                await _staff_alert(
+                    db, order=order, type_="CJ_ORDER_FAILED",
                     title=f"CJ ha annullato l'ordine {str(order.id)[:8].upper()}",
                     body="Il cliente ha già pagato: valuta rimborso o nuovo invio.",
                 )
         await db.commit()
     return changed
+
+
+async def retry_due_orders(db: AsyncSession, *, organization_id: uuid.UUID) -> int:
+    """The safety net of the automatic flow, run every few minutes:
+    - paid orders never sent (the automatic send did not start);
+    - temporary failures whose retry time has come (bounded attempts);
+    - orders waiting for money, paid from the balance as soon as the balance
+      covers them, oldest first. The balance is read once per run and spent
+      locally, so one top-up is never "used" twice.
+    Never tops up, never moves money other than paying CJ orders from the
+    CJ balance that the administrator enabled."""
+    row = await get_settings_row(db, organization_id=organization_id)
+    if not row.api_key or not row.auto_forward:
+        return 0
+    await sync_orders(db, organization_id=organization_id, orders=list(
+        (await db.execute(select(CjOrder).where(
+            CjOrder.organization_id == organization_id,
+            CjOrder.cj_order_id.is_not(None),
+            CjOrder.cj_payment_status.in_(("PENDING", "PAYMENT_REQUIRED", "FAILED")),
+        ))).scalars()
+    ))
+    now = utcnow()
+    due = list(
+        (
+            await db.execute(
+                select(CjOrder)
+                .where(
+                    CjOrder.organization_id == organization_id,
+                    CjOrder.status == "PAID",
+                    CjOrder.cj_payment_status != "PAID",
+                    or_(
+                        and_(CjOrder.fulfillment_status == "NOT_SENT", CjOrder.paid_at < now - timedelta(minutes=2)),
+                        and_(
+                            CjOrder.fulfillment_status.in_(("ERROR", "SENT")),
+                            CjOrder.next_retry_at.is_not(None),
+                            CjOrder.next_retry_at <= now,
+                        ),
+                    ),
+                )
+                .order_by(CjOrder.paid_at)
+            )
+        ).scalars()
+    )
+    if not due:
+        return 0
+    balance_usd: Decimal | None = None
+    handled = 0
+    for order in due:
+        available: Decimal | None = None
+        if order.cj_order_id and order.cj_payment_status in ("PAYMENT_REQUIRED", "PENDING"):
+            if balance_usd is None:
+                try:
+                    balance_usd = _decimal((await cj.get_balance(db, row)).get("amount"))
+                except cj.CjApiError:
+                    return handled
+                row.last_balance_usd = balance_usd
+                row.last_balance_at = utcnow()
+                await db.commit()
+            cost = cj_cost_usd(order)
+            if balance_usd < cost:
+                order.next_retry_at = utcnow() + timedelta(minutes=PAYMENT_RECHECK_MINUTES)
+                await db.commit()
+                continue
+            available = balance_usd
+            balance_usd -= cost
+        try:
+            await forward_order(
+                db, organization_id=organization_id, order_id=order.id, actor_user_id=None, balance_usd=available
+            )
+            handled += 1
+        except CjError:
+            continue
+    return handled
+
+
+async def cash_requirement(db: AsyncSession, *, organization_id: uuid.UUID, refresh_balance: bool) -> dict:
+    """How much money CJ needs to release every order customers have already
+    paid: the sum of CJ's cost of those orders, the CJ balance, the gap."""
+    row = await get_settings_row(db, organization_id=organization_id)
+    if refresh_balance and row.api_key:
+        try:
+            balance = await cj.get_balance(db, row)
+            row.last_balance_usd = _decimal(balance.get("amount"))
+            row.last_balance_at = utcnow()
+            await db.commit()
+        except cj.CjApiError:
+            pass
+    orders = list(
+        (
+            await db.execute(
+                select(CjOrder).where(
+                    CjOrder.organization_id == organization_id,
+                    CjOrder.status == "PAID",
+                    CjOrder.cj_payment_status != "PAID",
+                    CjOrder.fulfillment_status != "CJ_CANCELLED",
+                )
+            )
+        ).scalars()
+    )
+    required = sum((cj_cost_usd(o) for o in orders), Decimal(0))
+    balance = Decimal(row.last_balance_usd) if row.last_balance_usd is not None else None
+    rate = Decimal(row.usd_eur_rate)
+    shortfall = max(required - (balance or Decimal(0)), Decimal(0))
+    return {
+        "orders_to_pay": len(orders),
+        "orders_payment_required": sum(1 for o in orders if o.cj_payment_status == "PAYMENT_REQUIRED"),
+        "required_usd": float(required),
+        "required_cents": pricing.usd_to_eur_cents(required, rate) if required else 0,
+        "balance_usd": float(balance) if balance is not None else None,
+        "balance_at": row.last_balance_at,
+        "shortfall_usd": float(shortfall),
+        "shortfall_cents": pricing.usd_to_eur_cents(shortfall, rate) if shortfall else 0,
+        "sandbox": row.sandbox,
+        "auto_forward": row.auto_forward,
+    }
 
 
 async def _notify_customer_shipping(db: AsyncSession, *, order: CjOrder, delivered: bool) -> None:

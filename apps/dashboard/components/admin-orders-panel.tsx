@@ -43,6 +43,7 @@ type UnifiedOrder = {
   /** Shop Lial Partner: supplier-side state, shown as a hint here; the
       sending and tracking are handled in "Shop Lial Partner → Ordini". */
   fulfillment_status?: string;
+  cj_payment_status?: string;
   customer_display_name: string;
   product_name: string;
   product_image_url: string | null;
@@ -452,8 +453,10 @@ export function AdminOrdersPanel() {
                       <p className="text-[11px] text-rose-400 mt-1">Motivo annullamento: {o.cancellation_reason}</p>
                     )}
                     {o.source === "partner" && o.status === "PAID" && (
-                      <p className={`text-[11px] mt-1 ${o.fulfillment_status === "ERROR" || o.fulfillment_status === "NOT_SENT" ? "text-amber-400" : "text-sky-400"}`}>
-                        {o.fulfillment_status === "NOT_SENT"
+                      <p className={`text-[11px] mt-1 ${o.fulfillment_status === "ERROR" || o.fulfillment_status === "NOT_SENT" || o.cj_payment_status === "PAYMENT_REQUIRED" ? "text-amber-400" : "text-sky-400"}`}>
+                        {o.cj_payment_status === "PAYMENT_REQUIRED"
+                          ? "Pagamento CJ richiesto: Shop Lial Partner → Ordini"
+                          : o.fulfillment_status === "NOT_SENT"
                           ? "Da inviare al fornitore: Shop Lial Partner → Ordini"
                           : o.fulfillment_status === "ERROR"
                             ? "Invio al fornitore non riuscito: Shop Lial Partner → Ordini"

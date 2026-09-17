@@ -177,8 +177,8 @@ consegna. Con **Acquista** inserisci l'indirizzo (già compilato con quello del
 tuo profilo: controllalo e aggiungi un telefono per il corriere), vedi il costo
 della spedizione calcolato al momento, puoi usare i tuoi LialCash (con il
 codice via email) e paghi il resto con bonifico o carta. In **I miei Ordini**
-l'ordine mostra "In preparazione", poi "Spedito" con il pulsante **Traccia
-pacco**, poi "Consegnato"; ricevi una notifica e un'email a ogni passaggio.
+l'ordine mostra "Ordine ricevuto", poi "In preparazione", poi "Spedito" con il
+pulsante **Traccia pacco**, poi "Consegnato"; ricevi una notifica e un'email a ogni passaggio.
 
 **Documentazione** — feed di sola lettura con annunci e materiale pubblicati
 dall'amministrazione (testo, e opzionalmente un'immagine, un PDF o un link
@@ -457,11 +457,19 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   si cambia dopo da **Modifica** sul prodotto, o per tutti in Impostazioni. **Prodotti in vendita**: modifica testi e foto
   principale, ricarico solo per quel prodotto, prezzo fisso di una variante,
   varianti attive, **Aggiorna da CJ** (costo e stock; lo fa anche da solo ogni
-  notte), **Nascondi**. **Ordini**: "Da gestire" mostra gli ordini pagati da
-  inviare o con un problema; **Invia a CJ** crea l'ordine e lo paga dal saldo
-  CJ (se il saldo non basta diventa "Su CJ, da pagare": ricarica il saldo su
-  CJ e premi **Paga su CJ**); stato e tracking si aggiornano ogni 30 minuti o
-  con **Aggiorna stato**. Il bonifico di un cliente si conferma come sempre da
+  notte), **Nascondi**. **Ordini**: in alto il **riepilogo di cassa** (ordini da pagare a
+  CJ, totale necessario, saldo CJ, quanto manca). Non serve avere saldo in
+  anticipo: quando un cliente paga, l'ordine viene creato su CJ da solo e, se il
+  saldo CJ basta, pagato da solo. Se non basta compare il badge arancione
+  **Pagamento CJ richiesto** (e ti arriva una notifica): premi **Apri pagamento
+  CJ** e paga quell'ordine con carta o PayPal sul sito CJ, poi **Verifica
+  pagamento CJ** (lo fa comunque da solo ogni 10 minuti); in alternativa ricarica
+  il saldo CJ e gli ordini in attesa si pagano da soli, dal più vecchio. Il
+  cliente intanto vede "Ordine ricevuto", poi "In preparazione" quando CJ è
+  pagato. Filtri: Da pagare su CJ, Problemi, Cliente non ha pagato, In
+  preparazione / in viaggio, Consegnati. Ogni ordine mostra pagamento cliente,
+  stato su CJ e pagamento CJ separati, costo CJ, margine, tentativi ed eventuale
+  errore. Il bonifico di un cliente si conferma come sempre da
   **Ordini**.
 - **Riscatti Fatture** — la coda delle richieste "Riscatta Cashback" dei
   clienti: **Verifica importo** (apri il documento caricato, conferma

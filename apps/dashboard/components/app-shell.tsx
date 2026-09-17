@@ -63,6 +63,7 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   CJ_ORDER_CREATED: "Nuovo ordine Shop Lial Partner",
   CJ_ORDER_PAID: "Ordine Shop Lial Partner pagato",
   CJ_ORDER_FAILED: "Ordine Shop Lial Partner da controllare",
+  CJ_PAYMENT_REQUIRED: "Pagamento CJ richiesto",
   ORDER_SHIPPED: "Aggiornamento spedizione",
 };
 

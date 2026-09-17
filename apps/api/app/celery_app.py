@@ -72,6 +72,12 @@ celery_app.conf.update(
             "task": "app.celery_app.cj_sync_orders_task",
             "schedule": crontab(minute="*/30"),
         },
+        "cj-retry-orders": {
+            # Shop Lial Partner: orders not sent, temporary failures, orders
+            # waiting for CJ balance (paid as soon as the balance covers them).
+            "task": "app.celery_app.cj_retry_orders_task",
+            "schedule": crontab(minute="*/10"),
+        },
         "cj-sync-products": {
             # Cost, stock and availability of the imported CJ products.
             "task": "app.celery_app.cj_sync_products_task",
@@ -163,6 +169,13 @@ def cj_sync_orders_task() -> int:
     from app.domains.cj_dropshipping import service as cj_service
 
     return _cj_run(lambda db, org_id: cj_service.sync_orders(db, organization_id=org_id))
+
+
+@celery_app.task(name="app.celery_app.cj_retry_orders_task")
+def cj_retry_orders_task() -> int:
+    from app.domains.cj_dropshipping import service as cj_service
+
+    return _cj_run(lambda db, org_id: cj_service.retry_due_orders(db, organization_id=org_id))
 
 
 @celery_app.task(name="app.celery_app.cj_sync_products_task")

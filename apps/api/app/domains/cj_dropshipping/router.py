@@ -414,6 +414,17 @@ async def list_cj_orders(
     return [await service.order_read_dict(db, o, admin=True) for o in orders]
 
 
+@router.get("/orders/summary")
+async def cj_cash_summary(
+    refresh: bool = False,
+    current_user: CurrentUser = Depends(require_permission(ORDERS)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Orders paid by customers and not yet paid on CJ, what CJ needs for all
+    of them, the CJ balance and the gap to cover."""
+    return await service.cash_requirement(db, organization_id=current_user.organization_id, refresh_balance=refresh)
+
+
 @router.post("/orders/{order_id}/confirm-payment")
 async def confirm_cj_order_payment(
     order_id: uuid.UUID,
@@ -464,8 +475,9 @@ async def forward_cj_order(
     current_user: CurrentUser = Depends(require_permission(ORDERS)),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """"Invia a CJ": creates the order on CJ and pays it from the CJ balance.
-    A CJ refusal is recorded on the order (forward_error), not raised."""
+    """"Invia a CJ" / "Paga con saldo CJ": creates the order on CJ if it is not
+    there yet, then pays it from the balance if the balance covers it (else
+    it waits as PAYMENT_REQUIRED). Recorded on the order, never raised."""
     try:
         order = await service.forward_order(
             db, organization_id=current_user.organization_id, order_id=order_id, actor_user_id=current_user.user_id

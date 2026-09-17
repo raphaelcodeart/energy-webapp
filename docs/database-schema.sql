@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict tAiU8EPqveXeZ6upu2x0UnXEWtFlHo7uVijmvj2i3pl7mNK8dVwptqEs4h2TWSR
+\restrict ZXGgQPcGNtg061OPqiskiPZSoYY7RvqtBwgBtfJftCUEBkQWZ2fVKDRaB3btWXA
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -190,6 +190,18 @@ CREATE TABLE public.cj_orders (
     delivered_at timestamp with time zone,
     last_cj_sync_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    cj_order_code character varying(64),
+    cj_shipment_order_id character varying(64),
+    cj_pay_url character varying(1000),
+    cj_payment_status character varying(24) DEFAULT 'NOT_REQUIRED'::character varying NOT NULL,
+    cj_product_amount_usd numeric(10,2),
+    cj_postage_amount_usd numeric(10,2),
+    cj_ioss_amount_usd numeric(10,2),
+    cj_paid_at timestamp with time zone,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_attempt_at timestamp with time zone,
+    next_retry_at timestamp with time zone,
+    last_error_kind character varying(24),
     CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
     CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents)),
     CONSTRAINT ck_cj_orders_ck_cj_orders_quantity_positive CHECK ((quantity > 0))
@@ -2308,6 +2320,13 @@ CREATE INDEX ix_cj_orders_cj_order_id ON public.cj_orders USING btree (cj_order_
 
 
 --
+-- Name: ix_cj_orders_cj_payment_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_cj_payment_status ON public.cj_orders USING btree (cj_payment_status);
+
+
+--
 -- Name: ix_cj_orders_customer_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2319,6 +2338,13 @@ CREATE INDEX ix_cj_orders_customer_user_id ON public.cj_orders USING btree (cust
 --
 
 CREATE INDEX ix_cj_orders_fulfillment_status ON public.cj_orders USING btree (fulfillment_status);
+
+
+--
+-- Name: ix_cj_orders_next_retry_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_next_retry_at ON public.cj_orders USING btree (next_retry_at);
 
 
 --
@@ -4758,5 +4784,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict tAiU8EPqveXeZ6upu2x0UnXEWtFlHo7uVijmvj2i3pl7mNK8dVwptqEs4h2TWSR
+\unrestrict ZXGgQPcGNtg061OPqiskiPZSoYY7RvqtBwgBtfJftCUEBkQWZ2fVKDRaB3btWXA
 

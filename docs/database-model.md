@@ -1134,14 +1134,23 @@ cj_orders
     ERROR/CJ_CANCELLED, indexed), sandbox, cj_order_id (indexed),
   cj_order_status, cj_amount_usd, forwarded_at, forwarded_by_user_id,
   forward_error, tracking_number, tracking_provider, shipped_at,
-  delivered_at, last_cj_sync_at, created_at
+  delivered_at, last_cj_sync_at, created_at,
+  -- Session 63: the payment to CJ, tracked on its own
+  cj_order_code ("SD..."), cj_shipment_order_id, cj_pay_url (CJ's page to pay
+  this order), cj_payment_status (NOT_REQUIRED/PENDING/PAYMENT_REQUIRED/PAID/
+  FAILED, indexed), cj_product_amount_usd, cj_postage_amount_usd,
+  cj_ioss_amount_usd, cj_paid_at, attempt_count, last_attempt_at,
+  next_retry_at (indexed), last_error_kind (TEMPORARY/AUTHENTICATION/
+  VALIDATION/INSUFFICIENT_BALANCE/FATAL)
 ```
 
 `wallet_transactions.reference_cj_order_id` (FK `cj_orders.id`) is the fifth
 order-like reference on the ledger, a real foreign key like the others (§15).
-`status` is the customer's payment; `fulfillment_status` is the parcel: the
-two are independent columns because "paid" and "shipped" are different facts
-with different owners (the customer, CJ).
+`status` is the customer's payment, `fulfillment_status` the order on CJ and
+the parcel, `cj_payment_status` the payment to CJ: three independent columns
+because they are different facts with different owners (the customer, CJ,
+the company's cash). An order can wait days as PAYMENT_REQUIRED without being
+an error and without looking "in preparation" to the customer.
 
 ## 16. "Invita un amico" (added Session 39)
 

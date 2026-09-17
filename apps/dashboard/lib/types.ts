@@ -1196,6 +1196,23 @@ export type CjQuoteRead = {
 export type CjFulfillmentStatus =
   | "NOT_SENT" | "SENDING" | "SENT" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "ERROR" | "CJ_CANCELLED";
 
+export type CjDeliveryStatus = "RECEIVED" | "PREPARING" | "SHIPPED" | "DELIVERED" | "PROBLEM";
+
+export type CjPaymentStatus = "NOT_REQUIRED" | "PENDING" | "PAYMENT_REQUIRED" | "PAID" | "FAILED";
+
+export type CjCashSummary = {
+  orders_to_pay: number;
+  orders_payment_required: number;
+  required_usd: number;
+  required_cents: number;
+  balance_usd: number | null;
+  balance_at: string | null;
+  shortfall_usd: number;
+  shortfall_cents: number;
+  sandbox: boolean;
+  auto_forward: boolean;
+};
+
 export type CjOrderRead = {
   id: string;
   customer_user_id: string;
@@ -1230,12 +1247,29 @@ export type CjOrderRead = {
   postal_code: string;
   country_code: string;
   shipping_days: string | null;
-  fulfillment_status: CjFulfillmentStatus;
+  /** The only shipping state a customer sees: RECEIVED until the supplier
+      is paid (whatever the reason), then PREPARING, SHIPPED, DELIVERED. */
+  delivery_status: CjDeliveryStatus | null;
   tracking_number: string | null;
   tracking_url: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
   // Admin only
+  fulfillment_status?: CjFulfillmentStatus;
+  cj_payment_status?: CjPaymentStatus;
+  cj_cost_usd?: number;
+  cj_cost_is_actual?: boolean;
+  cj_cost_cents?: number;
+  cj_order_code?: string | null;
+  cj_pay_url?: string | null;
+  cj_product_amount_usd?: number | null;
+  cj_postage_amount_usd?: number | null;
+  cj_ioss_amount_usd?: number | null;
+  cj_paid_at?: string | null;
+  attempt_count?: number;
+  last_attempt_at?: string | null;
+  next_retry_at?: string | null;
+  last_error_kind?: string | null;
   cj_order_id?: string | null;
   cj_order_status?: string | null;
   cj_amount_usd?: number | null;
