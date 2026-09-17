@@ -134,7 +134,7 @@ const QUICK_LINKS: {
   {
     key: "list",
     label: "Contratti",
-    description: "Gestisci tutti i contratti",
+    description: "Tutti i contratti",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
@@ -144,7 +144,7 @@ const QUICK_LINKS: {
   {
     key: "create",
     label: "Nuovo Contratto",
-    description: "Crea una nuova proposta",
+    description: "Nuova proposta",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
@@ -154,7 +154,7 @@ const QUICK_LINKS: {
   {
     key: "customers",
     label: "Clienti",
-    description: "Anagrafiche clienti",
+    description: "Anagrafiche",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -164,7 +164,7 @@ const QUICK_LINKS: {
   {
     key: "promoters",
     label: "Promoter",
-    description: "Rete e collaboratori",
+    description: "Collaboratori",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
@@ -174,7 +174,7 @@ const QUICK_LINKS: {
   {
     key: "products",
     label: "Prodotti",
-    description: "Marketplace & catalogo",
+    description: "Catalogo",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -184,7 +184,7 @@ const QUICK_LINKS: {
   {
     key: "network",
     label: "Rete Commerciale",
-    description: "Albero promoter, 12 livelli",
+    description: "Albero promoter",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0H5a2 2 0 01-2-2v-4m6 6h10a2 2 0 002-2v-4m0-6h-6m6 0v6m0-6l-8 8" />
@@ -194,7 +194,7 @@ const QUICK_LINKS: {
   {
     key: "orders",
     label: "Ordini",
-    description: "Shop & Acquisti LialEnergy",
+    description: "Acquisti Shop",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16.5 7.5h-9v9h9v-9zM3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
@@ -204,7 +204,7 @@ const QUICK_LINKS: {
   {
     key: "invoice-redemptions",
     label: "Riscatti Fatture",
-    description: "Coda cashback da confermare",
+    description: "Da confermare",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -214,7 +214,7 @@ const QUICK_LINKS: {
   {
     key: "commissions",
     label: "Provvigioni",
-    description: "Calcoli e movimenti",
+    description: "Movimenti",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 10v2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -224,7 +224,7 @@ const QUICK_LINKS: {
   {
     key: "tickets",
     label: "Ticket di Supporto",
-    description: "Richieste clienti e promoter",
+    description: "Richieste aperte",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -234,7 +234,7 @@ const QUICK_LINKS: {
   {
     key: "accounting",
     label: "Contabilità",
-    description: "Tutti i movimenti, per utente",
+    description: "Movimenti",
     icon: (
       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
