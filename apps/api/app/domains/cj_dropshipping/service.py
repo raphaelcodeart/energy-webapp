@@ -293,25 +293,57 @@ async def search_catalog(
     }
 
 
-def _variant_inventory(variant: dict, country: str) -> int:
-    return sum(
-        int(inv.get("totalInventory") or inv.get("totalInventoryNum") or 0)
-        for inv in (variant.get("inventories") or [])
-        if inv.get("countryCode") == country
-    )
+def _stock_by_variant(detail: dict, inventory: dict | None) -> dict[str, dict[str, int]]:
+    """{vid: {country: pieces}}. Stock comes from getInventoryByPid: the
+    product detail's own `inventories` is null for most products (seen live
+    in Session 62, which had made an in-stock product look sold out). The
+    detail is only a fallback."""
+    out: dict[str, dict[str, int]] = {}
+    for item in (inventory or {}).get("variantInventories") or []:
+        per_country = out.setdefault(str(item.get("vid")), {})
+        for inv in item.get("inventory") or []:
+            code = inv.get("countryCode")
+            if code:
+                per_country[code] = per_country.get(code, 0) + int(inv.get("totalInventory") or 0)
+    for v in detail.get("variants") or []:
+        vid = str(v.get("vid"))
+        if vid in out:
+            continue
+        per_country = out.setdefault(vid, {})
+        for inv in v.get("inventories") or []:
+            code = inv.get("countryCode")
+            if code:
+                per_country[code] = per_country.get(code, 0) + int(
+                    inv.get("totalInventory") or inv.get("totalInventoryNum") or 0
+                )
+    return out
 
 
-def _choose_origin(detail: dict) -> str:
-    countries = {
-        inv.get("countryCode")
-        for v in detail.get("variants") or []
-        for inv in (v.get("inventories") or [])
-        if int(inv.get("totalInventory") or 0) > 0
-    }
+def _choose_origin(stock: dict[str, dict[str, int]], inventory: dict | None) -> str:
+    """The warehouse an order ships from: the one where the most variants are
+    in stock (a product ships from one place, so a closer warehouse holding a
+    single colour must not make the others look sold out); nearest first on
+    a tie."""
+    coverage: dict[str, int] = {}
+    for per_country in stock.values():
+        for code, n in per_country.items():
+            if n > 0:
+                coverage[code] = coverage.get(code, 0) + 1
+    if coverage:
+        best = max(coverage.values())
+        countries = {code for code, n in coverage.items() if n == best}
+    else:
+        countries = set()
+    if not countries:
+        countries = {
+            inv.get("countryCode")
+            for inv in (inventory or {}).get("inventories") or []
+            if int(inv.get("totalInventoryNum") or 0) > 0
+        }
     for code in ORIGIN_PREFERENCE:
         if code in countries:
             return code
-    return next(iter(countries), "CN")
+    return next(iter(sorted(c for c in countries if c)), "CN")
 
 
 def _cheapest(options: list[dict]) -> dict | None:
@@ -324,7 +356,12 @@ async def preview_product(db: AsyncSession, *, row: CjSettings, pid: str) -> dic
     with CJ cost and our price, where it ships from and the cheapest
     shipping to the destination -- before anything is saved."""
     detail = await cj.get_product(db, row, pid=pid)
-    origin = _choose_origin(detail)
+    try:
+        inventory = await cj.get_product_inventory(db, row, pid=pid)
+    except cj.CjApiError:
+        inventory = None
+    stock = _stock_by_variant(detail, inventory)
+    origin = _choose_origin(stock, inventory)
     variants = detail.get("variants") or []
     heaviest = max(variants, key=lambda v: float(v.get("variantWeight") or 0), default=None)
     shipping = None
@@ -358,7 +395,7 @@ async def preview_product(db: AsyncSession, *, row: CjSettings, pid: str) -> dic
                 "image_url": v.get("variantImage"),
                 "cost_usd": float(_decimal(v.get("variantSellPrice"))),
                 "weight_g": int(float(v.get("variantWeight") or 0)),
-                "inventory": _variant_inventory(v, origin),
+                "inventory": stock.get(str(v.get("vid")), {}).get(origin, 0),
                 "price_cents": pricing.sale_price_cents(
                     cost_usd=_decimal(v.get("variantSellPrice")), settings=row, shipping_estimate_usd=shipping_usd
                 ),

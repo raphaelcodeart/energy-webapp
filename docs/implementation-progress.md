@@ -4,6 +4,32 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 62 — 2026-09-17 — Shop Lial Partner dentro "Fai la spesa con Lial"; stock CJ corretto
+
+Richiesta dell'utente: il cliente non vedeva i prodotti CJ nello Shop, e al
+cliente non interessa da dove arriva un prodotto: meglio una categoria sola?
+
+- [x] Perché non si vedevano: lo shop era lasciato spento (Session 60). Nessun
+  bug di visibilità; aggiunto però un avviso in Impostazioni se lo shop è
+  visibile mentre la sandbox è accesa (i clienti pagherebbero ordini che CJ non
+  spedisce).
+- [x] Scelta UX: i prodotti CJ compaiono **dentro "Fai la spesa con Lial"**,
+  con la stessa card dei prodotti del catalogo (prezzo, "+ spedizione",
+  tempi di consegna, LialCash usabili). Tolta la scheda separata. Backend,
+  tabelle, checkout e interruttore dello shop restano separati: ogni card apre
+  il proprio checkout. "Acquisti LialEnergy" (AliExpress) non è stato toccato.
+- [x] Nessuna traccia della provenienza per il cliente: titolo della finestra
+  prodotto, voce sulla pagina Stripe ("Ordine XXXX — Lial Energy") e dettaglio
+  in Contabilità dicono "Fai la spesa con Lial"; lo staff continua a vedere
+  "Shop Lial Partner (CJ)".
+- [x] **Bug trovato in verifica dal vivo**: l'unico prodotto importato risultava
+  esaurito, ma CJ ne ha 40.000. `product/query` restituisce `inventories: null`
+  per la maggior parte dei prodotti; lo stock ora arriva da
+  `product/stock/getInventoryByPid` (una chiamata per prodotto). Il magazzino di
+  partenza è quello che copre più varianti (a parità, il più vicino). Prodotto
+  in produzione risincronizzato: disponibile.
+- [x] Test: 2 nuovi (stock e magazzino), suite 389 verde.
+
 ## Session 61 — 2026-09-17 — Shop Lial Partner: ricarico 100% già all'importazione
 
 Richiesta dell'utente: "pago 10, vendo a 20" già al momento dell'importazione,

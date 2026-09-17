@@ -1840,8 +1840,10 @@ Un secondo negozio "importato", accanto ad "Acquisti LialEnergy", collegato
 davvero all'API di CJ Dropshipping. Tabelle e gestione proprie
 (`cj_dropshipping`), esperienza del cliente identica agli altri negozi.
 
-**Per il cliente, uguale a tutto lo Shop.** Scheda "Shop Lial Partner",
-checkout con LialCash (codice via email), bonifico o carta, ordine in "I miei
+**Per il cliente, uguale a tutto lo Shop.** I prodotti compaiono nella
+categoria **"Fai la spesa con Lial"** insieme a quelli del catalogo (Session 62):
+al cliente non si dice mai da dove arriva un prodotto (né CJ né "Partner" in
+finestra prodotto, pagina Stripe, Contabilità). Checkout con LialCash (codice via email), bonifico o carta, ordine in "I miei
 Ordini", movimenti in Contabilità. Questi prodotti **non generano cashback**:
 servono a spendere LialCash, come gli Acquisti LialEnergy. In più: variante,
 quantità (1–10), indirizzo di consegna (precompilato dal profilo, telefono
@@ -1886,6 +1888,11 @@ CJ (`iossType=3`, vedi open-questions #17).
 **Sandbox.** Con sandbox accesa gli ordini sono di prova su CJ (nessuna
 spedizione, nessun addebito): il cliente però paga davvero. Lo shop si tiene
 spento finché la prova non è conclusa.
+
+**Stock e magazzino.** Lo stock di ogni variante si legge da
+`getInventoryByPid` (il dettaglio prodotto spesso non lo contiene). Un prodotto
+parte da un solo magazzino: quello dove sono disponibili più varianti, a parità
+il più vicino (Italia, resto d'Europa, USA, Cina).
 
 **Aggiornamenti da CJ.** Ogni 30 minuti stato, tracking e consegna degli
 ordini in viaggio; al passaggio a "Spedito" e "Consegnato" il cliente riceve

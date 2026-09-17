@@ -362,7 +362,9 @@ async def _cj_order_detail(
     return {
         "kind": "ORDER",
         "title": product.name if product else "Ordine",
-        "subtitle": f"Ordine #{_code(order.id)} · Shop Lial Partner",
+        # The customer never sees where a product comes from (Session 62).
+        "subtitle": f"Ordine #{_code(order.id)} · "
+        + ("Fai la spesa con Lial" if owner_user_id is not None else "Shop Lial Partner (CJ)"),
         "status": status_label,
         "status_tone": tone,
         "amount_cents": order.amount_cents,

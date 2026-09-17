@@ -38,9 +38,7 @@ type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
 // stay invisible from the outside. Only ever added to the tab bar when
 // showImportedTab is passed (see CustomerProductsPanelProps below) -- every
 // other caller of this component keeps behaving exactly as before.
-// "PARTNER_SHOP" is Shop Lial Partner (CJ Dropshipping, Session 60): its own
-// domain and tables too, same one-more-tab treatment.
-type ShopTab = ProductCategory | "IMPORTED" | "PARTNER_SHOP";
+type ShopTab = ProductCategory | "IMPORTED";
 
 const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
@@ -130,8 +128,11 @@ export function CustomerProductsPanel({
     queryFn: fetchImportedProducts,
     enabled: showImportedTab,
   });
-  // Empty while the administrator keeps the shop switched off: then the tab
-  // is not shown at all.
+  // Shop Lial Partner (CJ Dropshipping, Session 60): its own domain and
+  // tables, but for the customer just more products of "Fai la spesa con
+  // Lial" (Session 62) -- where a product comes from is our business, not
+  // theirs. Each card still opens its own checkout. Empty while the
+  // administrator keeps that shop switched off.
   const { data: partnerShopProducts } = useQuery({
     queryKey: ["customer", "cj-products"],
     queryFn: fetchPartnerShopProducts,
@@ -162,10 +163,10 @@ export function CustomerProductsPanel({
   const visibleTabs: { key: ShopTab; label: string }[] = [
     ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
     ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
-    ...(showImportedTab && (partnerShopProducts ?? []).length > 0
-      ? [{ key: "PARTNER_SHOP" as ShopTab, label: "Shop Lial Partner" }]
-      : []),
   ];
+
+  const partnerCards: CjProductRead[] =
+    showImportedTab && activeCategory === "DROPSHIPPING" ? partnerShopProducts ?? [] : [];
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -230,8 +231,8 @@ export function CustomerProductsPanel({
         {visibleTabs.map((tab) => {
           const count = tab.key === "IMPORTED"
             ? (importedProducts ?? []).length
-            : tab.key === "PARTNER_SHOP"
-            ? (partnerShopProducts ?? []).length
+            : tab.key === "DROPSHIPPING" && showImportedTab
+            ? activeProducts.filter((p) => p.category === tab.key).length + (partnerShopProducts ?? []).length
             : activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
@@ -251,48 +252,7 @@ export function CustomerProductsPanel({
       </div>
       )}
 
-      {activeCategory === "PARTNER_SHOP" ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {(partnerShopProducts ?? []).map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPartnerShopTarget(p)}
-              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
-              className="group text-left animate-slide-up glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/40 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer"
-            >
-              <div className="relative aspect-square overflow-hidden bg-white">
-                <ProductThumbnail
-                  imageUrl={p.image_url}
-                  alt={p.name}
-                  className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                />
-                {p.credit_discount_percentage > 0 && (
-                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-white shadow">
-                    {p.credit_discount_percentage === 100 ? "Paghi in LialCash" : `-${p.credit_discount_percentage}% LialCash`}
-                  </span>
-                )}
-                {!p.in_stock && (
-                  <span className="absolute inset-x-0 bottom-0 py-1 text-center text-[10px] font-bold bg-slate-900/80 text-white">Esaurito</span>
-                )}
-              </div>
-              <div className="p-3">
-                <p className="text-sm font-semibold text-white light:text-slate-900 leading-snug line-clamp-2 min-h-[2.5rem] group-hover:text-orange-400 transition">
-                  {p.name}
-                </p>
-                <p className="mt-1.5 text-lg font-extrabold text-white light:text-slate-900 tabular-nums">
-                  {p.min_price_cents !== p.max_price_cents && <span className="text-[10px] font-semibold text-slate-500 mr-1">da</span>}
-                  {euro(p.min_price_cents)}
-                </p>
-                <p className="text-[10px] text-slate-500">
-                  {p.shipping_included ? "Spedizione inclusa" : "+ spedizione"}
-                  {p.shipping_days ? ` · ${p.shipping_days} gg` : ""}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      ) : activeCategory === "IMPORTED" ? (
+      {activeCategory === "IMPORTED" ? (
         (importedProducts ?? []).length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-12">Nessun prodotto disponibile al momento.</p>
         ) : (
@@ -367,7 +327,7 @@ export function CustomerProductsPanel({
             })}
           </div>
         )
-      ) : catalog.length === 0 ? (
+      ) : catalog.length === 0 && partnerCards.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-12">
           {activeCategory === "INTERNAL"
             ? "Nessun prodotto disponibile al momento. Contatta il tuo promoter di riferimento per maggiori informazioni."
@@ -512,6 +472,87 @@ export function CustomerProductsPanel({
                       Dettagli
                     </button>
                   )}
+                </div>
+              </div>
+            );
+          })}
+          {partnerCards.map((p, i) => {
+            const maxCreditCents = Math.round((p.min_price_cents * p.credit_discount_percentage) / 100);
+            return (
+              <div
+                key={`partner-${p.id}`}
+                style={{ animationDelay: `${Math.min(catalog.length + i, 8) * 60}ms` }}
+                className="group animate-slide-up glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/40 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-orange-500/10 transition-all duration-300"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPartnerShopTarget(p)}
+                  className="relative block w-full h-48 overflow-hidden cursor-pointer bg-white"
+                >
+                  <ProductThumbnail
+                    imageUrl={p.image_url}
+                    alt={p.name}
+                    className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+                    iconClassName="w-12 h-12 text-orange-400/40"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                  <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-950/70 backdrop-blur-sm text-white border border-white/10 shadow-lg">
+                      {p.shipping_days ? `Consegna ${p.shipping_days} gg` : "Spedito a casa"}
+                    </span>
+                  </div>
+                  {p.credit_discount_percentage > 0 && (
+                    <div className="absolute top-3 right-3">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-emerald-500 to-emerald-400 text-white shadow-lg shadow-emerald-500/30">
+                        -{p.credit_discount_percentage}% in LialCash
+                      </span>
+                    </div>
+                  )}
+                  {!p.in_stock && (
+                    <span className="absolute inset-x-0 bottom-0 py-1.5 text-center text-[11px] font-bold bg-slate-900/85 text-white">Esaurito</span>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-950/0 group-hover:bg-slate-950/30 transition-colors duration-300">
+                    <span className="opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-300 px-3 py-1.5 rounded-lg bg-white/90 text-slate-900 text-[11px] font-bold shadow-lg">
+                      Vedi dettagli
+                    </span>
+                  </div>
+                </button>
+                <div className="p-5">
+                  <h4
+                    onClick={() => setPartnerShopTarget(p)}
+                    className="text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug cursor-pointer hover:text-orange-400 transition line-clamp-2"
+                  >
+                    {p.name}
+                  </h4>
+                  {p.description && (
+                    <p className="text-xs text-slate-400 light:text-slate-500 mb-4 line-clamp-2">{p.description}</p>
+                  )}
+                  <div className="flex items-end justify-between gap-3 pt-4 border-t border-white/5 light:border-slate-200">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                        {p.min_price_cents !== p.max_price_cents ? "Prezzo da" : "Prezzo"}
+                      </p>
+                      <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(p.min_price_cents)}</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {p.shipping_included ? "Spedizione inclusa" : "+ spedizione"}
+                      </p>
+                    </div>
+                    {maxCreditCents > 0 && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wide">LialCash usabili</p>
+                        <p className="text-lg font-extrabold text-emerald-400 tabular-nums">{lialCash(maxCreditCents)}</p>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setPartnerShopTarget(p)}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z" />
+                    </svg>
+                    Vedi dettagli e acquista
+                  </button>
                 </div>
               </div>
             );

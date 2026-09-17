@@ -223,6 +223,11 @@ async def get_product(db: AsyncSession, settings: CjSettings, *, pid: str) -> di
     return data
 
 
+async def get_product_inventory(db: AsyncSession, settings: CjSettings, *, pid: str) -> dict:
+    """Stock of every variant of a product, per warehouse country, in one call."""
+    return await call(db, settings, "GET", "/product/stock/getInventoryByPid", params={"pid": pid}) or {}
+
+
 async def get_variant_stock(db: AsyncSession, settings: CjSettings, *, vid: str) -> list:
     return await call(db, settings, "GET", "/product/stock/queryByVid", params={"vid": vid}) or []
 

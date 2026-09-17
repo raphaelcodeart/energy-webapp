@@ -202,7 +202,7 @@ async def create_checkout_session_for_cj_order(
             {
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": f"Ordine {str(order.id)[:8].upper()} — Shop Lial Partner"},
+                    "product_data": {"name": f"Ordine {str(order.id)[:8].upper()} — Lial Energy"},
                     "unit_amount": residual_cents,
                 },
                 "quantity": 1,

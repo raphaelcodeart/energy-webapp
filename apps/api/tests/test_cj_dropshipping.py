@@ -53,9 +53,17 @@ class FakeCj:
                 "categoryName": "Electronics", "bigImage": "https://img/1.jpg", "productImageSet": ["https://img/2.jpg"],
                 "variants": [
                     {"vid": "V1", "variantSku": "SKU1-B", "variantKey": "Black", "variantSellPrice": "10.00",
-                     "variantWeight": "120", "inventories": [{"countryCode": "CN", "totalInventory": 500}]},
+                     "variantWeight": "120", "inventories": None},
                     {"vid": "V2", "variantSku": "SKU1-W", "variantKey": "White", "variantSellPrice": "11.00",
-                     "variantWeight": "130", "inventories": [{"countryCode": "CN", "totalInventory": 0}]},
+                     "variantWeight": "130", "inventories": None},
+                ],
+            }
+        if path == "/product/stock/getInventoryByPid":
+            return {
+                "inventories": [{"countryCode": "CN", "totalInventoryNum": 500}],
+                "variantInventories": [
+                    {"vid": "V1", "inventory": [{"countryCode": "CN", "totalInventory": 500}]},
+                    {"vid": "V2", "inventory": [{"countryCode": "CN", "totalInventory": 0}]},
                 ],
             }
         if path == "/logistic/freightCalculate":
@@ -298,7 +306,8 @@ async def test_checkout_with_lialcash_and_shipping_like_every_shop(db, organizat
     detail = await accounting_details._order_detail(
         db, organization_id=organization_id, entity_id=order.id, owner_user_id=customer.id
     )
-    assert detail["subtitle"].endswith("Shop Lial Partner")
+    assert detail["subtitle"].endswith("Fai la spesa con Lial")
+    assert "CJ" not in detail["subtitle"] and "Partner" not in detail["subtitle"]
     assert not any(f and f["label"] == "Ordine CJ" for f in detail["facts"])
 
 
@@ -458,3 +467,22 @@ async def test_real_sized_cj_tokens_are_stored(db, organization_id, monkeypatch)
     assert read["last_balance_usd"] == 12.5
     await db.refresh(row)
     assert row.access_token == long_token and row.open_id == "51143"
+
+
+def test_stock_comes_from_the_inventory_endpoint_and_picks_the_nearest_warehouse():
+    """Live CJ: the product detail has inventories=null, stock only in
+    getInventoryByPid. Ships from the warehouse covering most variants,
+    the nearest on a tie."""
+    detail = {"variants": [{"vid": "A", "inventories": None}, {"vid": "B", "inventories": None}]}
+    inventory = {"variantInventories": [
+        {"vid": "A", "inventory": [{"countryCode": "CN", "totalInventory": 40000}, {"countryCode": "DE", "totalInventory": 12}]},
+        {"vid": "B", "inventory": [{"countryCode": "CN", "totalInventory": 7}]},
+    ]}
+    stock = cj_service._stock_by_variant(detail, inventory)
+    assert stock["A"] == {"CN": 40000, "DE": 12}
+    # B is only in China: shipping from Germany would make B look sold out.
+    assert cj_service._choose_origin(stock, inventory) == "CN"
+    both_in_de = {"A": {"CN": 5, "DE": 3}, "B": {"CN": 5, "DE": 9}}
+    assert cj_service._choose_origin(both_in_de, None) == "DE"
+    assert cj_service._choose_origin(cj_service._stock_by_variant(detail, None), None) == "CN"
+

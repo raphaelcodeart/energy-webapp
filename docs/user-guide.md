@@ -169,8 +169,9 @@ carta (Stripe). Il risultato si vede nella nuova voce **I miei Ordini**: stato
 caricabile per un ordine a bonifico, possibilità di cambiare metodo di
 pagamento o pagare subito con carta un ordine già creato a bonifico.
 
-**Shop Lial Partner** — un'altra scheda dello Shop con prodotti spediti a
-casa dal nostro fornitore partner. Apri un prodotto per vedere le foto,
+**Prodotti spediti a casa** — nella categoria **Fai la spesa con Lial**
+trovi anche prodotti con varianti e consegna a domicilio (sulla card vedi i
+giorni di consegna e "+ spedizione"). Apri un prodotto per vedere le foto,
 scegliere la variante (colore, misura...) e la quantità, e i tempi di
 consegna. Con **Acquista** inserisci l'indirizzo (già compilato con quello del
 tuo profilo: controllalo e aggiungi un telefono per il corriere), vedi il costo
@@ -445,7 +446,9 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   aggiorna mentre scrivi). **Modalità test (sandbox)**: gli ordini inviati a CJ
   sono finti; spegnila solo quando vuoi spedire davvero. **Invia a CJ in
   automatico**: l'ordine parte appena il cliente ha pagato. **Shop visibile ai
-  clienti**: accende la scheda nello Shop. **Catalogo CJ**: cerca (in
+  clienti**: i prodotti importati compaiono ai clienti dentro "Fai la spesa con
+  Lial" (senza indicare da dove arrivano). Se lo accendi con la sandbox ancora
+  attiva compare un avviso: i clienti pagherebbero ordini che CJ non spedisce. **Catalogo CJ**: cerca (in
   inglese), filtra per categoria e prezzo, vedi già il prezzo a cui lo
   venderesti; aprendo un prodotto vedi varianti, stock, da dove parte e la
   spedizione più economica verso l'Italia; traduci nome e descrizione, scegli

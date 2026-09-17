@@ -246,6 +246,12 @@ function SettingsForm({ settings }: { settings: CjSettingsRead }) {
             title="Modalità test (sandbox)" hint="Gli ordini inviati a CJ sono di prova: nessuna spedizione reale, nessun addebito. Spegnila quando sei pronto a vendere." />
           <Switch checked={form.auto_forward} onChange={(v) => setForm({ ...form, auto_forward: v })}
             title="Invia a CJ in automatico" hint="Appena il cliente ha pagato, l'ordine parte verso CJ. Se è spento lo invii tu da “Ordini”." />
+          {form.enabled && form.sandbox && (
+            <p className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 light:text-amber-700">
+              Attenzione: shop visibile ma in modalità test. I clienti possono comprare e pagare davvero, ma CJ non
+              spedisce gli ordini di prova. Usalo così solo per una prova con un tuo account, poi spegni la sandbox.
+            </p>
+          )}
         </div>
       </div>
 

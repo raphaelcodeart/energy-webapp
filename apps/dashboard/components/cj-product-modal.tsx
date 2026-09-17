@@ -238,7 +238,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
       <div className="w-full max-w-3xl glass-card rounded-2xl border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 light:border-slate-200 bg-slate-950/95 light:bg-white/95 backdrop-blur">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Shop Lial Partner</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Fai la spesa con Lial</p>
             <h3 className="text-base font-bold text-white light:text-slate-900 truncate">
               {step === "product" ? product.name : step === "checkout" ? "Completa l'acquisto" : product.name}
             </h3>
