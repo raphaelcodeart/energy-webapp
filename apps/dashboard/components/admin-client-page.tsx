@@ -19,6 +19,7 @@ import { AdminPartnersPanel } from "@/components/admin-partners-panel";
 import { AdminFriendReferralClaimsPanel } from "@/components/admin-friend-referral-claims-panel";
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
+import { AdminCjPanel } from "@/components/admin-cj-panel";
 import { AdminImportedProductsPanel } from "@/components/admin-imported-products-panel";
 import { AdminAccountingPanel } from "@/components/admin-accounting-panel";
 import { Pagination, usePagination } from "@/components/pagination";
@@ -266,6 +267,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    key: "partner-shop",
+    label: "Shop Lial Partner",
+    notificationTypes: ["CJ_ORDER_PAID", "CJ_ORDER_FAILED", "CJ_ORDER_CREATED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
     key: "accounting",
     label: "Contabilità",
     icon: (
@@ -304,7 +315,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
   const queryClient = useQueryClient();
   const [openRequestId, setOpenRequestId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "accounting" | "documentation" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "partner-shop" | "accounting" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -824,6 +835,11 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
           <div className="space-y-6">
             <SectionBanner image="products" alt="Acquisti LialEnergy" />
             <AdminImportedProductsPanel />
+          </div>
+        )}
+        {activeTab === "partner-shop" && (
+          <div className="space-y-6">
+            <AdminCjPanel />
           </div>
         )}
         {activeTab === "accounting" && (

@@ -1053,3 +1053,200 @@ export type ContractCommissionLogRead = {
   } | null;
   instalments: ContractInstalmentRead[];
 };
+
+// --- Shop Lial Partner (CJ Dropshipping, Session 60) ---------------------------------
+
+export type CjSettingsRead = {
+  api_key_configured: boolean;
+  api_key_hint: string | null;
+  connected: boolean;
+  token_expires_at: string | null;
+  enabled: boolean;
+  sandbox: boolean;
+  usd_eur_rate: number;
+  markup_percentage: number;
+  markup_fixed_cents: number;
+  price_rounding: "90" | "99" | "NONE";
+  shipping_mode: "CUSTOMER_PAYS" | "INCLUDED";
+  default_credit_percentage: number;
+  destination_country: string;
+  auto_forward: boolean;
+  last_balance_usd: number | null;
+  last_balance_at: string | null;
+};
+
+export type CjCatalogItem = {
+  pid: string;
+  name_en: string;
+  sku: string;
+  image_url: string | null;
+  sell_price_usd: string;
+  estimated_price_cents: number | null;
+  inventory: number | null;
+  category_name: string | null;
+  free_shipping: boolean;
+  already_imported: boolean;
+};
+
+export type CjCatalogPage = {
+  page: number;
+  total_pages: number;
+  total_records: number;
+  items: CjCatalogItem[];
+};
+
+export type CjProductPreview = {
+  pid: string;
+  sku: string;
+  name_en: string;
+  description_text: string;
+  category_name: string | null;
+  images: string[];
+  origin_country: string;
+  shipping_estimate_usd: number | null;
+  shipping_estimate_cents: number | null;
+  shipping_days: string | null;
+  shipping_carrier: string | null;
+  ships_to_destination: boolean;
+  variants: {
+    vid: string;
+    sku: string;
+    label: string;
+    image_url: string | null;
+    cost_usd: number;
+    weight_g: number;
+    inventory: number;
+    price_cents: number;
+  }[];
+};
+
+export type CjVariantAdminRead = {
+  id: string;
+  cj_vid: string;
+  cj_sku: string | null;
+  label: string;
+  image_url: string | null;
+  cost_usd: number;
+  weight_g: number;
+  price_cents: number;
+  price_override_cents: number | null;
+  effective_price_cents: number;
+  inventory: number;
+  active: boolean;
+  available_on_cj: boolean;
+};
+
+export type CjProductAdminRead = {
+  id: string;
+  cj_pid: string;
+  cj_sku: string | null;
+  name: string;
+  name_en: string | null;
+  description: string;
+  image_url: string | null;
+  images: string[];
+  category_name: string | null;
+  origin_country: string;
+  shipping_estimate_usd: number | null;
+  shipping_days: string | null;
+  status: "ACTIVE" | "INACTIVE";
+  credit_discount_percentage: number;
+  markup_percentage: number | null;
+  last_synced_at: string | null;
+  sync_error: string | null;
+  paid_orders: number;
+  created_at: string;
+  variants: CjVariantAdminRead[];
+};
+
+export type CjProductRead = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  images: string[];
+  min_price_cents: number;
+  max_price_cents: number;
+  credit_discount_percentage: number;
+  shipping_days: string | null;
+  shipping_included: boolean;
+  in_stock: boolean;
+  variants: { id: string; label: string; image_url: string | null; price_cents: number; in_stock: boolean }[];
+};
+
+export type CjQuoteRead = {
+  variant_id: string;
+  product_name: string;
+  variant_label: string;
+  quantity: number;
+  unit_price_cents: number;
+  items_cents: number;
+  shipping_cents: number;
+  shipping_included: boolean;
+  shipping_days: string | null;
+  amount_cents: number;
+  credit_discount_percentage: number;
+  max_creditable_cents: number;
+  customer_wallet_balance_cents: number;
+  bank_transfer_available: boolean;
+  card_available: boolean;
+  default_address: { street: string | null; city: string | null; province: string | null; postal_code: string | null };
+};
+
+export type CjFulfillmentStatus =
+  | "NOT_SENT" | "SENDING" | "SENT" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "ERROR" | "CJ_CANCELLED";
+
+export type CjOrderRead = {
+  id: string;
+  customer_user_id: string;
+  customer_display_name: string;
+  cj_product_id: string;
+  cj_variant_id: string;
+  product_name: string;
+  product_image_url: string | null;
+  variant_label: string | null;
+  created_by_user_id: string;
+  quantity: number;
+  unit_price_cents: number;
+  shipping_cents: number;
+  amount_cents: number;
+  credit_applied_cents: number;
+  residual_amount_cents: number;
+  status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
+  payment_method: "BANK_TRANSFER" | "CARD";
+  stripe_checkout_session_id: string | null;
+  payment_proof_uploaded_at: string | null;
+  note: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  created_at: string;
+  recipient_name: string;
+  recipient_phone: string | null;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  province: string;
+  postal_code: string;
+  country_code: string;
+  shipping_days: string | null;
+  fulfillment_status: CjFulfillmentStatus;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  // Admin only
+  cj_order_id?: string | null;
+  cj_order_status?: string | null;
+  cj_amount_usd?: number | null;
+  sandbox?: boolean;
+  logistic_name?: string;
+  origin_country?: string;
+  unit_cost_usd?: number;
+  shipping_cost_usd?: number;
+  usd_eur_rate?: number;
+  estimated_margin_cents?: number;
+  forwarded_at?: string | null;
+  forward_error?: string | null;
+  last_cj_sync_at?: string | null;
+};

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict hPDuG13oIGcrIHWVEU1bdF1mnj1cQQAWZpWDctkYy7mfNgNY6htRH5hvwnCv08m
+\restrict tAiU8EPqveXeZ6upu2x0UnXEWtFlHo7uVijmvj2i3pl7mNK8dVwptqEs4h2TWSR
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -130,6 +130,151 @@ CREATE TABLE public.audit_log (
     correlation_id character varying(64),
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: cj_orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cj_orders (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_user_id uuid NOT NULL,
+    cj_product_id uuid NOT NULL,
+    cj_variant_id uuid NOT NULL,
+    created_by_user_id uuid NOT NULL,
+    quantity integer DEFAULT 1 NOT NULL,
+    unit_price_cents bigint NOT NULL,
+    shipping_cents bigint DEFAULT '0'::bigint NOT NULL,
+    amount_cents bigint NOT NULL,
+    credit_applied_cents bigint DEFAULT '0'::bigint NOT NULL,
+    credit_debit_transaction_id uuid,
+    status character varying(16) DEFAULT 'AWAITING_PAYMENT'::character varying NOT NULL,
+    payment_method character varying(16) DEFAULT 'BANK_TRANSFER'::character varying NOT NULL,
+    stripe_checkout_session_id character varying(255),
+    note character varying(1000),
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp with time zone,
+    paid_by_user_id uuid,
+    paid_at timestamp with time zone,
+    cancelled_by_user_id uuid,
+    cancelled_at timestamp with time zone,
+    cancellation_reason character varying(500),
+    recipient_name character varying(128) NOT NULL,
+    recipient_phone character varying(32),
+    address_line1 character varying(255) NOT NULL,
+    address_line2 character varying(255),
+    city character varying(128) NOT NULL,
+    province character varying(64) NOT NULL,
+    postal_code character varying(16) NOT NULL,
+    country_code character varying(2) DEFAULT 'IT'::character varying NOT NULL,
+    logistic_name character varying(64) NOT NULL,
+    origin_country character varying(2) DEFAULT 'CN'::character varying NOT NULL,
+    shipping_days character varying(32),
+    unit_cost_usd numeric(10,2) NOT NULL,
+    shipping_cost_usd numeric(10,2) DEFAULT '0'::numeric NOT NULL,
+    usd_eur_rate numeric(10,6) NOT NULL,
+    fulfillment_status character varying(16) DEFAULT 'NOT_SENT'::character varying NOT NULL,
+    sandbox boolean DEFAULT false NOT NULL,
+    cj_order_id character varying(64),
+    cj_order_status character varying(32),
+    cj_amount_usd numeric(12,2),
+    forwarded_at timestamp with time zone,
+    forwarded_by_user_id uuid,
+    forward_error character varying(500),
+    tracking_number character varying(128),
+    tracking_provider character varying(64),
+    shipped_at timestamp with time zone,
+    delivered_at timestamp with time zone,
+    last_cj_sync_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
+    CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents)),
+    CONSTRAINT ck_cj_orders_ck_cj_orders_quantity_positive CHECK ((quantity > 0))
+);
+
+
+--
+-- Name: cj_products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cj_products (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    cj_pid character varying(64) NOT NULL,
+    cj_sku character varying(64),
+    name character varying(255) NOT NULL,
+    name_en character varying(500),
+    description character varying(8000) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(1000),
+    images jsonb DEFAULT '[]'::jsonb NOT NULL,
+    category_name character varying(255),
+    origin_country character varying(2) DEFAULT 'CN'::character varying NOT NULL,
+    shipping_estimate_usd numeric(10,2),
+    shipping_days character varying(32),
+    status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    credit_discount_percentage integer DEFAULT 100 NOT NULL,
+    markup_percentage integer,
+    last_synced_at timestamp with time zone,
+    sync_error character varying(500),
+    created_by_user_id uuid NOT NULL,
+    updated_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: cj_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cj_settings (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    api_key character varying(255),
+    access_token text,
+    access_token_expires_at timestamp with time zone,
+    refresh_token text,
+    refresh_token_expires_at timestamp with time zone,
+    open_id character varying(64),
+    enabled boolean DEFAULT false NOT NULL,
+    sandbox boolean DEFAULT true NOT NULL,
+    usd_eur_rate numeric(10,6) DEFAULT 0.92 NOT NULL,
+    markup_percentage integer DEFAULT 40 NOT NULL,
+    markup_fixed_cents integer DEFAULT 0 NOT NULL,
+    price_rounding character varying(8) DEFAULT '90'::character varying NOT NULL,
+    shipping_mode character varying(16) DEFAULT 'CUSTOMER_PAYS'::character varying NOT NULL,
+    default_credit_percentage integer DEFAULT 100 NOT NULL,
+    destination_country character varying(2) DEFAULT 'IT'::character varying NOT NULL,
+    auto_forward boolean DEFAULT false NOT NULL,
+    last_balance_usd numeric(12,2),
+    last_balance_at timestamp with time zone,
+    updated_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: cj_variants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cj_variants (
+    id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    cj_vid character varying(64) NOT NULL,
+    cj_sku character varying(128),
+    label character varying(255) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(1000),
+    cost_usd numeric(10,2) NOT NULL,
+    weight_g integer DEFAULT 0 NOT NULL,
+    price_cents bigint NOT NULL,
+    price_override_cents bigint,
+    inventory integer DEFAULT 0 NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    available_on_cj boolean DEFAULT true NOT NULL,
+    last_synced_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1230,6 +1375,7 @@ CREATE TABLE public.wallet_transactions (
     reference_invoice_redemption_id uuid,
     reference_order_id uuid,
     reference_imported_order_id uuid,
+    reference_cj_order_id uuid,
     CONSTRAINT ck_wallet_transactions_ck_wallet_transactions_has_a_side CHECK (((from_wallet_id IS NOT NULL) OR (to_wallet_id IS NOT NULL)))
 );
 
@@ -1297,6 +1443,38 @@ ALTER TABLE ONLY public.attribution_corrections
 
 ALTER TABLE ONLY public.audit_log
     ADD CONSTRAINT pk_audit_log PRIMARY KEY (id);
+
+
+--
+-- Name: cj_orders pk_cj_orders; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT pk_cj_orders PRIMARY KEY (id);
+
+
+--
+-- Name: cj_products pk_cj_products; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_products
+    ADD CONSTRAINT pk_cj_products PRIMARY KEY (id);
+
+
+--
+-- Name: cj_settings pk_cj_settings; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_settings
+    ADD CONSTRAINT pk_cj_settings PRIMARY KEY (id);
+
+
+--
+-- Name: cj_variants pk_cj_variants; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_variants
+    ADD CONSTRAINT pk_cj_variants PRIMARY KEY (id);
 
 
 --
@@ -1796,6 +1974,38 @@ ALTER TABLE ONLY public.agent_profiles
 
 
 --
+-- Name: cj_orders uq_cj_orders_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT uq_cj_orders_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
+
+
+--
+-- Name: cj_products uq_cj_products_organization_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_products
+    ADD CONSTRAINT uq_cj_products_organization_id UNIQUE (organization_id, cj_pid);
+
+
+--
+-- Name: cj_settings uq_cj_settings_organization_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_settings
+    ADD CONSTRAINT uq_cj_settings_organization_id UNIQUE (organization_id);
+
+
+--
+-- Name: cj_variants uq_cj_variants_product_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_variants
+    ADD CONSTRAINT uq_cj_variants_product_id UNIQUE (product_id, cj_vid);
+
+
+--
 -- Name: commission_calculations uq_commission_calculations_contract_trigger; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2088,6 +2298,62 @@ CREATE INDEX ix_audit_log_correlation_id ON public.audit_log USING btree (correl
 --
 
 CREATE INDEX ix_audit_log_organization_id ON public.audit_log USING btree (organization_id);
+
+
+--
+-- Name: ix_cj_orders_cj_order_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_cj_order_id ON public.cj_orders USING btree (cj_order_id);
+
+
+--
+-- Name: ix_cj_orders_customer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_customer_user_id ON public.cj_orders USING btree (customer_user_id);
+
+
+--
+-- Name: ix_cj_orders_fulfillment_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_fulfillment_status ON public.cj_orders USING btree (fulfillment_status);
+
+
+--
+-- Name: ix_cj_orders_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_organization_id ON public.cj_orders USING btree (organization_id);
+
+
+--
+-- Name: ix_cj_orders_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_orders_status ON public.cj_orders USING btree (status);
+
+
+--
+-- Name: ix_cj_products_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_products_organization_id ON public.cj_products USING btree (organization_id);
+
+
+--
+-- Name: ix_cj_products_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_products_status ON public.cj_products USING btree (status);
+
+
+--
+-- Name: ix_cj_variants_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_cj_variants_product_id ON public.cj_variants USING btree (product_id);
 
 
 --
@@ -3030,6 +3296,110 @@ ALTER TABLE ONLY public.audit_log
 
 ALTER TABLE ONLY public.audit_log
     ADD CONSTRAINT fk_audit_log_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_cancelled_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_cancelled_by_user_id_users FOREIGN KEY (cancelled_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_cj_product_id_cj_products; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_cj_product_id_cj_products FOREIGN KEY (cj_product_id) REFERENCES public.cj_products(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_cj_variant_id_cj_variants; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_cj_variant_id_cj_variants FOREIGN KEY (cj_variant_id) REFERENCES public.cj_variants(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_credit_debit_transaction_id_wallet_transactions; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_credit_debit_transaction_id_wallet_transactions FOREIGN KEY (credit_debit_transaction_id) REFERENCES public.wallet_transactions(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_customer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_customer_user_id_users FOREIGN KEY (customer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_forwarded_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_forwarded_by_user_id_users FOREIGN KEY (forwarded_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: cj_orders fk_cj_orders_paid_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_orders
+    ADD CONSTRAINT fk_cj_orders_paid_by_user_id_users FOREIGN KEY (paid_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_products fk_cj_products_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_products
+    ADD CONSTRAINT fk_cj_products_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: cj_products fk_cj_products_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_products
+    ADD CONSTRAINT fk_cj_products_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: cj_settings fk_cj_settings_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_settings
+    ADD CONSTRAINT fk_cj_settings_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: cj_variants fk_cj_variants_product_id_cj_products; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cj_variants
+    ADD CONSTRAINT fk_cj_variants_product_id_cj_products FOREIGN KEY (product_id) REFERENCES public.cj_products(id);
 
 
 --
@@ -4313,6 +4683,14 @@ ALTER TABLE ONLY public.wallet_transactions
 
 
 --
+-- Name: wallet_transactions fk_wallet_transactions_reference_cj_order_id_cj_orders; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_cj_order_id_cj_orders FOREIGN KEY (reference_cj_order_id) REFERENCES public.cj_orders(id);
+
+
+--
 -- Name: wallet_transactions fk_wallet_transactions_reference_contract_id_contracts; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4380,5 +4758,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict hPDuG13oIGcrIHWVEU1bdF1mnj1cQQAWZpWDctkYy7mfNgNY6htRH5hvwnCv08m
+\unrestrict tAiU8EPqveXeZ6upu2x0UnXEWtFlHo7uVijmvj2i3pl7mNK8dVwptqEs4h2TWSR
 

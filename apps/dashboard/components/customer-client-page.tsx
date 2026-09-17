@@ -114,7 +114,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     key: "orders",
     label: "I miei Ordini",
-    notificationTypes: ["ORDER_PAID"],
+    notificationTypes: ["ORDER_PAID", "ORDER_SHIPPED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 2l1 4H4a1 1 0 00-1 1v1a1 1 0 001 1h16a1 1 0 001-1V7a1 1 0 00-1-1h-6l1-4M5 9v9a2 2 0 002 2h10a2 2 0 002-2V9M10 13h4" />

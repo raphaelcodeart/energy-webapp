@@ -8,6 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import utcnow
+from app.domains.cj_dropshipping import service as cj_service
+from app.domains.cj_dropshipping.models import CjOrder
 from app.domains.contracts import payment_plans
 from app.domains.contracts.models import Contract, ContractRequest, ContractRequestCheckout
 from app.domains.imported_products import service as imported_products_service
@@ -173,6 +175,45 @@ async def create_checkout_session_for_imported_order(
         cancel_url=cancel_url,
     )
     await imported_products_service.attach_stripe_checkout_session(db, order=order, session_id=session.id)
+    if not session.url:
+        raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
+    return session.url
+
+
+async def create_checkout_session_for_cj_order(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    order: CjOrder,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Same as create_checkout_session_for_imported_order, for a Shop Lial
+    Partner (CJ Dropshipping) order: metadata.kind="cj_order"."""
+    secret_key = await organizations_service.get_stripe_secret_key(db, organization_id=organization_id)
+    if not secret_key:
+        raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
+
+    residual_cents = order.amount_cents - order.credit_applied_cents
+    session = stripe.checkout.Session.create(
+        api_key=secret_key,
+        mode="payment",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Ordine {str(order.id)[:8].upper()} — Shop Lial Partner"},
+                    "unit_amount": residual_cents,
+                },
+                "quantity": 1,
+            }
+        ],
+        client_reference_id=str(order.id),
+        metadata={"kind": "cj_order", "cj_order_id": str(order.id), "organization_id": str(organization_id)},
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    await cj_service.attach_stripe_checkout_session(db, order=order, session_id=session.id)
     if not session.url:
         raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
     return session.url
@@ -810,6 +851,10 @@ async def handle_webhook_event(
                 )
             except imported_products_service.ImportedProductsError:
                 pass
+        elif kind == "cj_order":
+            await cj_service.mark_paid_via_stripe(
+                db, organization_id=organization_id, stripe_checkout_session_id=session["id"]
+            )
         elif kind == "contract_request":
             outcome = await _handle_request_checkout(
                 db, organization_id=organization_id, session=session, secret_key=secret_key

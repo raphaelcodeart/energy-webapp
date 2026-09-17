@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
-import type { ImportedOrderRead, OrderRead } from "@/lib/types";
+import type { CjOrderRead, ImportedOrderRead, OrderRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   AWAITING_PAYMENT: "In attesa di pagamento",
@@ -47,8 +47,15 @@ const FILTER_TABS: { key: OrderFilter; label: string }[] = [
     picking the right API path. */
 type UnifiedOrder = {
   id: string;
-  source: "standard" | "imported";
+  source: "standard" | "imported" | "partner";
   product_name: string;
+  /** Shop Lial Partner only: what travels to the customer's door. */
+  shipping?: Pick<
+    CjOrderRead,
+    | "quantity" | "variant_label" | "shipping_cents" | "fulfillment_status" | "tracking_number" | "tracking_url"
+    | "shipping_days" | "shipped_at" | "delivered_at" | "recipient_name" | "address_line1" | "address_line2"
+    | "postal_code" | "city" | "province"
+  >;
   product_image_url: string | null;
   amount_cents: number;
   credit_applied_cents: number;
@@ -70,7 +77,23 @@ type UnifiedOrder = {
 /** Which backend this order's actions (pay, switch method, upload proof,
     cancel...) route to -- the one and only place `source` matters. */
 function ordersBasePath(source: UnifiedOrder["source"]): string {
+  if (source === "partner") return "/api/proxy/cj/orders";
   return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
+}
+
+/** Where a paid Shop Lial Partner order is, in the customer's words. */
+function shippingState(order: UnifiedOrder): { label: string; className: string } | null {
+  if (!order.shipping || order.status !== "PAID") return null;
+  switch (order.shipping.fulfillment_status) {
+    case "SHIPPED":
+      return { label: "Spedito", className: "bg-sky-500/10 border-sky-500/30 text-sky-400" };
+    case "DELIVERED":
+      return { label: "Consegnato", className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" };
+    case "CJ_CANCELLED":
+      return { label: "Problema con la spedizione: ti contattiamo", className: "bg-rose-500/10 border-rose-500/30 text-rose-400" };
+    default:
+      return { label: "In preparazione", className: "bg-amber-500/10 border-amber-500/30 text-amber-400" };
+  }
 }
 
 function euro(cents: number): string {
@@ -104,13 +127,15 @@ function orderCode(id: string): string {
 }
 
 async function fetchMyOrders(): Promise<UnifiedOrder[]> {
-  const [standardRes, importedRes] = await Promise.all([
+  const [standardRes, importedRes, partnerRes] = await Promise.all([
     fetch("/api/proxy/orders/mine"),
     fetch("/api/proxy/imported-products/orders/mine"),
+    fetch("/api/proxy/cj/orders/mine"),
   ]);
   if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare i tuoi ordini.");
   const standard: OrderRead[] = await standardRes.json();
   const imported: ImportedOrderRead[] = await importedRes.json();
+  const partner: CjOrderRead[] = partnerRes.ok ? await partnerRes.json() : [];
   const merged: UnifiedOrder[] = [
     ...standard.map((o) => ({ ...o, source: "standard" as const })),
     ...imported.map((o) => ({
@@ -119,6 +144,15 @@ async function fetchMyOrders(): Promise<UnifiedOrder[]> {
       cashback_requested: false,
       cashback_surcharge_cents: 0,
       cashback_credited_at: null,
+    })),
+    ...partner.map((o) => ({
+      ...o,
+      source: "partner" as const,
+      product_name: o.quantity > 1 ? `${o.product_name} × ${o.quantity}` : o.product_name,
+      cashback_requested: false,
+      cashback_surcharge_cents: 0,
+      cashback_credited_at: null,
+      shipping: o,
     })),
   ];
   merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -217,6 +251,44 @@ function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
               </p>
             )}
           </div>
+
+          {order.shipping && (
+            <div className="p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/5 light:border-slate-200 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Spedizione</p>
+                {shippingState(order) && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${shippingState(order)!.className}`}>
+                    {shippingState(order)!.label}
+                  </span>
+                )}
+              </div>
+              {order.shipping.variant_label && (
+                <p className="text-slate-400 light:text-slate-500">
+                  {order.shipping.variant_label} · {order.shipping.quantity} {order.shipping.quantity === 1 ? "pezzo" : "pezzi"}
+                  {" "}· spedizione {order.shipping.shipping_cents > 0 ? euro(order.shipping.shipping_cents) : "inclusa"}
+                </p>
+              )}
+              <p className="text-slate-300 light:text-slate-700">
+                {order.shipping.recipient_name}, {order.shipping.address_line1}
+                {order.shipping.address_line2 ? `, ${order.shipping.address_line2}` : ""}, {order.shipping.postal_code} {order.shipping.city} ({order.shipping.province})
+              </p>
+              {order.shipping.shipped_at && <p className="text-slate-400 light:text-slate-500">Spedito il <span className="text-sky-400">{formatDateTime(order.shipping.shipped_at)}</span></p>}
+              {order.shipping.delivered_at && <p className="text-slate-400 light:text-slate-500">Consegnato il <span className="text-emerald-400">{formatDateTime(order.shipping.delivered_at)}</span></p>}
+              {!order.shipping.shipped_at && order.status === "PAID" && order.shipping.shipping_days && (
+                <p className="text-slate-500">Consegna stimata in {order.shipping.shipping_days} giorni lavorativi dalla spedizione.</p>
+              )}
+              {order.shipping.tracking_number && (
+                <p className="text-slate-400 light:text-slate-500">
+                  Tracking <span className="font-mono text-slate-200 light:text-slate-800">{order.shipping.tracking_number}</span>
+                  {order.shipping.tracking_url && (
+                    <a href={order.shipping.tracking_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-semibold text-orange-400 hover:text-orange-300">
+                      Segui la spedizione →
+                    </a>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           {order.payment_proof_uploaded_at && (
             <button
@@ -508,6 +580,16 @@ export function CustomerOrdersPanel() {
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[o.status]}`}>
                       {STATUS_LABELS[o.status]}
                     </span>
+                    {shippingState(o) && (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${shippingState(o)!.className}`}>
+                        {shippingState(o)!.label}
+                      </span>
+                    )}
+                    {o.shipping?.tracking_url && (
+                      <a href={o.shipping.tracking_url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-sky-400 hover:text-sky-300">
+                        Traccia pacco →
+                      </a>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     Ordine <span className="font-mono text-slate-400 light:text-slate-600">#{orderCode(o.id)}</span> · Ordinato il {formatDate(o.created_at)}

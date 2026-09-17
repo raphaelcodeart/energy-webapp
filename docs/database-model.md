@@ -1084,6 +1084,65 @@ stays a real foreign key to its own table -- a single polymorphic
 cosmetic tidiness.
 
 
+## 17. Shop Lial Partner: CJ Dropshipping (added Session 60)
+
+A second imported shop, connected for real to CJ Dropshipping's API 2.0. Kept
+apart from `imported_products` (§15) for the same reason that table is apart
+from `products`, and because a real dropshipping order needs what a
+hand-curated one does not: variants, a cost in USD, stock per warehouse, a
+shipping quote, a delivery address, and a life on the supplier's side until
+delivery. Same customer experience as every shop: LialCash with OTP, bank
+transfer or card, "I miei Ordini", Contabilità. Rules:
+`business-rules.md#partner-shop`.
+
+```
+cj_settings                      one row per organization (UNIQUE organization_id)
+  api_key (never returned: only api_key_configured + last 4),
+  access_token TEXT, access_token_expires_at, refresh_token TEXT,
+  refresh_token_expires_at, open_id (CJ account id, webhook signing secret),
+  enabled (shop visible to customers), sandbox (orders sent as isSandbox=1),
+  usd_eur_rate NUMERIC(10,6), markup_percentage, markup_fixed_cents,
+  price_rounding (90/99/NONE), shipping_mode (CUSTOMER_PAYS/INCLUDED),
+  default_credit_percentage, destination_country (IT), auto_forward,
+  last_balance_usd, last_balance_at, updated_at
+
+cj_products                      UNIQUE (organization_id, cj_pid)
+  cj_pid, cj_sku, name (Italian, editable), name_en (CJ original),
+  description (plain text, never HTML), image_url, images JSONB,
+  category_name, origin_country (warehouse orders ship from),
+  shipping_estimate_usd, shipping_days, status (ACTIVE/INACTIVE),
+  credit_discount_percentage, markup_percentage nullable (override),
+  last_synced_at, sync_error, created_by_user_id, created_at, updated_at
+
+cj_variants                      UNIQUE (product_id, cj_vid)
+  product_id, cj_vid, cj_sku, label, image_url, cost_usd, weight_g,
+  price_cents (computed from cost + rules), price_override_cents nullable,
+  inventory, active, available_on_cj, last_synced_at, created_at
+
+cj_orders
+  customer_user_id, cj_product_id, cj_variant_id, created_by_user_id,
+  quantity (> 0), unit_price_cents, shipping_cents, amount_cents,
+  credit_applied_cents (0..amount), credit_debit_transaction_id,
+  status (AWAITING_PAYMENT/PAID/CANCELLED), payment_method (BANK_TRANSFER/CARD),
+  stripe_checkout_session_id UNIQUE, note, payment_proof_*, paid_by/at,
+  cancelled_by/at/reason,
+  recipient_name, recipient_phone, address_line1/2, city, province,
+  postal_code, country_code,
+  logistic_name, origin_country, shipping_days,
+  unit_cost_usd, shipping_cost_usd, usd_eur_rate   -- frozen at checkout: margin
+  fulfillment_status (NOT_SENT/SENDING/SENT/PROCESSING/SHIPPED/DELIVERED/
+    ERROR/CJ_CANCELLED, indexed), sandbox, cj_order_id (indexed),
+  cj_order_status, cj_amount_usd, forwarded_at, forwarded_by_user_id,
+  forward_error, tracking_number, tracking_provider, shipped_at,
+  delivered_at, last_cj_sync_at, created_at
+```
+
+`wallet_transactions.reference_cj_order_id` (FK `cj_orders.id`) is the fifth
+order-like reference on the ledger, a real foreign key like the others (§15).
+`status` is the customer's payment; `fulfillment_status` is the parcel: the
+two are independent columns because "paid" and "shipped" are different facts
+with different owners (the customer, CJ).
+
 ## 16. "Invita un amico" (added Session 39)
 
 Three tables that are **deliberately a parallel structure**, not an extension

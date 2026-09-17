@@ -4,6 +4,71 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 60 — 2026-09-17 — Shop Lial Partner: integrazione CJ Dropshipping
+
+Richiesta dell'utente: un secondo negozio "importato", come quello AliExpress
+("Acquisti LialEnergy"), ma collegato davvero via API a CJ Dropshipping
+(it.cjdropshipping.com): tabelle e gestione interna separate, per il cliente
+un'altra scheda dello Shop, **"Shop Lial Partner"**, con lo stesso checkout e
+la stessa possibilità di spendere i LialCash. Chiave API configurabile
+dall'amministratore. Regole in `business-rules.md#partner-shop`, tabelle in
+`database-model.md` §17.
+
+- [x] Dominio nuovo `cj_dropshipping` (models, client, pricing, service,
+  router, schemas), quattro tabelle: `cj_settings`, `cj_products`,
+  `cj_variants`, `cj_orders`; `wallet_transactions.reference_cj_order_id`.
+  Migrazioni `0044_cj_dropshipping` e `0045_cj_token_text` (i token JWT di CJ
+  superano i 500 caratteri: scoperto al primo collegamento reale, colonne
+  portate a TEXT, test di regressione aggiunto).
+- [x] Client CJ API 2.0: token (180 giorni) salvati e rinnovati da soli, un
+  solo slot Redis al secondo per organizzazione condiviso da API e Celery
+  (limite CJ), errori di CJ mostrati in italiano agli amministratori.
+- [x] Prezzi: costo CJ in USD × cambio × (1 + ricarico%) + ricarico fisso,
+  arrotondato **per eccesso** a ,90 / ,99 / al centesimo; spedizione pagata dal
+  cliente al costo reale (preventivo CJ in tempo reale, cache 30 minuti) oppure
+  inclusa nel prezzo. Cambiare una regola ricalcola subito tutti i prodotti.
+- [x] Admin, voce di menu **Shop Lial Partner**: Impostazioni (chiave API
+  mascherata, verifica connessione e saldo CJ, shop acceso/spento, sandbox,
+  invio automatico, cambio, ricarico, arrotondamento, spedizione, LialCash
+  predefiniti, esempio di prezzo dal vivo); Catalogo CJ (ricerca per parola,
+  categoria, prezzo, spedizione gratuita, con il prezzo di vendita già
+  calcolato; anteprima con foto, varianti, stock, magazzino di partenza e
+  spedizione più economica verso l'Italia; importazione con nome e descrizione
+  da tradurre); Prodotti in vendita (modifica, foto principale, ricarico per
+  prodotto, prezzo fisso per variante, varianti attive, "Aggiorna da CJ",
+  nascondi); Ordini (da gestire / non pagati / in viaggio / consegnati, "Invia
+  a CJ", "Paga su CJ", "Aggiorna stato", tracking, margine stimato, errori).
+- [x] Cliente: scheda "Shop Lial Partner" nello Shop (visibile solo con shop
+  acceso e almeno un prodotto), scheda prodotto con galleria, varianti,
+  quantità e tempi di consegna, checkout con indirizzo precompilato dal
+  profilo, spedizione calcolata dal vivo, LialCash con codice via email,
+  bonifico o carta. Gli ordini compaiono in "I miei Ordini" con stato della
+  spedizione e link "Traccia pacco"; notifica ed email quando parte e quando
+  arriva.
+- [x] Invio a CJ: `createOrderV2` (solo creazione) + `payBalance` dal saldo
+  CJ; numero d'ordine `LIAL-<id>` usato anche per ritrovare su CJ un ordine
+  creato da un invio interrotto. Presa in carico con UPDATE condizionale
+  (niente doppi invii tra clic e automatico); un invio rimasto a metà si
+  riprende dopo 10 minuti. Ordine creato ma non pagato (saldo CJ basso) resta
+  "Su CJ, da pagare": il nuovo tentativo paga soltanto.
+- [x] Celery: `cj_sync_orders_task` ogni 30 minuti (stato, tracking,
+  consegna), `cj_sync_products_task` alle 03:30 (costo, stock,
+  disponibilità, prezzi), `cj_forward_order_task` per l'invio automatico.
+- [x] Stripe: `create_checkout_session_for_cj_order`, webhook
+  `metadata.kind="cj_order"`. Contabilità: movimenti in euro e LialCash degli
+  ordini CJ, dettaglio con indirizzo, tracking e cronologia della spedizione.
+- [x] Ordini admin e cliente unificati: gli ordini CJ compaiono anche in
+  "Ordini" (conferma bonifico, annulla con restituzione LialCash).
+- [x] Produzione: chiave API salvata nel database (mai nel repository),
+  collegamento verificato (token fino al 16/03/2027, saldo CJ 0 USD, 578
+  categorie, ricerca e anteprima con spedizione reale CN→IT). **Lo shop è
+  lasciato spento e in sandbox**: si accende da Impostazioni dopo aver
+  importato i prodotti (vedi open-questions #17).
+- [x] Test: 13 nuovi (`tests/test_cj_dropshipping.py`, CJ simulato), suite
+  completa verde. Nota di deploy: celery-worker e celery-beat hanno una loro
+  immagine, vanno ricostruiti (`build celery-worker celery-beat`), non solo
+  ricreati.
+
 ## Session 59 — 2026-09-16 — Cashback dei contratti a rate: intero alla prima rata oppure rata per rata, a scelta dell'amministratore
 
 Richiesta dell'utente: per semplificare, con un contratto pagato a 3 o 12 rate

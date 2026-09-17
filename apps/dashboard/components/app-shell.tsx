@@ -60,6 +60,10 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   ORDER_PAYMENT_PROOF_UPLOADED: "Prova di pagamento caricata",
   INVOICE_REDEMPTION_PAYMENT_PROOF_UPLOADED: "Prova di pagamento riscatto caricata",
   IMPORTED_ORDER_CREATED: "Nuovo ordine Acquisti LialEnergy",
+  CJ_ORDER_CREATED: "Nuovo ordine Shop Lial Partner",
+  CJ_ORDER_PAID: "Ordine Shop Lial Partner pagato",
+  CJ_ORDER_FAILED: "Ordine Shop Lial Partner da controllare",
+  ORDER_SHIPPED: "Aggiornamento spedizione",
 };
 
 const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
@@ -101,6 +105,8 @@ const NOTIFICATION_TYPE_ICONS: Record<string, ReactNode> = {
   ),
   IMPORTED_ORDER_CREATED: (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 7.5h-9v9h9v-9zM3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+  ),  ORDER_SHIPPED: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
   ),
 };
 

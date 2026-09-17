@@ -205,3 +205,26 @@ written policy) becomes available, re-open this file item by item, update the
 corresponding code/data location, delete the resolved item, and record the change as a
 new ADR if it affects architecture (e.g. a genuinely new bonus category that doesn't
 fit the current calculator extension points).
+
+## 17. Shop Lial Partner: prima di accenderlo (Session 60)
+
+Collegamento a CJ fatto e verificato; lo shop è **spento e in sandbox**.
+Decisioni e azioni che restano all'azienda:
+
+- **Saldo CJ**: gli ordini si pagano dal saldo dell'account CJ, oggi 0 USD.
+  Va ricaricato sul sito CJ, altrimenti ogni ordine resta "Su CJ, da pagare".
+- **IVA e dogana**: la merce parte quasi sempre dalla Cina. Gli ordini sono
+  inviati con `iossType=3` (IVA all'importazione riscossa tramite l'IOSS di
+  CJ), così il cliente non paga dazi alla consegna. Da confermare con il
+  commercialista, insieme a come fatturare queste vendite (vedi anche #15).
+- **Cambio USD/EUR**: è un valore fisso impostato a mano (0,92). Va
+  aggiornato ogni tanto; al salvataggio tutti i prezzi si ricalcolano.
+- **Traduzioni**: nomi e descrizioni arrivano in inglese; si traducono
+  all'importazione (campi modificabili).
+- **Resi e rimborsi**: un ordine già pagato e poi annullato da CJ viene solo
+  segnalato allo staff; rimborso e restituzione LialCash oggi si gestiscono a
+  mano.
+- **Sandbox**: spegnerla solo quando si vuole spedire davvero. Con sandbox
+  accesa un cliente che paga davvero non riceverebbe nulla: per questo lo
+  shop resta spento finché la prova non è finita.
+

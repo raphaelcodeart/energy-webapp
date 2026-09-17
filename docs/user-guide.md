@@ -169,6 +169,16 @@ carta (Stripe). Il risultato si vede nella nuova voce **I miei Ordini**: stato
 caricabile per un ordine a bonifico, possibilità di cambiare metodo di
 pagamento o pagare subito con carta un ordine già creato a bonifico.
 
+**Shop Lial Partner** — un'altra scheda dello Shop con prodotti spediti a
+casa dal nostro fornitore partner. Apri un prodotto per vedere le foto,
+scegliere la variante (colore, misura...) e la quantità, e i tempi di
+consegna. Con **Acquista** inserisci l'indirizzo (già compilato con quello del
+tuo profilo: controllalo e aggiungi un telefono per il corriere), vedi il costo
+della spedizione calcolato al momento, puoi usare i tuoi LialCash (con il
+codice via email) e paghi il resto con bonifico o carta. In **I miei Ordini**
+l'ordine mostra "In preparazione", poi "Spedito" con il pulsante **Traccia
+pacco**, poi "Consegnato"; ricevi una notifica e un'email a ogni passaggio.
+
 **Documentazione** — feed di sola lettura con annunci e materiale pubblicati
 dall'amministrazione (testo, e opzionalmente un'immagine, un PDF o un link
 video), specifici per i clienti o condivisi anche con i promoter.
@@ -427,6 +437,27 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   caso, per non poter mai accreditare cashback senza un pagamento reale
   confermato da Stripe). **Nuovo Ordine** crea un ordine per conto di un
   cliente.
+- **Shop Lial Partner** — il negozio collegato a CJ Dropshipping.
+  **Impostazioni**: incolla la chiave API (la trovi su cjdropshipping.com → My
+  CJ → Authorization → API), premi **Verifica connessione e saldo**, poi
+  scegli cambio USD/EUR, ricarico, arrotondamento, chi paga la spedizione e i
+  LialCash usabili (l'esempio "un prodotto da $10 sarà in vendita a..." si
+  aggiorna mentre scrivi). **Modalità test (sandbox)**: gli ordini inviati a CJ
+  sono finti; spegnila solo quando vuoi spedire davvero. **Invia a CJ in
+  automatico**: l'ordine parte appena il cliente ha pagato. **Shop visibile ai
+  clienti**: accende la scheda nello Shop. **Catalogo CJ**: cerca (in
+  inglese), filtra per categoria e prezzo, vedi già il prezzo a cui lo
+  venderesti; aprendo un prodotto vedi varianti, stock, da dove parte e la
+  spedizione più economica verso l'Italia; traduci nome e descrizione, scegli
+  le varianti e **Importa**. **Prodotti in vendita**: modifica testi e foto
+  principale, ricarico solo per quel prodotto, prezzo fisso di una variante,
+  varianti attive, **Aggiorna da CJ** (costo e stock; lo fa anche da solo ogni
+  notte), **Nascondi**. **Ordini**: "Da gestire" mostra gli ordini pagati da
+  inviare o con un problema; **Invia a CJ** crea l'ordine e lo paga dal saldo
+  CJ (se il saldo non basta diventa "Su CJ, da pagare": ricarica il saldo su
+  CJ e premi **Paga su CJ**); stato e tracking si aggiornano ogni 30 minuti o
+  con **Aggiorna stato**. Il bonifico di un cliente si conferma come sempre da
+  **Ordini**.
 - **Riscatti Fatture** — la coda delle richieste "Riscatta Cashback" dei
   clienti: **Verifica importo** (apri il documento caricato, conferma
   l'importo reale -- da questo momento il cliente sa quanto pagare e può

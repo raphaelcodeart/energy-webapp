@@ -51,6 +51,7 @@ class WalletTransactionRead(BaseModel):
     reference_invoice_redemption_id: uuid.UUID | None
     reference_order_id: uuid.UUID | None
     reference_imported_order_id: uuid.UUID | None
+    reference_cj_order_id: uuid.UUID | None = None
     reverses_transaction_id: uuid.UUID | None
     note: str | None
     actor_user_id: uuid.UUID | None

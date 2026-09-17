@@ -161,8 +161,9 @@ async def _wallet_detail(
     )
     title = WALLET_SOURCE_LABELS.get(txn.source or "") or WALLET_TYPE_LABELS.get(txn.type, "Movimento LialCash")
     related = []
-    if txn.reference_order_id or txn.reference_imported_order_id:
-        related.append(f"order:{txn.reference_order_id or txn.reference_imported_order_id}")
+    txn_order_id = txn.reference_order_id or txn.reference_imported_order_id or txn.reference_cj_order_id
+    if txn_order_id:
+        related.append(f"order:{txn_order_id}")
     if txn.reference_invoice_redemption_id:
         related.append(f"redemption:{txn.reference_invoice_redemption_id}")
     if txn.reference_contract_id:
@@ -181,8 +182,7 @@ async def _wallet_detail(
             _fact("Origine", WALLET_SOURCE_LABELS.get(txn.source or "")),
             _fact("Da", f"{names.get(from_wallet.user_id, '—')} · {from_wallet.address}" if from_wallet else None),
             _fact("A", f"{names.get(to_wallet.user_id, '—')} · {to_wallet.address}" if to_wallet else None),
-            _fact("Ordine", f"#{_code(txn.reference_order_id or txn.reference_imported_order_id)}")
-            if (txn.reference_order_id or txn.reference_imported_order_id) else None,
+            _fact("Ordine", f"#{_code(txn_order_id)}") if txn_order_id else None,
             _fact("Riscatto", f"#{_code(txn.reference_invoice_redemption_id)}") if txn.reference_invoice_redemption_id else None,
             _fact("Contratto", f"#{_code(txn.reference_contract_id)}") if txn.reference_contract_id else None,
             _fact("Storna il movimento", _code(txn.reverses_transaction_id), mono=True) if txn.reverses_transaction_id else None,
@@ -195,7 +195,7 @@ async def _wallet_detail(
         ],
         "related_refs": related,
         "tab": "wallet",
-        "order_id": txn.reference_order_id or txn.reference_imported_order_id,
+        "order_id": txn_order_id,
         "invoice_redemption_id": txn.reference_invoice_redemption_id,
         "contract_id": txn.reference_contract_id,
     }
@@ -207,9 +207,13 @@ async def _wallet_detail(
 async def _order_detail(
     db: AsyncSession, *, organization_id: uuid.UUID, entity_id: uuid.UUID, owner_user_id: uuid.UUID | None
 ) -> dict:
+    from app.domains.cj_dropshipping.models import CjOrder
     from app.domains.imported_products.models import ImportedProduct, ImportedProductOrder
     from app.domains.orders.models import Order
 
+    cj_order = await db.get(CjOrder, entity_id)
+    if cj_order is not None:
+        return await _cj_order_detail(db, organization_id=organization_id, order=cj_order, owner_user_id=owner_user_id)
     order = await db.get(Order, entity_id)
     product_name = None
     cashback_surcharge = 0
@@ -281,6 +285,105 @@ async def _order_detail(
             _fact("Ricevuta bonifico", order.payment_proof_original_filename),
             _fact("Sessione Stripe", order.stripe_checkout_session_id, mono=True),
             _fact("Motivo annullamento", getattr(order, "cancellation_reason", None)),
+            _fact("Nota", order.note),
+            _fact("ID ordine", order.id, mono=True),
+        ],
+        "timeline": timeline,
+        "related_refs": [],
+        "tab": "orders",
+        "order_id": order.id,
+    }
+
+
+async def _cj_order_detail(
+    db: AsyncSession, *, organization_id: uuid.UUID, order, owner_user_id: uuid.UUID | None
+) -> dict:
+    """A Shop Lial Partner order: the same payment story as any order, plus
+    shipping -- where it goes, when it left, tracking, delivery."""
+    from app.domains.cj_dropshipping import service as cj_service
+    from app.domains.cj_dropshipping.models import CjProduct, CjVariant
+
+    if order.organization_id != organization_id:
+        raise DetailNotFoundError()
+    if owner_user_id is not None and order.customer_user_id != owner_user_id:
+        raise DetailNotFoundError()
+    product = await db.get(CjProduct, order.cj_product_id)
+    variant = await db.get(CjVariant, order.cj_variant_id)
+    names = await _names(
+        db, organization_id, order.customer_user_id, order.created_by_user_id, order.paid_by_user_id,
+        order.cancelled_by_user_id, order.forwarded_by_user_id,
+    )
+    status_label, tone = ORDER_STATUS.get(order.status, (order.status, "neutral"))
+    card = order.payment_method == "CARD"
+    timeline = [_event("Ordine creato", order.created_at, by=names.get(order.created_by_user_id))]
+    if order.payment_proof_uploaded_at:
+        timeline.append(_event(
+            "Ricevuta del bonifico caricata", order.payment_proof_uploaded_at, by=order.payment_proof_original_filename
+        ))
+    if order.paid_at:
+        timeline.append(_event(
+            "Pagamento confermato", order.paid_at,
+            by="Stripe (automatico)" if card and order.paid_by_user_id is None else names.get(order.paid_by_user_id),
+        ))
+    elif order.status == "AWAITING_PAYMENT":
+        timeline.append(_event("In attesa del pagamento", None, tone="pending"))
+    if order.cancelled_at:
+        timeline.append(_event(
+            "Ordine annullato", order.cancelled_at, by=names.get(order.cancelled_by_user_id), tone="warning"
+        ))
+    if order.status == "PAID":
+        if order.forwarded_at and order.fulfillment_status not in ("NOT_SENT", "ERROR"):
+            timeline.append(_event(
+                "In preparazione presso il fornitore", order.forwarded_at,
+                by=None if owner_user_id is not None else (names.get(order.forwarded_by_user_id) or "Automatico"),
+            ))
+        elif owner_user_id is None and order.fulfillment_status == "ERROR":
+            timeline.append(_event("Invio al fornitore non riuscito", None, by=order.forward_error, tone="warning"))
+        else:
+            timeline.append(_event("In preparazione", None, tone="pending"))
+        if order.shipped_at:
+            timeline.append(_event("Spedito", order.shipped_at, by=order.tracking_number))
+        elif order.fulfillment_status != "CJ_CANCELLED":
+            timeline.append(_event("Spedizione", None, tone="pending"))
+        if order.delivered_at:
+            timeline.append(_event("Consegnato", order.delivered_at))
+        if order.fulfillment_status == "CJ_CANCELLED":
+            timeline.append(_event("Annullato dal fornitore", order.last_cj_sync_at, tone="warning"))
+    address = f"{order.recipient_name}, {order.address_line1}{', ' + order.address_line2 if order.address_line2 else ''}, {order.postal_code} {order.city} ({order.province})"
+    admin_facts = [] if owner_user_id is not None else [
+        _fact("Cliente", names.get(order.customer_user_id)),
+        _fact("Ordine CJ", order.cj_order_id, mono=True),
+        _fact("Stato su CJ", order.cj_order_status),
+        _fact("Corriere", order.logistic_name),
+        _fact("Costo CJ (USD)", f"{order.unit_cost_usd * order.quantity + order.shipping_cost_usd:.2f}"),
+        _fact("Sandbox", "Sì" if order.sandbox else None),
+        _fact("Errore invio", order.forward_error),
+    ]
+    return {
+        "kind": "ORDER",
+        "title": product.name if product else "Ordine",
+        "subtitle": f"Ordine #{_code(order.id)} · Shop Lial Partner",
+        "status": status_label,
+        "status_tone": tone,
+        "amount_cents": order.amount_cents,
+        "currency": "EUR",
+        "direction": "out",
+        "facts": [
+            *admin_facts,
+            _fact("Variante", variant.label if variant else None),
+            _fact("Quantità", order.quantity),
+            _fact("Prezzo unitario", _euro(order.unit_price_cents)),
+            _fact("Spedizione", _euro(order.shipping_cents) if order.shipping_cents else "Inclusa"),
+            _fact("Totale", _euro(order.amount_cents)),
+            _fact("Pagato con LialCash", _euro(order.credit_applied_cents)) if order.credit_applied_cents else None,
+            _fact("Pagato in euro", _euro(order.amount_cents - order.credit_applied_cents)),
+            _fact("Metodo", PAYMENT_METHOD_LABELS.get(order.payment_method, order.payment_method)),
+            _fact("Consegna a", address),
+            _fact("Tempi di consegna stimati", f"{order.shipping_days} giorni" if order.shipping_days else None),
+            _fact("Tracking", order.tracking_number, mono=True),
+            _fact("Segui la spedizione", cj_service.tracking_url(order.tracking_number)),
+            _fact("Ricevuta bonifico", order.payment_proof_original_filename),
+            _fact("Motivo annullamento", order.cancellation_reason),
             _fact("Nota", order.note),
             _fact("ID ordine", order.id, mono=True),
         ],

@@ -483,10 +483,10 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
-ricostruzione a memoria (**rigenerato 2026-09-16, allineato alla revision
-Alembic `d5a1b3c9e472` / migrazione `0043_contract_request_address`**;
+ricostruzione a memoria (**rigenerato 2026-09-17, allineato alla revision
+Alembic `f7c3d5e9a204` / migrazione `0045_cj_token_text`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **67 tabelle** con
+usa un utente Postgres diverso da `lial`). Contiene tutte le **71 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -541,7 +541,7 @@ quello che succede automaticamente al primo avvio del container `api` (vedi
   far girare `alembic upgrade head` sopra uno schema già creato così, o l'idempotenza
   delle migration passate va verificata a mano)
 
-Elenco delle 67 tabelle per dominio (dettagli in `docs/database-model.md`):
+Elenco delle 71 tabelle per dominio (dettagli in `docs/database-model.md`):
 
 ```
 Identità/tenancy:  organizations, users, roles, permissions, role_permissions,
@@ -617,6 +617,13 @@ Prodotti importati ("Acquisti LialEnergy", plugin Session 34 -- catalogo
                     cashback: servono solo a SPENDERE LialCash, mai a
                     guadagnarne), imported_product_orders (specchio di
                     orders meno i campi cashback)
+Shop Lial Partner (CJ Dropshipping, Session 60 -- secondo negozio importato,
+                    collegato via API): cj_settings (chiave API mascherata,
+                    token CJ, regole di prezzo, sandbox, invio automatico),
+                    cj_products e cj_variants (catalogo importato, costo USD,
+                    stock, prezzo calcolato), cj_orders (checkout come gli
+                    altri negozi + indirizzo, spedizione, invio a CJ,
+                    tracking)
 "Invita un amico" (Session 39 -- rete a UN livello, staccata da quella
                     commerciale, nessuna provvigione):
                     friend_referral_codes (il link personale di chi ha un
@@ -704,7 +711,9 @@ apps/api/app/
                    service.py, router.py (+ calculators/policies per commissions)
                    -- include "support" (ticket cliente/promoter <-> staff),
                    "imported_products" (catalogo parallelo dropshipping, vedi
-                   database-model.md §15) e "payments" (Stripe: creazione
+                   database-model.md §15), "cj_dropshipping" (Shop Lial
+                   Partner via API CJ, §17 -- client.py è l'unica porta
+                   verso CJ: token, limite 1 richiesta/secondo, errori) e "payments" (Stripe: creazione
                    sessioni di checkout + webhook, vedi §9)
   domains/catalog/pricing.py
                    L'UNICO posto dove si decide l'IVA e il prezzo di un

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CustomerRead, ImportedProductRead, ProductCatalogRead } from "@/lib/types";
+import type { CjProductRead, CustomerRead, ImportedProductRead, ProductCatalogRead } from "@/lib/types";
+import { CjProductModal } from "@/components/cj-product-modal";
 import { ContractRequestWizard } from "@/components/contract-request-wizard";
 import { ImportedProductCheckoutModal } from "@/components/imported-product-checkout-modal";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
@@ -37,7 +38,9 @@ type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
 // stay invisible from the outside. Only ever added to the tab bar when
 // showImportedTab is passed (see CustomerProductsPanelProps below) -- every
 // other caller of this component keeps behaving exactly as before.
-type ShopTab = ProductCategory | "IMPORTED";
+// "PARTNER_SHOP" is Shop Lial Partner (CJ Dropshipping, Session 60): its own
+// domain and tables too, same one-more-tab treatment.
+type ShopTab = ProductCategory | "IMPORTED" | "PARTNER_SHOP";
 
 const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
@@ -64,6 +67,12 @@ async function fetchMyCustomerRecord(): Promise<CustomerRead | null> {
 async function fetchImportedProducts(): Promise<ImportedProductRead[]> {
   const res = await fetch("/api/proxy/imported-products/products/active");
   if (!res.ok) throw new Error("Impossibile caricare gli Acquisti LialEnergy.");
+  return res.json();
+}
+
+async function fetchPartnerShopProducts(): Promise<CjProductRead[]> {
+  const res = await fetch("/api/proxy/cj/products/active");
+  if (!res.ok) return [];
   return res.json();
 }
 
@@ -121,6 +130,14 @@ export function CustomerProductsPanel({
     queryFn: fetchImportedProducts,
     enabled: showImportedTab,
   });
+  // Empty while the administrator keeps the shop switched off: then the tab
+  // is not shown at all.
+  const { data: partnerShopProducts } = useQuery({
+    queryKey: ["customer", "cj-products"],
+    queryFn: fetchPartnerShopProducts,
+    enabled: showImportedTab,
+  });
+  const [partnerShopTarget, setPartnerShopTarget] = useState<CjProductRead | null>(null);
   // Only the contract catalog depends on who is looking -- the shop grid
   // sells the same products to everyone -- so this is not fetched at all
   // unless an INTERNAL tab is on screen.
@@ -145,6 +162,9 @@ export function CustomerProductsPanel({
   const visibleTabs: { key: ShopTab; label: string }[] = [
     ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
     ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
+    ...(showImportedTab && (partnerShopProducts ?? []).length > 0
+      ? [{ key: "PARTNER_SHOP" as ShopTab, label: "Shop Lial Partner" }]
+      : []),
   ];
 
   const activeProducts = (products ?? []).filter(
@@ -210,6 +230,8 @@ export function CustomerProductsPanel({
         {visibleTabs.map((tab) => {
           const count = tab.key === "IMPORTED"
             ? (importedProducts ?? []).length
+            : tab.key === "PARTNER_SHOP"
+            ? (partnerShopProducts ?? []).length
             : activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
@@ -229,7 +251,48 @@ export function CustomerProductsPanel({
       </div>
       )}
 
-      {activeCategory === "IMPORTED" ? (
+      {activeCategory === "PARTNER_SHOP" ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {(partnerShopProducts ?? []).map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPartnerShopTarget(p)}
+              style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
+              className="group text-left animate-slide-up glass-card rounded-2xl overflow-hidden border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 hover:border-orange-500/40 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer"
+            >
+              <div className="relative aspect-square overflow-hidden bg-white">
+                <ProductThumbnail
+                  imageUrl={p.image_url}
+                  alt={p.name}
+                  className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                />
+                {p.credit_discount_percentage > 0 && (
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-white shadow">
+                    {p.credit_discount_percentage === 100 ? "Paghi in LialCash" : `-${p.credit_discount_percentage}% LialCash`}
+                  </span>
+                )}
+                {!p.in_stock && (
+                  <span className="absolute inset-x-0 bottom-0 py-1 text-center text-[10px] font-bold bg-slate-900/80 text-white">Esaurito</span>
+                )}
+              </div>
+              <div className="p-3">
+                <p className="text-sm font-semibold text-white light:text-slate-900 leading-snug line-clamp-2 min-h-[2.5rem] group-hover:text-orange-400 transition">
+                  {p.name}
+                </p>
+                <p className="mt-1.5 text-lg font-extrabold text-white light:text-slate-900 tabular-nums">
+                  {p.min_price_cents !== p.max_price_cents && <span className="text-[10px] font-semibold text-slate-500 mr-1">da</span>}
+                  {euro(p.min_price_cents)}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {p.shipping_included ? "Spedizione inclusa" : "+ spedizione"}
+                  {p.shipping_days ? ` · ${p.shipping_days} gg` : ""}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : activeCategory === "IMPORTED" ? (
         (importedProducts ?? []).length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-12">Nessun prodotto disponibile al momento.</p>
         ) : (
@@ -493,6 +556,10 @@ export function CustomerProductsPanel({
           productName={importedCheckoutTarget.name}
           onClose={() => setImportedCheckoutTarget(null)}
         />
+      )}
+
+      {partnerShopTarget && (
+        <CjProductModal product={partnerShopTarget} onClose={() => setPartnerShopTarget(null)} />
       )}
 
       {activationTarget && (

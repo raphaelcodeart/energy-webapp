@@ -1834,6 +1834,68 @@ Then, cosmetic/UX polish on top of the already-correct backend:
   mobile half of "primary tools as big buttons, bottom on mobile / top on
   desktop."
 
+## Shop Lial Partner: CJ Dropshipping (Session 60) {#partner-shop}
+
+Un secondo negozio "importato", accanto ad "Acquisti LialEnergy", collegato
+davvero all'API di CJ Dropshipping. Tabelle e gestione proprie
+(`cj_dropshipping`), esperienza del cliente identica agli altri negozi.
+
+**Per il cliente, uguale a tutto lo Shop.** Scheda "Shop Lial Partner",
+checkout con LialCash (codice via email), bonifico o carta, ordine in "I miei
+Ordini", movimenti in Contabilità. Questi prodotti **non generano cashback**:
+servono a spendere LialCash, come gli Acquisti LialEnergy. In più: variante,
+quantità (1–10), indirizzo di consegna (precompilato dal profilo, telefono
+obbligatorio per il corriere), stato della spedizione e tracking.
+
+**Nessun importo arriva dal browser.** Prezzo della variante e spedizione si
+ricalcolano sul server alla creazione dell'ordine; la spedizione è il
+preventivo reale di CJ per quella variante, quantità e destinazione (l'opzione
+più economica), con cache di 30 minuti.
+
+**Prezzo di vendita.** `costo CJ (USD) × cambio × (1 + ricarico%) + ricarico
+fisso`, poi arrotondato **sempre per eccesso** a ,90 / ,99 o al centesimo: un
+arrotondamento non può mai abbassare il margine. Ricarico per singolo prodotto
+opzionale; prezzo fisso per variante opzionale (non segue più il costo).
+Spedizione: la paga il cliente al costo reale (predefinito) oppure è inclusa
+nel prezzo (stima della spedizione più economica sommata al prezzo, e al
+checkout spedizione 0). Ogni cambio delle regole ricalcola subito tutti i
+prezzi; il costo e il cambio usati restano congelati sull'ordine, così il
+margine di un ordine passato non cambia.
+
+**LialCash usabili.** Percentuale per prodotto (predefinita 100%, impostabile),
+calcolata sul totale compresa la spedizione.
+
+**Stati.** `status` è il pagamento del cliente (come ogni ordine);
+`fulfillment_status` è il pacco: NOT_SENT → SENDING → SENT (su CJ, non pagato)
+→ PROCESSING (pagato su CJ) → SHIPPED → DELIVERED, oppure ERROR (invio
+rifiutato) / CJ_CANCELLED. Un ordine si invia a CJ **solo se pagato dal
+cliente**. Si annulla (con restituzione dei LialCash) solo finché non è pagato.
+
+**Invio a CJ.** A mano ("Invia a CJ") o automatico dopo il pagamento
+(impostazione). L'ordine viene creato su CJ con numero `LIAL-<id>` e pagato dal
+**saldo CJ** dell'azienda. Una sola presa in carico per ordine (UPDATE
+condizionale): clic e invio automatico non creano mai due ordini. Se CJ rifiuta,
+l'errore resta sull'ordine e lo staff riceve una notifica; se l'ordine è
+creato ma il saldo non basta, resta "Su CJ, da pagare" e il tentativo
+successivo paga soltanto. Un invio interrotto a metà si riprende dopo 10 minuti
+cercando prima su CJ il numero `LIAL-<id>`. Merce extra-UE verso l'UE: IOSS di
+CJ (`iossType=3`, vedi open-questions #17).
+
+**Sandbox.** Con sandbox accesa gli ordini sono di prova su CJ (nessuna
+spedizione, nessun addebito): il cliente però paga davvero. Lo shop si tiene
+spento finché la prova non è conclusa.
+
+**Aggiornamenti da CJ.** Ogni 30 minuti stato, tracking e consegna degli
+ordini in viaggio; al passaggio a "Spedito" e "Consegnato" il cliente riceve
+notifica ed email (con link di tracciamento). Ogni notte alle 03:30 costo,
+stock e disponibilità dei prodotti; una variante non più offerta da CJ resta
+nel database (gli ordini la citano) ma non è più vendibile.
+
+**Chiave API.** Salvata solo nel database, mai restituita dalle API (solo le
+ultime 4 cifre), mai nel repository. Cambiarla cancella i token salvati.
+Permessi: catalogo e impostazioni `imported_products.manage`, ordini
+`wallet.manage` (come gli altri negozi).
+
 ## Account freeze (Session 28)
 
 `PATCH /users/{id}/freeze` / `/unfreeze`, gated by a new, deliberately

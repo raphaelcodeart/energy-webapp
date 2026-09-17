@@ -574,6 +574,87 @@ async def debit_wallet_for_imported_purchase(
     return txn
 
 
+
+async def debit_wallet_for_cj_purchase(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    wallet_id: uuid.UUID,
+    amount_cents: int,
+    reference_cj_order_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    note: str | None = None,
+    idempotency_key: str,
+) -> WalletTransaction:
+    """Same as debit_wallet_for_imported_purchase, for the Shop Lial Partner
+    (CJ Dropshipping, Session 60) orders -- the third, separate order table,
+    see cj_dropshipping/models.py."""
+    existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+    if existing is not None:
+        return existing
+
+    result = await db.execute(
+        update(Wallet)
+        .where(Wallet.id == wallet_id, Wallet.balance_cents >= amount_cents)
+        .values(balance_cents=Wallet.balance_cents - amount_cents)
+    )
+    if result.rowcount == 0:
+        raise InsufficientBalanceError("Insufficient balance")
+
+    txn = WalletTransaction(
+        organization_id=organization_id,
+        from_wallet_id=wallet_id,
+        to_wallet_id=None,
+        amount_cents=amount_cents,
+        type="PURCHASE_DEBIT",
+        reference_cj_order_id=reference_cj_order_id,
+        note=note,
+        actor_user_id=actor_user_id,
+        idempotency_key=idempotency_key,
+    )
+    db.add(txn)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Same recovery the commit below already had, which the flush was
+        # missing: uq_wallet_transactions_idempotency_key can just as easily
+        # be violated here (two concurrent requests carrying the same key),
+        # and so can a foreign key (a reference id that no longer exists).
+        # Unhandled, either surfaced as a 500 on an operation that is
+        # perfectly recoverable.
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
+
+    wallet = await db.get(Wallet, wallet_id)
+    assert wallet is not None  # just updated above by this same wallet_id
+    await audit_service.record(
+        db, organization_id=organization_id, actor_user_id=actor_user_id,
+        action="wallet.debited_for_purchase", entity_type="wallet_transaction", entity_id=str(txn.id),
+        new_value={
+            "from_wallet_id": str(wallet_id), "amount_cents": amount_cents,
+            "reference_cj_order_id": str(reference_cj_order_id),
+        },
+    )
+    await notifications_service.notify_user(
+        db, organization_id=organization_id, user_id=wallet.user_id, type_="ORDER_CREDIT_APPLIED",
+        entity_type="wallet_transaction", entity_id=txn.id,
+        title=f"{amount_cents / 100:.2f} EUR di credito usati per un tuo ordine",
+        body=note,
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await _get_by_idempotency_key(db, idempotency_key=idempotency_key)
+        if existing is not None:
+            return existing
+        raise
+    await db.refresh(txn)
+    return txn
+
 async def reverse_transaction(
     db: AsyncSession,
     *,
@@ -748,6 +829,7 @@ def _to_transaction_dict(txn: WalletTransaction, wallets_by_id: dict[uuid.UUID, 
         "reference_invoice_redemption_id": txn.reference_invoice_redemption_id,
         "reference_order_id": txn.reference_order_id,
         "reference_imported_order_id": txn.reference_imported_order_id,
+        "reference_cj_order_id": txn.reference_cj_order_id,
         "reverses_transaction_id": txn.reverses_transaction_id,
         "note": txn.note,
         "actor_user_id": txn.actor_user_id,

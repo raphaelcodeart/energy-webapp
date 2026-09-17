@@ -16,6 +16,8 @@ from app.domains.auth import models as _auth_models  # noqa: F401
 from app.domains.auth.router import router as auth_router
 from app.domains.catalog import models as _catalog_models  # noqa: F401
 from app.domains.catalog.router import router as catalog_router
+from app.domains.cj_dropshipping import models as _cj_models  # noqa: F401
+from app.domains.cj_dropshipping.router import router as cj_router
 from app.domains.commissions import models as _commissions_models  # noqa: F401
 from app.domains.commissions.router import router as commissions_router
 from app.domains.contracts import models as _contracts_models  # noqa: F401
@@ -31,6 +33,7 @@ from app.domains.friend_referrals import models as _friend_referrals_models  # n
 from app.domains.friend_referrals.router import router as friend_referrals_router
 from app.domains.imported_products import models as _imported_products_models  # noqa: F401
 from app.domains.imported_products.router import router as imported_products_router
+from app.domains.integrations.router import router as integrations_router
 from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
 from app.domains.invoice_redemptions.router import router as invoice_redemptions_router
 from app.domains.network import models as _network_models  # noqa: F401
@@ -40,7 +43,6 @@ from app.domains.notifications.router import router as notifications_router
 from app.domains.orders import models as _orders_models  # noqa: F401
 from app.domains.orders.router import router as orders_router
 from app.domains.organizations import models as _organizations_models  # noqa: F401
-from app.domains.integrations.router import router as integrations_router
 from app.domains.organizations.router import router as organizations_router
 from app.domains.outbox import models as _outbox_models  # noqa: F401
 from app.domains.partners import models as _partners_models  # noqa: F401
@@ -98,6 +100,7 @@ app.include_router(partners_router, prefix="/api")
 app.include_router(invoice_redemptions_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(imported_products_router, prefix="/api")
+app.include_router(cj_router, prefix="/api")
 app.include_router(friend_referrals_router, prefix="/api")
 app.include_router(organizations_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")

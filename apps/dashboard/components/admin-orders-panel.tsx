@@ -7,6 +7,7 @@ import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
 import type {
   CustomerRead,
+  CjOrderRead,
   ImportedOrderRead,
   ImportedProductAdminRead,
   OrderRead,
@@ -38,7 +39,10 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
     which backend endpoint an action call goes to. */
 type UnifiedOrder = {
   id: string;
-  source: "standard" | "imported";
+  source: "standard" | "imported" | "partner";
+  /** Shop Lial Partner: supplier-side state, shown as a hint here; the
+      sending and tracking are handled in "Shop Lial Partner → Ordini". */
+  fulfillment_status?: string;
   customer_display_name: string;
   product_name: string;
   product_image_url: string | null;
@@ -63,6 +67,7 @@ type UnifiedQuote = {
 };
 
 function ordersBasePath(source: UnifiedOrder["source"]): string {
+  if (source === "partner") return "/api/proxy/cj/orders";
   return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
 }
 
@@ -107,9 +112,10 @@ async function fetchImportedProducts(): Promise<ImportedProductAdminRead[]> {
 
 async function fetchOrders(statusFilter: string): Promise<UnifiedOrder[]> {
   const qs = statusFilter !== "ALL" ? `?status_filter=${statusFilter}` : "";
-  const [standardRes, importedRes] = await Promise.all([
+  const [standardRes, importedRes, partnerRes] = await Promise.all([
     fetch(`/api/proxy/orders${qs}`),
     fetch(`/api/proxy/imported-products/orders${qs}`),
+    fetch(`/api/proxy/cj/orders${qs}`),
   ]);
   if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare gli ordini.");
   const standard: OrderRead[] = await standardRes.json();
@@ -117,6 +123,11 @@ async function fetchOrders(statusFilter: string): Promise<UnifiedOrder[]> {
   const merged: UnifiedOrder[] = [
     ...standard.map((o) => ({ ...o, source: "standard" as const })),
     ...imported.map((o) => ({ ...o, source: "imported" as const })),
+    ...(partnerRes.ok ? ((await partnerRes.json()) as CjOrderRead[]) : []).map((o) => ({
+      ...o,
+      product_name: `${o.product_name}${o.quantity > 1 ? ` × ${o.quantity}` : ""} (Shop Lial Partner)`,
+      source: "partner" as const,
+    })),
   ];
   merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   return merged;
@@ -439,6 +450,15 @@ export function AdminOrdersPanel() {
                     </p>
                     {o.cancellation_reason && (
                       <p className="text-[11px] text-rose-400 mt-1">Motivo annullamento: {o.cancellation_reason}</p>
+                    )}
+                    {o.source === "partner" && o.status === "PAID" && (
+                      <p className={`text-[11px] mt-1 ${o.fulfillment_status === "ERROR" || o.fulfillment_status === "NOT_SENT" ? "text-amber-400" : "text-sky-400"}`}>
+                        {o.fulfillment_status === "NOT_SENT"
+                          ? "Da inviare al fornitore: Shop Lial Partner → Ordini"
+                          : o.fulfillment_status === "ERROR"
+                            ? "Invio al fornitore non riuscito: Shop Lial Partner → Ordini"
+                            : `Spedizione: ${o.fulfillment_status === "SHIPPED" ? "spedito" : o.fulfillment_status === "DELIVERED" ? "consegnato" : "in lavorazione"}`}
+                      </p>
                     )}
                   </div>
                 </div>

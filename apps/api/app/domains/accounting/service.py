@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.catalog.models import ProductVersion
+from app.domains.cj_dropshipping import service as cj_service
 from app.domains.imported_products import service as imported_products_service
 from app.domains.imported_products.models import ImportedProduct
 from app.domains.invoice_redemptions import service as invoice_redemptions_service
@@ -58,6 +59,18 @@ async def _product_name_lookups(db: AsyncSession, wallet_txns: list[dict]) -> tu
             product = imported_products.get(imported_order.imported_product_id)
             if product is not None:
                 product_name_by_order_id[imported_order.id] = product.name
+
+    cj_order_ids = {t["reference_cj_order_id"] for t in wallet_txns if t.get("reference_cj_order_id") is not None}
+    if cj_order_ids:
+        from app.domains.cj_dropshipping.models import CjOrder, CjProduct
+
+        cj_rows = await db.execute(
+            select(CjOrder.id, CjProduct.name)
+            .join(CjProduct, CjProduct.id == CjOrder.cj_product_id)
+            .where(CjOrder.id.in_(cj_order_ids))
+        )
+        for cj_order_id, name in cj_rows.all():
+            product_name_by_order_id[cj_order_id] = name
 
     redemption_ids = {
         t["reference_invoice_redemption_id"] for t in wallet_txns if t["reference_invoice_redemption_id"] is not None
@@ -235,7 +248,9 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         # Unified order_id: either reference id resolves to the same
         # product_name_by_order_id dict and is presented identically from
         # here on -- see FinancialMovementRead's docstring for why.
-        unified_order_id = t["reference_order_id"] or t["reference_imported_order_id"]
+        unified_order_id = (
+            t["reference_order_id"] or t["reference_imported_order_id"] or t.get("reference_cj_order_id")
+        )
         product_name = None
         if unified_order_id:
             product_name = product_name_by_order_id.get(unified_order_id)
@@ -284,6 +299,14 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         if movement is not None:
             movements.append(movement)
 
+    cj_orders_mine = await cj_service.list_orders(
+        db, organization_id=organization_id, customer_user_id=user_id, status_filter="PAID"
+    )
+    for cj_order in cj_orders_mine:
+        movement = _order_payment_row(await cj_service.order_read_dict(db, cj_order, admin=False))
+        if movement is not None:
+            movements.append(movement)
+
     redemptions_mine = await invoice_redemptions_service.list_mine(db, organization_id=organization_id, user_id=user_id)
     credited_redemptions = [r for r in redemptions_mine if r.status == "CREDITED"]
     redemption_rows = await invoice_redemptions_service.hydrate(db, credited_redemptions)
@@ -328,7 +351,9 @@ async def list_all_movements(
             cust_id, cust_name, is_outgoing = t.get("to_user_id"), t.get("to_display_name"), False
         else:
             cust_id, cust_name, is_outgoing = t.get("from_user_id"), t.get("from_display_name"), True
-        unified_order_id = t["reference_order_id"] or t["reference_imported_order_id"]
+        unified_order_id = (
+            t["reference_order_id"] or t["reference_imported_order_id"] or t.get("reference_cj_order_id")
+        )
         product_name = None
         if unified_order_id:
             product_name = product_name_by_order_id.get(unified_order_id)
@@ -372,6 +397,14 @@ async def list_all_movements(
     imported_order_rows = await imported_products_service.hydrate(db, imported_orders_all)
     for row in imported_order_rows:
         movement = _order_payment_row(row)
+        if movement is not None:
+            movements.append(movement)
+
+    cj_orders_all = await cj_service.list_orders(
+        db, organization_id=organization_id, customer_user_id=customer_user_id, status_filter="PAID"
+    )
+    for cj_order in cj_orders_all:
+        movement = _order_payment_row(await cj_service.order_read_dict(db, cj_order, admin=False))
         if movement is not None:
             movements.append(movement)
 
