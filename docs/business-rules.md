@@ -1854,8 +1854,10 @@ più economica), con cache di 30 minuti.
 
 **Prezzo di vendita.** `costo CJ (USD) × cambio × (1 + ricarico%) + ricarico
 fisso`, poi arrotondato **sempre per eccesso** a ,90 / ,99 o al centesimo: un
-arrotondamento non può mai abbassare il margine. Ricarico per singolo prodotto
-opzionale; prezzo fisso per variante opzionale (non segue più il costo).
+arrotondamento non può mai abbassare il margine. Ricarico generale predefinito 100% (costo 10 → prezzo 20 prima di cambio e
+arrotondamento, Session 61). Ricarico per singolo prodotto
+opzionale, già sceglibile nella finestra di importazione (se uguale al
+generale non viene salvato e il prodotto segue le Impostazioni); prezzo fisso per variante opzionale (non segue più il costo).
 Spedizione: la paga il cliente al costo reale (predefinito) oppure è inclusa
 nel prezzo (stima della spedizione più economica sommata al prezzo, e al
 checkout spedizione 0). Ogni cambio delle regole ricalcola subito tutti i

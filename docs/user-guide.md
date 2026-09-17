@@ -449,7 +449,9 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   inglese), filtra per categoria e prezzo, vedi già il prezzo a cui lo
   venderesti; aprendo un prodotto vedi varianti, stock, da dove parte e la
   spedizione più economica verso l'Italia; traduci nome e descrizione, scegli
-  le varianti e **Importa**. **Prodotti in vendita**: modifica testi e foto
+  le varianti, controlla il **Ricarico %** (già al 100%: paghi 10, vendi a
+  circa 20; i prezzi si aggiornano mentre scrivi) e **Importa**. Il ricarico
+  si cambia dopo da **Modifica** sul prodotto, o per tutti in Impostazioni. **Prodotti in vendita**: modifica testi e foto
   principale, ricarico solo per quel prodotto, prezzo fisso di una variante,
   varianti attive, **Aggiorna da CJ** (costo e stock; lo fa anche da solo ogni
   notte), **Nascondi**. **Ordini**: "Da gestire" mostra gli ordini pagati da

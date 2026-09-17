@@ -24,6 +24,22 @@ function usd(value: number | string | null | undefined): string {
   return `$${value}`;
 }
 
+/** Same formula as the server (cj_dropshipping/pricing.py), for showing a
+ *  price while the administrator types; the server's figure is what counts. */
+function salePriceCents(
+  costUsd: number, rules: Pick<CjSettingsRead, "usd_eur_rate" | "markup_fixed_cents" | "price_rounding" | "shipping_mode">,
+  markupPct: number, shippingUsd?: number | null,
+): number {
+  const rate = Number(rules.usd_eur_rate);
+  let base = costUsd * rate * 100 * (1 + markupPct / 100) + Number(rules.markup_fixed_cents);
+  if (rules.shipping_mode === "INCLUDED" && shippingUsd) base += shippingUsd * rate * 100;
+  const cents = Math.ceil(Math.round(base * 1e6) / 1e6);
+  if (rules.price_rounding === "NONE") return cents;
+  const target = Number(rules.price_rounding);
+  const euros = Math.floor(cents / 100);
+  return cents % 100 <= target ? euros * 100 + target : (euros + 1) * 100 + target;
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("it-IT", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -191,15 +207,7 @@ function SettingsForm({ settings }: { settings: CjSettingsRead }) {
   }
 
   const sample = 10; // USD
-  const sampleCents = (() => {
-    const base = sample * Number(form.usd_eur_rate) * 100 * (1 + Number(form.markup_percentage) / 100) + Number(form.markup_fixed_cents);
-    const cents = Math.ceil(base);
-    if (form.price_rounding === "NONE") return cents;
-    const target = Number(form.price_rounding);
-    const eurosPart = Math.floor(cents / 100);
-    const rest = cents % 100;
-    return rest <= target ? eurosPart * 100 + target : (eurosPart + 1) * 100 + target;
-  })();
+  const sampleCents = salePriceCents(sample, { ...form, shipping_mode: "CUSTOMER_PAYS" }, Number(form.markup_percentage));
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -473,6 +481,11 @@ function ImportForm({ pid, preview, settings, onImported }: {
   const [name, setName] = useState(preview.name_en.slice(0, 255));
   const [description, setDescription] = useState(preview.description_text);
   const [creditPct, setCreditPct] = useState(String(settings?.default_credit_percentage ?? 100));
+  const generalMarkup = settings?.markup_percentage ?? 100;
+  const [markup, setMarkup] = useState(String(generalMarkup));
+  const markupValue = markup.trim() === "" || Number.isNaN(Number(markup)) ? generalMarkup : Number(markup);
+  const priceOf = (costUsd: number, serverPrice: number) =>
+    settings ? salePriceCents(costUsd, settings, markupValue, preview.shipping_estimate_usd) : serverPrice;
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(preview.variants.filter((v) => v.inventory > 0).map((v) => v.vid))
   );
@@ -489,6 +502,9 @@ function ImportForm({ pid, preview, settings, onImported }: {
         name: name.trim(),
         description,
         credit_discount_percentage: Number(creditPct),
+        // Same as the general markup: nothing saved on the product, so it
+        // keeps following the general setting when that changes.
+        markup_percentage: markupValue === generalMarkup ? null : markupValue,
         vids: Array.from(selected),
         activate,
       });
@@ -550,13 +566,17 @@ function ImportForm({ pid, preview, settings, onImported }: {
                       </span>
                       <span className="flex-1 min-w-0 truncate text-slate-200 light:text-slate-800">{v.label}</span>
                       <span className="text-slate-500 shrink-0">{usd(v.cost_usd.toFixed(2))}</span>
-                      <span className="font-bold text-orange-400 shrink-0 w-16 text-right">{euro(v.price_cents)}</span>
+                      <span className="font-bold text-orange-400 shrink-0 w-16 text-right">{euro(priceOf(v.cost_usd, v.price_cents))}</span>
                       <span className="text-slate-500 shrink-0 w-16 text-right">{v.inventory} pz</span>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="grid grid-cols-3 gap-3 items-end">
+                <div>
+                  <span className={label}>Ricarico %</span>
+                  <input className={input} inputMode="numeric" value={markup} onChange={(e) => setMarkup(e.target.value)} />
+                </div>
                 <div>
                   <span className={label}>LialCash usabili (%)</span>
                   <input className={input} inputMode="numeric" value={creditPct} onChange={(e) => setCreditPct(e.target.value)} />
@@ -566,6 +586,11 @@ function ImportForm({ pid, preview, settings, onImported }: {
                   Metti subito in vendita
                 </label>
               </div>
+              <p className="text-[11px] text-slate-500 -mt-1">
+                {markupValue === generalMarkup
+                  ? `Ricarico generale (${generalMarkup}%): se lo cambi in Impostazioni, questo prodotto si aggiorna.`
+                  : `Ricarico solo per questo prodotto (${markupValue}%). Lo cambi quando vuoi da Prodotti in vendita → Modifica.`}
+              </p>
               <ErrorBox message={submitError} />
               <button
                 className={`${btnPrimary} w-full py-2.5`}

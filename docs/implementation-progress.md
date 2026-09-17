@@ -4,6 +4,20 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 61 — 2026-09-17 — Shop Lial Partner: ricarico 100% già all'importazione
+
+Richiesta dell'utente: "pago 10, vendo a 20" già al momento dell'importazione,
+modificabile dopo.
+
+- [x] Ricarico generale predefinito portato al 100% (modello; in produzione
+  impostato da 40 a 100, prodotti ricalcolati). Nessuna modifica di schema.
+- [x] Finestra "Importa": nuovo campo **Ricarico %** precompilato con il
+  ricarico generale; i prezzi delle varianti si ricalcolano mentre si scrive.
+  Uguale al generale → sul prodotto non si salva nulla e segue le Impostazioni;
+  diverso → ricarico solo per quel prodotto, modificabile da Prodotti in
+  vendita → Modifica.
+- [x] Test: nuovo default 100% (14 test CJ).
+
 ## Session 60 — 2026-09-17 — Shop Lial Partner: integrazione CJ Dropshipping
 
 Richiesta dell'utente: un secondo negozio "importato", come quello AliExpress

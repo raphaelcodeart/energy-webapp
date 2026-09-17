@@ -88,7 +88,7 @@ class CjSettings(UUIDPKMixin, TimestampMixin, Base):
     sandbox: Mapped[bool] = mapped_column(Boolean, default=True)
     #: EUR per 1 USD.
     usd_eur_rate: Mapped[Decimal] = mapped_column(Numeric(10, 6), default=Decimal("0.92"))
-    markup_percentage: Mapped[int] = mapped_column(Integer, default=40)
+    markup_percentage: Mapped[int] = mapped_column(Integer, default=100)
     markup_fixed_cents: Mapped[int] = mapped_column(Integer, default=0)
     price_rounding: Mapped[str] = mapped_column(String(8), default="90")
     shipping_mode: Mapped[str] = mapped_column(String(16), default="CUSTOMER_PAYS")

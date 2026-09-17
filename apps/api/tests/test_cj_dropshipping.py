@@ -125,7 +125,7 @@ async def _shop(db, organization_id, admin, **settings_updates):
     row = await cj_service.get_settings_row(db, organization_id=organization_id)
     await cj_service.update_settings(
         db, row=row, actor_user_id=admin.id,
-        updates={"api_key": "CJ123@api@secret-abcd", "enabled": True, **settings_updates},
+        updates={"api_key": "CJ123@api@secret-abcd", "enabled": True, "markup_percentage": 40, **settings_updates},
     )
     product = await cj_service.import_product(
         db, row=row, actor_user_id=admin.id, pid="P1", name="Auricolari wireless", description=None,
@@ -168,6 +168,13 @@ def test_cj_description_becomes_plain_text():
     text = cj_service.html_to_text("<p>Great <b>sound</b></p><ul><li>Bluetooth</li></ul>&amp; more")
     assert "<" not in text
     assert "Great sound" in text and "• Bluetooth" in text and "& more" in text
+
+
+@pytest.mark.asyncio
+async def test_new_shop_starts_with_a_100_percent_markup(db, organization_id):
+    row = await cj_service.get_settings_row(db, organization_id=organization_id)
+    assert row.markup_percentage == 100  # pay 10, sell at 20 (before rounding)
+    assert pricing.sale_price_cents(cost_usd="10", settings=row) == 1890  # 9.20 x 2 = 18.40 -> 18.90
 
 
 @pytest.mark.asyncio
