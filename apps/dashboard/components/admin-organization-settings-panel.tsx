@@ -136,11 +136,83 @@ export function AdminOrganizationSettingsPanel(
         </form>
       </div>
 
+      <ContractFullPaymentDiscountCard
+        key={String(settings?.contract_full_payment_discount_percentage ?? "default")}
+        current={settings?.contract_full_payment_discount_percentage ?? null}
+      />
+
       <ContractCashbackSettingsCard current={settings?.contract_instalment_cashback_mode ?? null} />
 
       <AdminGoogleDriveSettingsCard />
 
       {isSuperAdmin && <AdminStripeSettingsCard organizationId={organizationId} />}
+    </div>
+  );
+}
+
+/** Discount for paying a contract in one go (Session 64). Only the single
+    payment is discounted; 3 and 12 instalments stay at the list price. */
+function ContractFullPaymentDiscountCard({ current }: { current: number | null }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState(String(current ?? 32));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const pct = Math.max(0, Math.min(90, parseInt(value, 10) || 0));
+  const example = 180 * (1 - pct / 100);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/proxy/organizations/me/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contract_full_payment_discount_percentage: pct }),
+      });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      await queryClient.invalidateQueries({ queryKey: ["admin", "organization-settings"] });
+      setSaved(true);
+    } catch (err: any) {
+      setError(err.message || "Impossibile salvare l'impostazione.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="glass-card rounded-2xl p-6 border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70">
+      <h3 className="text-sm font-semibold text-white light:text-slate-900 mb-1">Sconto per il pagamento in un&apos;unica soluzione</h3>
+      <p className="text-xs text-slate-500 mb-4">
+        Il cliente che paga il contratto tutto subito con carta ha questo sconto sul prezzo (l&apos;IVA, se dovuta, si
+        calcola sul prezzo scontato). Pagamenti in 3 o 12 rate e bonifici confermati a mano restano a prezzo pieno.
+        Il cashback segue quanto il cliente paga davvero. Metti 0 per non fare sconto.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Sconto %</span>
+          <input
+            inputMode="numeric"
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setSaved(false); }}
+            className="w-24 rounded-lg glass-input px-3 py-2 text-sm focus:border-orange-500"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50"
+        >
+          {saving ? "Salvataggio..." : "Salva"}
+        </button>
+        <span className="text-xs text-slate-400 light:text-slate-500 pb-2">
+          Esempio: 180 € → <strong className="text-emerald-400">{example.toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</strong> + IVA se pagato tutto subito
+        </span>
+      </div>
+      {error && <div className="mt-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{error}</div>}
+      {saved && <div className="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">Sconto salvato: vale per i prossimi pagamenti.</div>}
     </div>
   );
 }

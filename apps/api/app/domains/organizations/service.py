@@ -7,7 +7,7 @@ from app.domains.organizations.schemas import OrganizationSettingsUpdate, Paymen
 
 SETTINGS_KEYS = (
     "bank_iban", "bank_account_holder", "bank_transfer_instructions", "admin_notification_email",
-    "contract_instalment_cashback_mode",
+    "contract_instalment_cashback_mode", "contract_full_payment_discount_percentage",
 )
 PAYMENT_SETTINGS_KEYS = ("stripe_publishable_key", "stripe_secret_key", "stripe_webhook_secret")
 
@@ -28,6 +28,22 @@ async def get_contract_instalment_cashback_mode(db: AsyncSession, *, organizatio
     org = await db.get(Organization, organization_id)
     mode = (org.settings or {}).get("contract_instalment_cashback_mode") if org is not None else None
     return mode if mode in CONTRACT_INSTALMENT_CASHBACK_MODES else CASHBACK_PER_INSTALMENT
+
+
+#: Discount on a contract paid in one go (Session 64), percent of the price;
+#: 3 and 12 instalments are never discounted. 0 switches it off.
+DEFAULT_FULL_PAYMENT_DISCOUNT_PERCENTAGE = 32
+
+
+async def get_contract_full_payment_discount_percentage(db: AsyncSession, *, organization_id: uuid.UUID) -> int:
+    org = await db.get(Organization, organization_id)
+    value = (org.settings or {}).get("contract_full_payment_discount_percentage") if org is not None else None
+    if value is None:
+        return DEFAULT_FULL_PAYMENT_DISCOUNT_PERCENTAGE
+    try:
+        return max(0, min(90, int(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_FULL_PAYMENT_DISCOUNT_PERCENTAGE
 
 
 async def get_settings(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:

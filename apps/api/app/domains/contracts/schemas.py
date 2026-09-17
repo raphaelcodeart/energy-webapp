@@ -269,6 +269,9 @@ class ContractPaymentOptionRead(BaseModel):
     #: caused by rounding an instalment to the cent. Shown to the customer
     #: rather than hidden; 0 for every price currently in the catalog.
     rounding_difference_cents: int
+    #: Session 64: taken off a single payment only.
+    discount_percentage: int = 0
+    discount_cents: int = 0
 
 
 class ContractPaymentOptionsRead(BaseModel):

@@ -771,6 +771,9 @@ async def transition_contract(
         contract.paid_at = utcnow()
         contract.payment_plan = "FULL"
         contract.payment_method = "BANK_TRANSFER"
+        # The one-go discount is a card checkout offer (Session 64); a
+        # transfer confirmed by staff is the list price.
+        contract.payment_discount_cents = 0
     if to_status == "PAID":
         from app.domains.contracts import instalments as instalments_service
 
@@ -955,7 +958,9 @@ async def credit_contract_cashback(
         # skipped rather than silently guessed.
         logger.warning("Contract %s has no gross_amount_cents snapshot; skipping cashback", contract.id)
         return
-    amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=gross)
+    # On what was actually paid: a one-go discount lowers the cashback too.
+    paid_cents = gross - int(contract.payment_discount_cents or 0)
+    amount_cents = pricing.contract_cashback_cents(version=version, gross_amount_cents=paid_cents)
     credited = await _credit_contract_lialcash(
         db, organization_id=organization_id, contract=contract, amount_cents=amount_cents,
         actor_user_id=actor_user_id, idempotency_key=f"contract-cashback:{contract.id}",
@@ -1084,7 +1089,7 @@ async def _credit_contract_lialcash(
 
 
 async def attach_stripe_checkout_session(
-    db: AsyncSession, *, contract: Contract, session_id: str, plan_key: str
+    db: AsyncSession, *, contract: Contract, session_id: str, plan_key: str, discount_cents: int = 0
 ) -> Contract:
     """Records which Checkout Session is currently live for this contract,
     and which plan it was opened for. Overwrites any previous one, so only
@@ -1096,6 +1101,7 @@ async def attach_stripe_checkout_session(
     PAYMENT_PENDING waiting for an admin to confirm a bank transfer."""
     contract.stripe_checkout_session_id = session_id
     contract.payment_plan = plan_key
+    contract.payment_discount_cents = discount_cents
     contract.payment_method = "CARD"
     contract.updated_at = utcnow()
     await db.commit()

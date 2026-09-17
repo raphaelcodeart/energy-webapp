@@ -148,7 +148,12 @@ async def build_commission_preview(db: AsyncSession, *, organization_id: uuid.UU
 
     def _schedule(p: payment_plans.PaymentPlan) -> list[dict]:
         start = (contract.paid_at.date() if contract.paid_at else None)
-        instalment_cents = payment_plans.breakdown_for(p, gross).instalment_cents if gross else 0
+        if not gross:
+            instalment_cents = 0
+        elif contract.paid_at and p.key == contract.payment_plan:
+            instalment_cents = payment_plans.contract_breakdown(p, contract).instalment_cents
+        else:
+            instalment_cents = payment_plans.breakdown_for(p, gross).instalment_cents
         rows = []
         for n in range(1, p.instalments + 1):
             rows.append({
@@ -206,8 +211,10 @@ async def build_commission_preview(db: AsyncSession, *, organization_id: uuid.UU
             ],
         }
 
+    paid_gross = gross - int(contract.payment_discount_cents or 0) if contract.paid_at else gross
     cashback_cents = (
-        pricing.contract_cashback_cents(version=version, gross_amount_cents=gross) if version is not None and gross else 0
+        pricing.contract_cashback_cents(version=version, gross_amount_cents=paid_gross)
+        if version is not None and gross else 0
     )
 
     body = {

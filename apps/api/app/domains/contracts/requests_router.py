@@ -400,6 +400,13 @@ async def get_payment_options(
     points = await requests_service.list_points(db, request=request)
     payable = requests_service.payable_points(points)
     labels = await _point_labels(db, payable)
+    discount_percentage = await organizations_service.get_contract_full_payment_discount_percentage(
+        db, organization_id=current_user.organization_id
+    )
+    cashback_total = await requests_service.cashback_total_cents(db, points=payable)
+    full_payment_cashback = await requests_service.cashback_total_cents(
+        db, points=payable, discount_percentage=discount_percentage
+    )
     return ContractRequestPaymentOptionsRead(
         contract_request_id=request.id,
         card_available=await organizations_service.is_stripe_configured(
@@ -415,12 +422,16 @@ async def get_payment_options(
                 key=o.plan.key, label=o.plan.label, description=o.plan.description, instalments=o.plan.instalments,
                 instalment_cents=o.instalment_cents, total_cents=o.total_cents,
                 rounding_difference_cents=o.rounding_difference_cents, available=o.available,
-                unavailable_reason=o.unavailable_reason,
+                unavailable_reason=o.unavailable_reason, list_total_cents=o.list_total_cents,
+                discount_percentage=o.discount_percentage, discount_cents=o.discount_cents,
+                cashback_cents=(
+                    full_payment_cashback if o.discount_cents else cashback_total
+                ),
             )
-            for o in requests_service.plan_options(payable)
+            for o in requests_service.plan_options(payable, discount_percentage=discount_percentage)
         ],
         points_paid=sum(1 for c in points if c.paid_at is not None),
-        cashback_total_cents=await requests_service.cashback_total_cents(db, points=payable),
+        cashback_total_cents=cashback_total,
         cashback_mode=await organizations_service.get_contract_instalment_cashback_mode(
             db, organization_id=current_user.organization_id
         ),

@@ -353,7 +353,7 @@ async def test_checkout_with_lialcash_and_shipping_like_every_shop(db, organizat
     detail = await accounting_details._order_detail(
         db, organization_id=organization_id, entity_id=order.id, owner_user_id=customer.id
     )
-    assert detail["subtitle"].endswith("Fai la spesa con Lial")
+    assert detail["subtitle"].endswith("Marketplace 1")
     assert "CJ" not in detail["subtitle"] and "Partner" not in detail["subtitle"]
     assert not any(f and f["label"] == "Ordine CJ" for f in detail["facts"])
 

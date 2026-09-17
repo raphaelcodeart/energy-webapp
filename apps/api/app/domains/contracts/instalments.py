@@ -81,7 +81,7 @@ async def ensure_schedule(db: AsyncSession, *, contract: Contract) -> list[Contr
     plan = payment_plans.plan_by_key(contract.payment_plan)
     total = instalments_for(contract)
     gross = int(contract.gross_amount_cents or 0)
-    amount = payment_plans.breakdown_for(plan, gross).instalment_cents if plan is not None else gross
+    amount = payment_plans.contract_breakdown(plan, contract).instalment_cents if plan is not None else gross
     start = (contract.paid_at or utcnow()).date()
     rows = [
         ContractInstalment(

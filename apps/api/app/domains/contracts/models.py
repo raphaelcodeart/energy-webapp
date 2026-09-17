@@ -249,6 +249,9 @@ class Contract(UUIDPKMixin, TimestampMixin, Base):
     #: here so the column has one agreed vocabulary before anything starts
     #: relying on it.
     payment_plan: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: Session 64: the discount taken off a single payment, frozen when the
+    #: customer chose it (0 for instalments, bank transfers and older contracts).
+    payment_discount_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     #: CARD / BANK_TRANSFER.
     payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)

@@ -73,6 +73,20 @@ def test_the_rounding_difference_can_never_be_large():
             assert abs(b.rounding_difference_cents) <= plan.instalments // 2
 
 
+def test_the_single_payment_discount_is_rounded_and_frozen():
+    full = payment_plans.plan_by_key(payment_plans.PLAN_FULL)
+    b = payment_plans.breakdown_for(full, 180_00, discount_percentage=32)
+    assert (b.discount_cents, b.total_cents, b.instalment_cents, b.discount_percentage) == (57_60, 122_40, 122_40, 32)
+    assert payment_plans.discount_cents_for(99_99, 32) == 32_00  # 31,9968 half-up
+    # Re-read from the contract: whatever the setting says now.
+    contract = Contract(gross_amount_cents=180_00, payment_discount_cents=57_60)
+    assert payment_plans.contract_breakdown(full, contract).total_cents == 122_40
+    # Instalments never discounted, even if asked.
+    twelve = payment_plans.plan_by_key(payment_plans.PLAN_MONTHLY_12)
+    assert payment_plans.breakdown_for(twelve, 180_00, discount_percentage=32).total_cents == 180_00
+    assert payment_plans.contract_breakdown(twelve, Contract(gross_amount_cents=180_00, payment_discount_cents=57_60)).total_cents == 180_00
+
+
 def test_an_amount_too_small_to_split_drops_that_option():
     """Stripe refuses a zero-amount recurring price, and "12 rate da 0,00"
     would be nonsense before it was an error."""

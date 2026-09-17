@@ -369,6 +369,8 @@ contracts
     Stripe", importo finanziato e rimborsato al finanziatore, non a noi.
     Nulla scrive ancora questa colonna: lo step di pagamento del contratto
     non è costruito),
+  payment_discount_cents (Session 64: sconto del pagamento unico, congelato
+    alla scelta; 0 per rate, bonifici e contratti precedenti),
   payment_method nullable (CARD/BANK_TRANSFER),
   stripe_checkout_session_id nullable UNIQUE, stripe_customer_id nullable,
   stripe_subscription_id nullable, paid_at nullable,

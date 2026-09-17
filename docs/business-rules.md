@@ -152,6 +152,23 @@ sponsor rather than block.
 separate, already-working flow and is untouched: an order is a purchase, a
 contract is a subscription to a service.
 
+### Sconto per il pagamento in unica soluzione (Session 64) {#full-payment-discount}
+
+Chi paga il contratto (o l'intera pratica) **tutto subito con carta** ha uno
+sconto sul prezzo: **32%** di default, impostabile in Impostazioni (0 = nessuno
+sconto). 3 e 12 rate restano a prezzo pieno.
+
+- Lo sconto si applica al prezzo IVA inclusa, arrotondato al centesimo: è lo
+  stesso che scontare il prezzo netto e poi aggiungere l'IVA (180 − 32% + IVA).
+- Il prezzo del contratto (`gross_amount_cents`) non cambia; lo sconto scelto si
+  congela sul contratto (`payment_discount_cents`) quando il cliente sceglie la
+  soluzione unica, e tutto ciò che segue (rata registrata, cashback, anteprima
+  provvigioni) usa quanto pagato davvero. Un cambio dell'impostazione vale solo
+  per i pagamenti successivi.
+- Il **cashback** di un pagamento unico scontato è calcolato su quanto pagato
+  (open-questions #18). I gettoni provvigionali non cambiano.
+- Un bonifico confermato a mano dallo staff è a prezzo pieno.
+
 ### Quando si può pagare {#contract-prepayment}
 
 **Changed in Session 49: subito, senza aspettare i documenti.** Per explicit
@@ -1841,7 +1858,8 @@ davvero all'API di CJ Dropshipping. Tabelle e gestione proprie
 (`cj_dropshipping`), esperienza del cliente identica agli altri negozi.
 
 **Per il cliente, uguale a tutto lo Shop.** I prodotti compaiono nella
-categoria **"Fai la spesa con Lial"** insieme a quelli del catalogo (Session 62):
+categoria **"Marketplace 1"** dello Shop (Session 64; dalla Session 62 alla 63
+erano dentro "Fai la spesa con Lial"):
 al cliente non si dice mai da dove arriva un prodotto (né CJ né "Partner" in
 finestra prodotto, pagina Stripe, Contabilità). Checkout con LialCash (codice via email), bonifico o carta, ordine in "I miei
 Ordini", movimenti in Contabilità. Questi prodotti **non generano cashback**:

@@ -299,6 +299,22 @@ def test_the_monthly_figure_is_each_contract_split_on_its_own_then_added_up():
     assert by_key[payment_plans.PLAN_FULL].total_cents == 349_00
 
 
+def test_only_the_single_payment_is_discounted():
+    contracts = [Contract(gross_amount_cents=cents, status="UNDER_REVIEW") for cents in (180_00, 249_00)]
+    by_key = {o.plan.key: o for o in requests_service.plan_options(contracts, discount_percentage=32)}
+    full = by_key[payment_plans.PLAN_FULL]
+    assert full.list_total_cents == 429_00
+    assert full.discount_percentage == 32
+    assert full.total_cents == 122_40 + 169_32  # 180 - 57,60 ; 249 - 79,68
+    assert full.discount_cents == 57_60 + 79_68
+    for key in (payment_plans.PLAN_INSTALMENTS_3, payment_plans.PLAN_MONTHLY_12):
+        assert by_key[key].discount_cents == 0 and by_key[key].discount_percentage == 0
+        assert by_key[key].total_cents == 429_00 + by_key[key].rounding_difference_cents
+    # Switched off in Impostazioni (0): nothing changes.
+    plain = {o.plan.key: o for o in requests_service.plan_options(contracts, discount_percentage=0)}
+    assert plain[payment_plans.PLAN_FULL].total_cents == 429_00 and plain[payment_plans.PLAN_FULL].discount_cents == 0
+
+
 def test_too_many_contracts_for_one_subscription_leaves_only_the_single_payment():
     contracts = [
         Contract(gross_amount_cents=120_00, status="UNDER_REVIEW")
@@ -401,7 +417,10 @@ async def test_one_checkout_pays_every_contract_of_the_pratica_each_as_if_alone(
     )
     [params] = created
     assert params["mode"] == "payment"
-    assert [li["price_data"]["unit_amount"] for li in params["line_items"]] == [120_00, 240_00, 60_00]
+    # Paid in one go: 32% off by default (Session 64). 120 -> 81,60 ...
+    assert [li["price_data"]["unit_amount"] for li in params["line_items"]] == [81_60, 163_20, 40_80]
+    assert "sconto 32%" in params["line_items"][0]["price_data"]["product_data"]["description"]
+    assert "sconto del 32%" in params["custom_text"]["submit"]["message"]
     assert {li["price_data"]["product_data"]["metadata"]["contract_id"] for li in params["line_items"]} == {
         str(c.id) for c in contracts
     }
@@ -422,13 +441,17 @@ async def test_one_checkout_pays_every_contract_of_the_pratica_each_as_if_alone(
         rows = list((await db.execute(
             select(ContractInstalment).where(ContractInstalment.contract_id == contract.id)
         )).scalars())
-        assert [(r.number, r.status, r.amount_cents) for r in rows] == [(1, "PAID", contract.gross_amount_cents)]
+        # The discount is frozen on the contract: the list price stays the contract's value.
+        assert contract.payment_discount_cents == contract.gross_amount_cents * 32 // 100
+        assert [(r.number, r.status, r.amount_cents) for r in rows] == [
+            (1, "PAID", contract.gross_amount_cents - contract.payment_discount_cents)
+        ]
 
-    # Only Luce A earns cashback (100%), and only on itself.
+    # Only Luce A earns cashback (100%), on what was paid.
     credits = list((await db.execute(
         select(WalletTransaction).where(WalletTransaction.reference_contract_id.in_([c.id for c in contracts]))
     )).scalars())
-    assert [(t.reference_contract_id, t.amount_cents) for t in credits] == [(contracts[0].id, 120_00)]
+    assert [(t.reference_contract_id, t.amount_cents) for t in credits] == [(contracts[0].id, 81_60)]
 
 
 @pytest.mark.asyncio

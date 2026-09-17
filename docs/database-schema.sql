@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ZXGgQPcGNtg061OPqiskiPZSoYY7RvqtBwgBtfJftCUEBkQWZ2fVKDRaB3btWXA
+\restrict yXqyugcpsG0mDVTm7QYUsqTcCNYcQ6qUdSYsbDOVbFxjMZkPBVLArnNA0fPoz16
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -625,6 +625,7 @@ CREATE TABLE public.contracts (
     contract_request_id uuid NOT NULL,
     stripe_subscription_item_id character varying(255),
     billing_stopped_at timestamp with time zone,
+    payment_discount_cents integer DEFAULT 0 NOT NULL,
     CONSTRAINT ck_contracts_product_required CHECK (((product_version_id IS NOT NULL) OR ((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'CANCELLED'::character varying])::text[]))))
 );
 
@@ -4784,5 +4785,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ZXGgQPcGNtg061OPqiskiPZSoYY7RvqtBwgBtfJftCUEBkQWZ2fVKDRaB3btWXA
+\unrestrict yXqyugcpsG0mDVTm7QYUsqTcCNYcQ6qUdSYsbDOVbFxjMZkPBVLArnNA0fPoz16
 

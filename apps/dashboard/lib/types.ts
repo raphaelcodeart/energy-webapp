@@ -153,6 +153,12 @@ export type ContractRequestPaymentOptionRead = {
   rounding_difference_cents: number;
   available: boolean;
   unavailable_reason: string | null;
+  /** Session 64: price before the one-go discount, the discount, and the
+      LialCash this option earns. */
+  list_total_cents: number;
+  discount_percentage: number;
+  discount_cents: number;
+  cashback_cents: number;
 };
 
 export type ContractRequestPaymentOptionsRead = {
@@ -640,6 +646,8 @@ export type OrganizationSettingsRead = {
   bank_transfer_instructions: string | null;
   /** PER_INSTALMENT (default) / UPFRONT -- Session 59. */
   contract_instalment_cashback_mode: "PER_INSTALMENT" | "UPFRONT" | null;
+  /** Discount (%) on a contract paid in one go; null = 32 (default). */
+  contract_full_payment_discount_percentage: number | null;
 };
 
 export type PaymentSettingsRead = {

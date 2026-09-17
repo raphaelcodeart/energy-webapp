@@ -4,6 +4,48 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 64 — 2026-09-17 — "Marketplace 1" nello Shop; sconto per il pagamento in unica soluzione
+
+Richieste dell'utente: (1) una categoria "Marketplace 1" nello Shop del
+cliente con i prodotti importati da CJ, resa visibile; (2) quando il cliente
+paga una pratica tutto subito, uno sconto evidente (-32%, IVA sul prezzo
+scontato); 3 e 12 rate invariate.
+
+- [x] Shop cliente: scheda **Marketplace 1** con i prodotti CJ (fuori da "Fai la
+  spesa con Lial", dove erano dalla Session 62). Compare quando lo shop CJ è
+  acceso e ha prodotti; finestra prodotto e Contabilità del cliente dicono
+  "Marketplace 1".
+- [ ] **Shop CJ ancora spento in produzione**: accenderlo (e spegnere la
+  sandbox) è stato bloccato dal controllo dei permessi e resta una scelta
+  dell'utente, da Shop Lial Partner → Impostazioni. Con sandbox accesa un
+  cliente pagherebbe davvero ordini che CJ non spedisce.
+- [x] Impostazione `contract_full_payment_discount_percentage` (JSONB
+  `organizations.settings`, predefinito **32**, 0 = nessuno sconto), card in
+  Impostazioni con esempio. L'utente aveva scritto sia 30% sia -32%: scelto 32
+  (l'esempio ripetuto), modificabile.
+- [x] `payment_plans`: `discount_cents_for`, `breakdown_for(...,
+  discount_percentage / discount_cents)`, `contract_breakdown`; sconto solo sul
+  piano FULL, arrotondato al centesimo, sul prezzo IVA inclusa (equivale a
+  scontare il netto e applicare l'IVA).
+- [x] Migrazione `0047_contract_full_payment_discount`:
+  `contracts.payment_discount_cents` (0 per i 30 contratti esistenti). Lo sconto
+  si congela sul contratto al checkout (contratto singolo) o al pagamento della
+  pratica (dalla riga congelata del checkout): rata registrata, cashback e
+  anteprima provvigioni leggono quanto pagato davvero anche se l'impostazione
+  cambia. Bonifico confermato a mano = prezzo pieno.
+- [x] Stripe: importo scontato, descrizione "Pagamento unico, sconto 32%
+  (prezzo …)" e testo sopra il pulsante con il risparmio.
+- [x] Cashback del pagamento unico calcolato su quanto pagato (scelta
+  prudente, da confermare: open-questions #18). Gettoni provvigionali
+  invariati (sono importi fissi per prodotto).
+- [x] Riquadro "Scegli come pagare": badge **-32%**, prezzo pieno barrato, prezzo
+  scontato in verde, risparmio, nota IVA; il cashback mostrato segue l'opzione
+  scelta.
+- [x] Test: sconto e arrotondamento, congelamento, rate mai scontate, checkout
+  della pratica e del singolo contratto, rata registrata e cashback; suite 401
+  verde. Verificato in sola lettura su una pratica reale: 1.140 € → 775,20 € in
+  unica soluzione, rate da 380 € / 95 € invariate.
+
 ## Session 63 — 2026-09-17 — Shop Lial Partner: si parte con saldo CJ a zero (flusso ibrido)
 
 Richiesta dell'utente (con un prompt di specifica): non avere soldi da

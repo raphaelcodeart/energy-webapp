@@ -20,6 +20,7 @@ async def test_get_settings_defaults_to_none_when_nothing_set(db, organization_i
         "bank_transfer_instructions": None,
         "admin_notification_email": None,
         "contract_instalment_cashback_mode": None,
+        "contract_full_payment_discount_percentage": None,
     }
 
 
@@ -41,6 +42,7 @@ async def test_update_settings_merges_and_partial_update_preserves_the_rest(db, 
         "bank_transfer_instructions": None,
         "admin_notification_email": None,
         "contract_instalment_cashback_mode": None,
+        "contract_full_payment_discount_percentage": None,
     }
 
     # Omitting a field (exclude_unset) leaves it exactly as it was.

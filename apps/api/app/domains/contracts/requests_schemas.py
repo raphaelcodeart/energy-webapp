@@ -183,6 +183,12 @@ class ContractRequestPaymentOptionRead(BaseModel):
     rounding_difference_cents: int
     available: bool
     unavailable_reason: str | None = None
+    #: Session 64: price before the one-go discount, the discount, and the
+    #: LialCash this option earns (lower when discounted: it follows what is paid).
+    list_total_cents: int = 0
+    discount_percentage: int = 0
+    discount_cents: int = 0
+    cashback_cents: int = 0
 
 
 class ContractRequestPaymentOptionsRead(BaseModel):

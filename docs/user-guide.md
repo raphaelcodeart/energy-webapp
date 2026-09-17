@@ -130,7 +130,9 @@ fornitura. In alto vedi il prezzo come canone e come totale: ad esempio
 *15,00 € /mese × 12 mesi = 180,00 €* (+ IVA per aziende e partite IVA).
 **2. Documenti**: caricali subito, oppure premi **"Vai avanti al pagamento"**
 e caricali più tardi. **3. Pagamento**: soluzione unica, 3 rate o 12 rate
-mensili addebitate in automatico sulla carta. **Puoi pagare subito, anche se
+mensili addebitate in automatico sulla carta. **Pagando tutto subito hai lo
+sconto** (oggi -32% sul prezzo, IVA calcolata sul prezzo scontato): lo vedi
+evidenziato con il prezzo pieno barrato; con le rate il prezzo resta pieno. **Puoi pagare subito, anche se
 i documenti mancano o non sono ancora stati approvati.** Appena il pagamento
 va a buon fine ricevi il **cashback LialCash dell'intero importo** sul wallet
 — con le rate, a ogni rata pagata. Il contratto però diventa **Attivo** (e
@@ -169,8 +171,8 @@ carta (Stripe). Il risultato si vede nella nuova voce **I miei Ordini**: stato
 caricabile per un ordine a bonifico, possibilità di cambiare metodo di
 pagamento o pagare subito con carta un ordine già creato a bonifico.
 
-**Prodotti spediti a casa** — nella categoria **Fai la spesa con Lial**
-trovi anche prodotti con varianti e consegna a domicilio (sulla card vedi i
+**Marketplace 1** — nello Shop trovi la categoria **Marketplace 1** con
+prodotti con varianti e consegna a domicilio (sulla card vedi i
 giorni di consegna e "+ spedizione"). Apri un prodotto per vedere le foto,
 scegliere la variante (colore, misura...) e la quantità, e i tempi di
 consegna. Con **Acquista** inserisci l'indirizzo (già compilato con quello del
@@ -340,6 +342,10 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   contratto dall'addebito mensile, gli altri continuano). **"Approva i N
   contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e li
   approva tutti in un colpo, ognuno con la sua anteprima salvata.
+- **Impostazioni → Sconto per il pagamento in un'unica soluzione** (Session 64)
+  — la percentuale di sconto per chi paga il contratto tutto subito con carta
+  (predefinita 32%, 0 per toglierla). Vale per i pagamenti successivi; le rate
+  restano a prezzo pieno; il cashback segue quanto il cliente paga.
 - **Impostazioni → Cashback dei contratti pagati a rate** (Session 59) — per i
   contratti in 3 o 12 rate scegli se il cliente riceve il cashback **una parte a
   ogni rata pagata** (predefinito) oppure **tutto subito, alla prima rata**, in

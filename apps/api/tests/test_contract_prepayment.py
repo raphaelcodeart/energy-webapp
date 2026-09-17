@@ -187,10 +187,12 @@ async def _make_contract(db, organization_id, *, cashback_percentage: int = 100)
     return contract, user
 
 
-async def _complete_checkout(db, organization_id, contract, *, plan_key: str, subscription: str | None = None):
+async def _complete_checkout(
+    db, organization_id, contract, *, plan_key: str, subscription: str | None = None, discount_cents: int = 0
+):
     session_id = f"cs_{uuid.uuid4().hex[:10]}"
     await contract_service.attach_stripe_checkout_session(
-        db, contract=contract, session_id=session_id, plan_key=plan_key
+        db, contract=contract, session_id=session_id, plan_key=plan_key, discount_cents=discount_cents
     )
     session = {"id": session_id, "metadata": {"kind": "contract"}}
     if subscription:
@@ -339,3 +341,68 @@ async def test_rejecting_a_paid_contract_tells_staff(db, organization_id, monkey
         actor_user_id=user.id, reason="test", notes=None, correlation_id=str(uuid.uuid4()),
     )
     assert "CONTRACT_PAID_REJECTED" in sent
+
+
+@pytest.mark.asyncio
+async def test_single_card_payment_discount_lowers_what_is_charged_and_the_cashback(db, organization_id, monkeypatch):
+    """Session 64: 32% off when paying in one go. The Stripe session asks for
+    the discounted amount, the contract keeps its list price and freezes the
+    discount, the instalment row and the cashback follow what was paid."""
+    import stripe
+
+    from app.domains.contracts.models import ContractInstalment
+
+    await _configure_stripe(db, organization_id)
+    contract, user = await _make_contract(db, organization_id)
+    assert contract.gross_amount_cents == 180_00
+    created = []
+
+    class _Session:
+        id = "cs_discount_1"
+        url = "https://stripe.example/cs_discount_1"
+
+    def _create(**params):
+        created.append(params)
+        return _Session()
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", staticmethod(_create))
+    await payments_service.create_checkout_session_for_contract(
+        db, organization_id=organization_id, contract=contract, plan_key=payment_plans.PLAN_FULL,
+        success_url="https://x/ok", cancel_url="https://x/ko",
+    )
+    assert created[0]["line_items"][0]["price_data"]["unit_amount"] == 122_40
+    await db.refresh(contract)
+    assert contract.payment_discount_cents == 57_60 and contract.gross_amount_cents == 180_00
+
+    body, sig = _signed({
+        "id": f"evt_{uuid.uuid4().hex[:10]}", "type": "checkout.session.completed",
+        "data": {"object": {"id": "cs_discount_1", "metadata": {"kind": "contract"}}},
+    })
+    await payments_service.handle_webhook_event(db, organization_id=organization_id, payload=body, sig_header=sig)
+    await db.refresh(contract)
+    assert contract.paid_at is not None
+    rows = list((await db.execute(select(ContractInstalment).where(ContractInstalment.contract_id == contract.id))).scalars())
+    assert [(r.number, r.amount_cents) for r in rows] == [(1, 122_40)]
+    assert await _balance(db, user) == 122_40, "cashback del 100% di quanto pagato"
+
+
+@pytest.mark.asyncio
+async def test_instalments_are_never_discounted(db, organization_id, monkeypatch):
+    import stripe
+
+    await _configure_stripe(db, organization_id)
+    contract, _user = await _make_contract(db, organization_id)
+    created = []
+
+    class _Session:
+        id = "cs_twelve_1"
+        url = "https://stripe.example/cs_twelve_1"
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", staticmethod(lambda **p: created.append(p) or _Session()))
+    await payments_service.create_checkout_session_for_contract(
+        db, organization_id=organization_id, contract=contract, plan_key=payment_plans.PLAN_MONTHLY_12,
+        success_url="https://x/ok", cancel_url="https://x/ko",
+    )
+    assert created[0]["line_items"][0]["price_data"]["unit_amount"] == 15_00  # 180 / 12, no discount
+    await db.refresh(contract)
+    assert contract.payment_discount_cents == 0

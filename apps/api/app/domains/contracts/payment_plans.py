@@ -86,23 +86,47 @@ class PlanBreakdown:
     #: What this plan will actually collect: instalment x instalments.
     total_cents: int
     instalment_cents: int
-    #: total_cents - contract_total_cents. Zero whenever it divides evenly,
-    #: which it does for every price currently in the catalog.
+    #: total_cents - (contract_total_cents - discount_cents). Zero whenever
+    #: it divides evenly, which it does for every price in the catalog.
     rounding_difference_cents: int
+    #: Session 64: taken off a single payment only (never off instalments).
+    discount_percentage: int = 0
+    discount_cents: int = 0
 
     @property
     def is_subscription(self) -> bool:
         return self.plan.instalments > 1
 
 
-def breakdown_for(plan: PaymentPlan, total_cents: int) -> PlanBreakdown:
+def discount_cents_for(total_cents: int, percentage: int) -> int:
+    """The discount on a single payment, half-up to the cent. Taken off the
+    price VAT included, which is the same as discounting the net price and
+    applying VAT afterwards: VAT is proportional."""
+    if percentage <= 0 or total_cents <= 0:
+        return 0
+    return min(total_cents, (total_cents * percentage * 2 + 100) // 200)
+
+
+def breakdown_for(
+    plan: PaymentPlan, total_cents: int, *, discount_percentage: int = 0, discount_cents: int | None = None
+) -> PlanBreakdown:
+    """`discount_percentage` prices a plan that is being offered;
+    `discount_cents` re-reads one already chosen (frozen on the contract as
+    contracts.payment_discount_cents), so a later change of the setting never
+    restates what a customer paid. Both apply to a single payment only."""
     if plan.instalments <= 1:
+        discount = discount_cents if discount_cents is not None else discount_cents_for(total_cents, discount_percentage)
+        percentage = discount_percentage if discount_cents is None else (
+            round(discount * 100 / total_cents) if total_cents else 0
+        )
         return PlanBreakdown(
             plan=plan,
             contract_total_cents=total_cents,
-            total_cents=total_cents,
-            instalment_cents=total_cents,
+            total_cents=total_cents - discount,
+            instalment_cents=total_cents - discount,
             rounding_difference_cents=0,
+            discount_percentage=percentage if discount else 0,
+            discount_cents=discount,
         )
     # Half-up on the cent, the same rounding the VAT calculation uses.
     instalment = (total_cents * 2 + plan.instalments) // (plan.instalments * 2)
@@ -116,7 +140,15 @@ def breakdown_for(plan: PaymentPlan, total_cents: int) -> PlanBreakdown:
     )
 
 
-def available_breakdowns(total_cents: int) -> list[PlanBreakdown]:
+def contract_breakdown(plan: PaymentPlan, contract) -> PlanBreakdown:
+    """What a contract that already chose `plan` is charged."""
+    return breakdown_for(
+        plan, int(contract.gross_amount_cents or 0),
+        discount_cents=int(getattr(contract, "payment_discount_cents", 0) or 0) if plan.instalments <= 1 else 0,
+    )
+
+
+def available_breakdowns(total_cents: int, *, full_payment_discount_percentage: int = 0) -> list[PlanBreakdown]:
     """Every plan, priced for this specific contract.
 
     A plan whose instalment would round to zero is dropped: Stripe refuses a
@@ -124,7 +156,7 @@ def available_breakdowns(total_cents: int) -> list[PlanBreakdown]:
     small contract would be nonsense before it was an error."""
     out = []
     for plan in PAYMENT_PLANS:
-        breakdown = breakdown_for(plan, total_cents)
+        breakdown = breakdown_for(plan, total_cents, discount_percentage=full_payment_discount_percentage)
         if breakdown.instalment_cents <= 0:
             continue
         out.append(breakdown)

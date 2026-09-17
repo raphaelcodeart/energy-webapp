@@ -40,6 +40,8 @@ class OrganizationSettingsRead(BaseModel):
     #: PER_INSTALMENT (default) / UPFRONT -- how a contract paid in
     #: instalments earns its cashback; see organizations/service.py.
     contract_instalment_cashback_mode: str | None = None
+    #: Discount (%) on a contract paid in one go; None = default (32).
+    contract_full_payment_discount_percentage: int | None = None
 
 
 class OrganizationSettingsUpdate(BaseModel):
@@ -48,6 +50,7 @@ class OrganizationSettingsUpdate(BaseModel):
     bank_transfer_instructions: str | None = Field(default=None, max_length=2000)
     admin_notification_email: str | None = Field(default=None, max_length=255)
     contract_instalment_cashback_mode: Literal["PER_INSTALMENT", "UPFRONT"] | None = None
+    contract_full_payment_discount_percentage: int | None = Field(default=None, ge=0, le=90)
 
     @field_validator("admin_notification_email", mode="before")
     @classmethod

@@ -256,7 +256,10 @@ async def create_checkout_session_for_contract(
     total_cents = contract.gross_amount_cents
     if not total_cents or total_cents <= 0:
         raise PaymentsError("Questo contratto non ha un importo da pagare.")
-    breakdown = payment_plans.breakdown_for(plan, total_cents)
+    discount_percentage = await organizations_service.get_contract_full_payment_discount_percentage(
+        db, organization_id=organization_id
+    )
+    breakdown = payment_plans.breakdown_for(plan, total_cents, discount_percentage=discount_percentage)
     if breakdown.instalment_cents <= 0:
         raise PaymentsError("Importo troppo basso per questa modalità di pagamento.")
 
@@ -275,7 +278,14 @@ async def create_checkout_session_for_contract(
             line_items=[{
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": product_name},
+                    "product_data": {
+                        "name": product_name,
+                        **(
+                            {"description": f"Pagamento unico: sconto {breakdown.discount_percentage}% "
+                                            f"(prezzo {_euro(total_cents)})"}
+                            if breakdown.discount_cents else {}
+                        ),
+                    },
                     "unit_amount": breakdown.total_cents,
                 },
                 "quantity": 1,
@@ -314,7 +324,7 @@ async def create_checkout_session_for_contract(
     from app.domains.contracts import service as contracts_service
 
     await contracts_service.attach_stripe_checkout_session(
-        db, contract=contract, session_id=session.id, plan_key=plan.key
+        db, contract=contract, session_id=session.id, plan_key=plan.key, discount_cents=breakdown.discount_cents
     )
     if not session.url:
         raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
@@ -389,7 +399,13 @@ async def create_checkout_session_for_request(
     points = requests_service.payable_points(await requests_service.list_points(db, request=request))
     if not points:
         raise PaymentsError("In questa pratica non c'è nessun contratto da pagare.")
-    option = next(o for o in requests_service.plan_options(points) if o.plan.key == plan.key)
+    discount_percentage = await organizations_service.get_contract_full_payment_discount_percentage(
+        db, organization_id=organization_id
+    )
+    option = next(
+        o for o in requests_service.plan_options(points, discount_percentage=discount_percentage)
+        if o.plan.key == plan.key
+    )
     if not option.available:
         raise PaymentsError(option.unavailable_reason or "Modalità di pagamento non disponibile.")
 
@@ -404,11 +420,14 @@ async def create_checkout_session_for_request(
     line_items = []
     labels = await _point_labels(db, points)
     for contract in points:
-        breakdown = payment_plans.breakdown_for(plan, int(contract.gross_amount_cents or 0))
+        breakdown = payment_plans.breakdown_for(
+            plan, int(contract.gross_amount_cents or 0), discount_percentage=discount_percentage
+        )
         frozen_lines.append({
             "contract_id": str(contract.id),
             "gross_cents": int(contract.gross_amount_cents or 0),
             "instalment_cents": breakdown.instalment_cents,
+            "discount_cents": breakdown.discount_cents,
         })
         price_data = {
             "currency": "eur",
@@ -421,7 +440,11 @@ async def create_checkout_session_for_request(
                     f"{plan.instalments} rate mensili da {_euro(breakdown.instalment_cents)} · "
                     f"totale {_euro(breakdown.total_cents)}"
                     if breakdown.is_subscription
-                    else f"Pagamento unico · pratica {code}"
+                    else (
+                        f"Pagamento unico, sconto {breakdown.discount_percentage}% "
+                        f"(prezzo {_euro(int(contract.gross_amount_cents or 0))}) · pratica {code}"
+                        if breakdown.discount_cents else f"Pagamento unico · pratica {code}"
+                    )
                 ),
                 "metadata": {"contract_id": str(contract.id), "contract_request_id": str(request.id)},
             },
@@ -493,6 +516,11 @@ def _euro(cents: int) -> str:
 def _checkout_summary(plan: payment_plans.PaymentPlan, option, contracts: int) -> str:
     what = "1 contratto" if contracts == 1 else f"{contracts} contratti"
     if plan.instalments <= 1:
+        if getattr(option, "discount_cents", 0):
+            return (
+                f"Pagamento unico di {_euro(option.total_cents)} per {what} Lial Energy: "
+                f"sconto del {option.discount_percentage}% già applicato (risparmi {_euro(option.discount_cents)})."
+            )
         return f"Pagamento unico di {_euro(option.total_cents)} per {what} Lial Energy."
     return (
         f"Paghi {plan.instalments} rate mensili da {_euro(option.instalment_cents)}, per un totale di "

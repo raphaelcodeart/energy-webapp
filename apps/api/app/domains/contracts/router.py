@@ -203,8 +203,14 @@ async def get_my_contract_payment_options(
                 key=b.plan.key, label=b.plan.label, description=b.plan.description,
                 instalments=b.plan.instalments, instalment_cents=b.instalment_cents,
                 total_cents=b.total_cents, rounding_difference_cents=b.rounding_difference_cents,
+                discount_percentage=b.discount_percentage, discount_cents=b.discount_cents,
             )
-            for b in payment_plans.available_breakdowns(contract.gross_amount_cents or 0)
+            for b in payment_plans.available_breakdowns(
+                contract.gross_amount_cents or 0,
+                full_payment_discount_percentage=await organizations_service.get_contract_full_payment_discount_percentage(
+                    db, organization_id=current_user.organization_id
+                ),
+            )
         ]
         if payable
         else []

@@ -654,15 +654,22 @@ class RequestPlanOption:
     rounding_difference_cents: int
     available: bool
     unavailable_reason: str | None
+    #: Session 64: the price before the one-go discount, and the discount.
+    list_total_cents: int = 0
+    discount_percentage: int = 0
+    discount_cents: int = 0
 
 
-def plan_options(points: list[Contract]) -> list[RequestPlanOption]:
+def plan_options(points: list[Contract], *, discount_percentage: int = 0) -> list[RequestPlanOption]:
     """Every plan, priced for these contracts: each contract split on its own
     (exactly the instalment its own schedule will record), then added up. The
     customer sees one monthly figure; each contract still owns its line."""
     options = []
     for plan in payment_plans.PAYMENT_PLANS:
-        breakdowns = [payment_plans.breakdown_for(plan, int(c.gross_amount_cents or 0)) for c in points]
+        breakdowns = [
+            payment_plans.breakdown_for(plan, int(c.gross_amount_cents or 0), discount_percentage=discount_percentage)
+            for c in points
+        ]
         reason = None
         if any(b.instalment_cents <= 0 for b in breakdowns):
             reason = "Importo troppo basso per questa modalità."
@@ -679,19 +686,26 @@ def plan_options(points: list[Contract]) -> list[RequestPlanOption]:
                 rounding_difference_cents=sum(b.rounding_difference_cents for b in breakdowns),
                 available=bool(points) and reason is None,
                 unavailable_reason=reason,
+                list_total_cents=sum(int(c.gross_amount_cents or 0) for c in points),
+                discount_percentage=discount_percentage if any(b.discount_cents for b in breakdowns) else 0,
+                discount_cents=sum(b.discount_cents for b in breakdowns),
             )
         )
     return options
 
 
-async def cashback_total_cents(db: AsyncSession, *, points: list[Contract]) -> int:
+async def cashback_total_cents(db: AsyncSession, *, points: list[Contract], discount_percentage: int = 0) -> int:
+    """LialCash these contracts earn; with `discount_percentage`, when paid in
+    one go at that discount (the cashback follows what is paid)."""
     total = 0
     for contract in points:
         if contract.product_version_id is None or not contract.gross_amount_cents:
             continue
         version = await db.get(ProductVersion, contract.product_version_id)
         if version is not None:
-            total += pricing.contract_cashback_cents(version=version, gross_amount_cents=contract.gross_amount_cents)
+            gross = int(contract.gross_amount_cents)
+            paid = gross - payment_plans.discount_cents_for(gross, discount_percentage)
+            total += pricing.contract_cashback_cents(version=version, gross_amount_cents=paid)
     return total
 
 
@@ -733,6 +747,9 @@ async def apply_checkout(
             continue
         contract.payment_plan = checkout.payment_plan
         contract.payment_method = "CARD"
+        contract.payment_discount_cents = (
+            int(line.get("discount_cents") or 0) if plan is not None and plan.instalments <= 1 else 0
+        )
         if stripe_subscription_id:
             contract.stripe_subscription_id = stripe_subscription_id
             contract.stripe_subscription_item_id = subscription_items.get(str(contract.id))

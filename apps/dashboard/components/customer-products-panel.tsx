@@ -38,7 +38,9 @@ type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
 // stay invisible from the outside. Only ever added to the tab bar when
 // showImportedTab is passed (see CustomerProductsPanelProps below) -- every
 // other caller of this component keeps behaving exactly as before.
-type ShopTab = ProductCategory | "IMPORTED";
+// "MARKETPLACE_1": the products imported from CJ Dropshipping (Shop Lial
+// Partner), their own category again since Session 64 -- by request.
+type ShopTab = ProductCategory | "IMPORTED" | "MARKETPLACE_1";
 
 const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
@@ -128,11 +130,10 @@ export function CustomerProductsPanel({
     queryFn: fetchImportedProducts,
     enabled: showImportedTab,
   });
-  // Shop Lial Partner (CJ Dropshipping, Session 60): its own domain and
-  // tables, but for the customer just more products of "Fai la spesa con
-  // Lial" (Session 62) -- where a product comes from is our business, not
-  // theirs. Each card still opens its own checkout. Empty while the
-  // administrator keeps that shop switched off.
+  // Shop Lial Partner (CJ Dropshipping, Session 60): shown as the
+  // "Marketplace 1" category (Session 64; in Session 62 it lived inside "Fai
+  // la spesa con Lial"). The tab appears only while the administrator keeps
+  // that shop switched on and it has products.
   const { data: partnerShopProducts } = useQuery({
     queryKey: ["customer", "cj-products"],
     queryFn: fetchPartnerShopProducts,
@@ -163,10 +164,13 @@ export function CustomerProductsPanel({
   const visibleTabs: { key: ShopTab; label: string }[] = [
     ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
     ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
+    ...(showImportedTab && (partnerShopProducts ?? []).length > 0
+      ? [{ key: "MARKETPLACE_1" as ShopTab, label: "Marketplace 1" }]
+      : []),
   ];
 
   const partnerCards: CjProductRead[] =
-    showImportedTab && activeCategory === "DROPSHIPPING" ? partnerShopProducts ?? [] : [];
+    showImportedTab && activeCategory === "MARKETPLACE_1" ? partnerShopProducts ?? [] : [];
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -231,8 +235,8 @@ export function CustomerProductsPanel({
         {visibleTabs.map((tab) => {
           const count = tab.key === "IMPORTED"
             ? (importedProducts ?? []).length
-            : tab.key === "DROPSHIPPING" && showImportedTab
-            ? activeProducts.filter((p) => p.category === tab.key).length + (partnerShopProducts ?? []).length
+            : tab.key === "MARKETPLACE_1"
+            ? (partnerShopProducts ?? []).length
             : activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
