@@ -4,6 +4,55 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 65 — 2026-09-17 — Pratiche pagabili con bonifico, -32% in evidenza, riepilogo della pratica, Shop
+
+Richieste dell'utente: confermato lo sconto al **32%** (i pagamenti già fatti
+restano come sono); bonifico nel checkout finale della pratica, confermato
+dall'amministratore; "-32%" ben visibile e graficamente curato; più dettagli in
+"I miei Contratti" con un riepilogo in popup; titolo corretto della pagina Shop;
+"Marketplace 1" ancora non visibile.
+
+- [x] Migrazione `0048_contract_request_bank_transfer`: su `contract_requests`
+  `bank_transfer_requested_at`, `bank_transfer_total_cents`,
+  `bank_transfer_confirmed_at`, `bank_transfer_confirmed_by_user_id`,
+  `payment_proof_storage_key` / `_original_filename` / `_uploaded_at`.
+- [x] Bonifico: `POST /contract-requests/{id}/bank-transfer` (solo il
+  cliente): soluzione unica con lo sconto congelato su ogni contratto,
+  notifica allo staff; ricevuta caricabile (`/bank-transfer/proof`, URL
+  firmato `/bank-transfer/proof-url`); `POST /bank-transfer/confirm`
+  (`contracts.review`): paga ogni contratto con lo stesso percorso del
+  pagamento con carta (rata registrata allo scontato con fonte ADMIN,
+  cashback, attivazione se già approvato), notifica al cliente. Un pagamento
+  con carta fatto dopo chiude comunque la pratica.
+- [x] **Bug preesistente corretto**: un contratto già approvato pagato con
+  carta passava dalla transizione a PAID con `paid_at` vuoto, come un bonifico
+  confermato a mano, e il piano veniva riscritto in FULL / BANK_TRANSFER (12
+  rate registrate come un pagamento unico). Ora `paid_at` è impostato prima;
+  test di regressione.
+- [x] Riepilogo pratica per staff e cliente: `bank_transfer_pending`, importo,
+  ricevuta, `total_paid_cents`; `ContractRead.payment_discount_cents`.
+- [x] Cliente, "Scegli come pagare": etichetta "SCONTO -32%" in evidenza sulla
+  soluzione unica, prezzo pieno barrato, prezzo scontato grande, risparmio;
+  pulsanti "Paga con carta" e "Paga con bonifico · importo"; dopo la scelta del
+  bonifico: importo, IBAN, intestatario, causale "Pratica XXXX" con "Copia",
+  caricamento ricevuta, "Preferisci pagare con carta?".
+- [x] Admin, Pratiche: filtro/contatore **Bonifici da confermare**, badge nella
+  lista, riquadro nel dettaglio con importo, righe per contratto, ricevuta e
+  **Conferma bonifico ricevuto**.
+- [x] "I miei Contratti": intestatario, totale pagato scontato, stato del
+  bonifico, pulsante **Riepilogo** con popup: dati dell'intestatario (email,
+  PEC, IBAN, indirizzo), per ogni POD pacchetto, indirizzo, contatore, stato,
+  prezzo, IVA, totale, pagamento, sconto, rate, date; totale e sconti.
+- [x] Shop del cliente: titolo "Shop" e testo sui prodotti dei partner e con
+  consegna a casa.
+- [x] Shop CJ acceso in produzione, sandbox spenta (richiesta esplicita
+  dell'utente): "Marketplace 1" mostra 8 prodotti. Gli ordini pagati dai
+  clienti vengono creati su CJ e restano "Pagamento CJ richiesto" finché non
+  vengono pagati (saldo CJ 0).
+- [x] Test: bonifico richiesto/confermato (sconto, rate, cashback, doppia
+  conferma rifiutata), IBAN obbligatorio, regressione del piano; suite 404
+  verde.
+
 ## Session 64 — 2026-09-17 — "Marketplace 1" nello Shop; sconto per il pagamento in unica soluzione
 
 Richieste dell'utente: (1) una categoria "Marketplace 1" nello Shop del

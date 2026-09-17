@@ -55,6 +55,8 @@ export type ContractRead = {
 
   // --- Pagamento ---
   payment_plan: string | null;
+  /** Session 64: discount taken off a single payment (0 otherwise). */
+  payment_discount_cents?: number;
   payment_method: string | null;
   paid_at: string | null;
   /** An administrator stopped Stripe charging this contract every month. */
@@ -94,6 +96,13 @@ export type ContractRequestSummaryRead = {
   total_gross_cents: number;
   payment_plans: string[];
   instalments_failed: number;
+  /** Session 65: the customer announced a bank transfer, not yet confirmed. */
+  bank_transfer_pending: boolean;
+  bank_transfer_total_cents: number | null;
+  bank_transfer_requested_at: string | null;
+  payment_proof_uploaded_at: string | null;
+  /** What was actually paid for the paid points (discounts taken off). */
+  total_paid_cents: number;
 };
 
 export type ContractRequestPointRead = ContractRead & {
@@ -171,6 +180,16 @@ export type ContractRequestPaymentOptionsRead = {
   cashback_total_cents: number;
   /** On an instalment plan: a slice per instalment, or all at the first. */
   cashback_mode: "PER_INSTALMENT" | "UPFRONT";
+  /** Session 65: paying by bank transfer (single payment, same discount). */
+  bank_transfer_available: boolean;
+  bank_transfer_pending: boolean;
+  bank_transfer_total_cents: number | null;
+  bank_transfer_requested_at: string | null;
+  payment_proof_uploaded_at: string | null;
+  bank_iban: string | null;
+  bank_account_holder: string | null;
+  bank_transfer_instructions: string | null;
+  bank_transfer_reference: string | null;
 };
 
 export type ContractStatusHistoryRead = {

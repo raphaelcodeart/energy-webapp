@@ -242,7 +242,7 @@ Con lo sconto (32%) il cashback LialCash di un contratto pagato tutto subito è
 calcolato su quanto il cliente paga, non sul prezzo pieno. Su un prodotto con
 cashback al 100%: pratica da 1.140 €, pagata 775,20 €, cashback 775,20 LialCash
 (prima 1.140). Se il cashback deve restare sul prezzo pieno è una modifica di
-una riga (`contracts/service.py::credit_contract_cashback`). Da confermare
-anche la percentuale: nella richiesta compaiono sia 30% sia 32%; impostato 32,
-si cambia in Impostazioni.
+una riga (`contracts/service.py::credit_contract_cashback`). Percentuale
+confermata dall'azienda: 32% (Session 65). Resta da confermare solo la regola
+del cashback.
 

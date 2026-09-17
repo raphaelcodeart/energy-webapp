@@ -370,7 +370,8 @@ contracts
     Nulla scrive ancora questa colonna: lo step di pagamento del contratto
     non è costruito),
   payment_discount_cents (Session 64: sconto del pagamento unico, congelato
-    alla scelta; 0 per rate, bonifici e contratti precedenti),
+    alla scelta -- carta o bonifico scelto dal cliente; 0 per rate, bonifici
+    confermati senza scelta del cliente e contratti precedenti),
   payment_method nullable (CARD/BANK_TRANSFER),
   stripe_checkout_session_id nullable UNIQUE, stripe_customer_id nullable,
   stripe_subscription_id nullable, paid_at nullable,
@@ -459,6 +460,12 @@ contract_request_checkouts  (added Session 52, same migration)
   total_cents, instalment_cents, created_by_user_id -> users, completed_at,
   stripe_subscription_id, stripe_customer_id, outcome, created_at.
   -- one row per Stripe Checkout Session opened for a pratica
+
+contract_requests -- Session 65 additions (payment by bank transfer)
+  bank_transfer_requested_at, bank_transfer_total_cents (frozen, discount
+  included), bank_transfer_confirmed_at, bank_transfer_confirmed_by_user_id
+  -> users, payment_proof_storage_key / _original_filename / _uploaded_at
+  (optional receipt, private bucket, presigned URL)
 
 contracts -- Session 52 additions
   contract_request_id -> contract_requests NOT NULL (indexed),

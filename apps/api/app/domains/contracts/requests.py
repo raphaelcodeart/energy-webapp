@@ -812,6 +812,152 @@ async def apply_checkout(
     return outcome
 
 
+# --- Pagamento con bonifico (Session 65) ---------------------------------------
+
+
+class BankTransferError(Exception):
+    pass
+
+
+def bank_transfer_pending(request: ContractRequest, points: list[Contract]) -> bool:
+    """Announced by the customer, not yet confirmed, and still something to
+    pay by transfer (a card payment afterwards settles it too)."""
+    return (
+        request.bank_transfer_requested_at is not None
+        and request.bank_transfer_confirmed_at is None
+        and any(c.payment_method == "BANK_TRANSFER" and contract_service.is_payable(c) for c in points)
+    )
+
+
+async def request_bank_transfer(
+    db: AsyncSession, *, request: ContractRequest, actor_user_id: uuid.UUID
+) -> ContractRequest:
+    """The customer pays the whole pratica by transfer: a single payment,
+    with the one-go discount frozen now on every contract. Nothing is paid
+    until an administrator confirms the money arrived. Commits."""
+    from app.domains.organizations import service as organizations_service
+
+    if not await organizations_service.is_bank_transfer_configured(db, organization_id=request.organization_id):
+        raise BankTransferError("Il pagamento con bonifico non è disponibile al momento.")
+    points = payable_points(await list_points(db, request=request))
+    if not points:
+        raise BankTransferError("In questa pratica non c'è nessun contratto da pagare.")
+    percentage = await organizations_service.get_contract_full_payment_discount_percentage(
+        db, organization_id=request.organization_id
+    )
+    total = 0
+    for contract in points:
+        gross = int(contract.gross_amount_cents or 0)
+        contract.payment_plan = payment_plans.PLAN_FULL
+        contract.payment_method = "BANK_TRANSFER"
+        contract.payment_discount_cents = payment_plans.discount_cents_for(gross, percentage)
+        contract.updated_at = utcnow()
+        total += gross - contract.payment_discount_cents
+    request.bank_transfer_requested_at = utcnow()
+    request.bank_transfer_total_cents = total
+    request.bank_transfer_confirmed_at = None
+    request.bank_transfer_confirmed_by_user_id = None
+    request.updated_at = utcnow()
+    code = _code(request)
+    await audit_service.record(
+        db, organization_id=request.organization_id, actor_user_id=actor_user_id,
+        action="contract_request.bank_transfer_requested", entity_type="contract_request",
+        entity_id=str(request.id), new_value={"total_cents": total, "contracts": len(points), "discount": percentage},
+    )
+    await notifications_service.notify_roles(
+        db, organization_id=request.organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="CONTRACT_REQUEST_BANK_TRANSFER", entity_type="contract_request", entity_id=request.id,
+        title=f"Pratica {code}: il cliente paga con bonifico",
+        body=f"{total / 100:.2f} EUR per {len(points)} {'contratto' if len(points) == 1 else 'contratti'}. "
+             "Conferma quando lo ricevi, dalla pratica.",
+        exclude_user_id=actor_user_id,
+    )
+    await db.commit()
+    await db.refresh(request)
+    return request
+
+
+async def upload_bank_transfer_proof(
+    db: AsyncSession, *, request: ContractRequest, file_bytes: bytes, content_type: str, original_filename: str,
+    actor_user_id: uuid.UUID,
+) -> ContractRequest:
+    from app.core.storage import UploadValidationError
+    from app.core.storage import upload_document as storage_upload_document
+
+    if not bank_transfer_pending(request, await list_points(db, request=request)):
+        raise BankTransferError("La ricevuta si carica per una pratica in attesa di bonifico.")
+    try:
+        key = storage_upload_document(
+            file_bytes=file_bytes, content_type=content_type,
+            key_prefix=f"contract-request-payment-proofs/{request.id}",
+        )
+    except UploadValidationError as exc:
+        raise BankTransferError(str(exc)) from exc
+    request.payment_proof_storage_key = key
+    request.payment_proof_original_filename = original_filename[:255]
+    request.payment_proof_uploaded_at = utcnow()
+    await notifications_service.notify_roles(
+        db, organization_id=request.organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
+        type_="CONTRACT_REQUEST_BANK_TRANSFER", entity_type="contract_request", entity_id=request.id,
+        title=f"Pratica {_code(request)}: ricevuta del bonifico caricata", body=None, exclude_user_id=actor_user_id,
+    )
+    await db.commit()
+    await db.refresh(request)
+    return request
+
+
+def payment_proof_url(request: ContractRequest) -> str | None:
+    from app.core.storage import generate_presigned_document_url
+
+    if not request.payment_proof_storage_key:
+        return None
+    return generate_presigned_document_url(storage_key=request.payment_proof_storage_key, expires_in_seconds=300)
+
+
+async def confirm_bank_transfer(
+    db: AsyncSession, *, request: ContractRequest, actor_user_id: uuid.UUID
+) -> list[Contract]:
+    """An administrator saw the transfer arrive: every contract announced for
+    transfer is paid, each exactly as a card payment would record it (its
+    instalment row at the discounted price, its LialCash, its activation if
+    already approved). Returns the contracts paid. Commits."""
+    from app.domains.contracts import service as contracts_service
+
+    points = await list_points(db, request=request)
+    if not bank_transfer_pending(request, points):
+        raise BankTransferError("Questa pratica non ha un bonifico in attesa di conferma.")
+    paid = []
+    for contract in points:
+        if contract.payment_method != "BANK_TRANSFER" or not contract_service.is_payable(contract):
+            continue
+        contract = await contracts_service.record_card_payment(
+            db, organization_id=request.organization_id, contract=contract, notify_staff=False,
+            bank_transfer_confirmed_by=actor_user_id,
+        )
+        paid.append(contract)
+    request.bank_transfer_confirmed_at = utcnow()
+    request.bank_transfer_confirmed_by_user_id = actor_user_id
+    request.updated_at = utcnow()
+    code = _code(request)
+    await audit_service.record(
+        db, organization_id=request.organization_id, actor_user_id=actor_user_id,
+        action="contract_request.bank_transfer_confirmed", entity_type="contract_request",
+        entity_id=str(request.id), new_value={"contracts": [str(c.id) for c in paid]},
+    )
+    customer = await db.get(Customer, request.customer_id)
+    if customer is not None and customer.user_id is not None:
+        await notifications_service.notify_user(
+            db, organization_id=request.organization_id, user_id=customer.user_id,
+            type_="CONTRACT_PAID_BEFORE_APPROVAL", entity_type="contract_request", entity_id=request.id,
+            title="Bonifico ricevuto",
+            body=f"Abbiamo ricevuto il bonifico della pratica {code}. "
+                 "Ogni contratto si attiva appena i suoi documenti sono approvati.",
+        )
+    await db.commit()
+    await db.refresh(request)
+    return paid
+
+
 # --- Letture ------------------------------------------------------------------
 
 
@@ -899,6 +1045,14 @@ async def summaries(db: AsyncSession, requests: list[ContractRequest]) -> list[d
             "total_gross_cents": sum(int(c.gross_amount_cents or 0) for c in live),
             "payment_plans": sorted({c.payment_plan for c in live if c.paid_at is not None and c.payment_plan}),
             "instalments_failed": sum(instalments.get(c.id, {}).get("failed", 0) for c in live),
+            "bank_transfer_pending": bank_transfer_pending(r, points),
+            "bank_transfer_total_cents": r.bank_transfer_total_cents,
+            "bank_transfer_requested_at": r.bank_transfer_requested_at,
+            "payment_proof_uploaded_at": r.payment_proof_uploaded_at,
+            "total_paid_cents": sum(
+                int(c.gross_amount_cents or 0) - int(c.payment_discount_cents or 0)
+                for c in live if c.paid_at is not None
+            ),
         })
     return out
 

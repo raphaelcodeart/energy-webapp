@@ -25,10 +25,11 @@ import type {
   ContractRequestSummaryRead,
 } from "@/lib/types";
 
-type Filter = "ALL" | "TO_REVIEW" | "TO_PAY" | "DOCUMENTS" | "FAILED" | "DRAFT";
+type Filter = "ALL" | "TO_REVIEW" | "BANK_TRANSFER" | "TO_PAY" | "DOCUMENTS" | "FAILED" | "DRAFT";
 
 const FILTERS: { key: Filter; label: string; match: (r: ContractRequestSummaryRead) => boolean }[] = [
   { key: "TO_REVIEW", label: "Da verificare", match: (r) => r.points_to_review > 0 },
+  { key: "BANK_TRANSFER", label: "Bonifici da confermare", match: (r) => r.bank_transfer_pending },
   { key: "DOCUMENTS", label: "Documenti mancanti", match: (r) => r.points_documents_pending > 0 },
   { key: "TO_PAY", label: "Non pagate", match: (r) => r.status === "SUBMITTED" && r.points_payable > 0 },
   { key: "FAILED", label: "Rate non riscosse", match: (r) => r.instalments_failed > 0 },
@@ -98,7 +99,7 @@ export function AdminContractRequestsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {FILTERS.filter((f) => f.key !== "ALL" && f.key !== "DRAFT").map((f) => {
           const count = all.filter(f.match).length;
           return (
@@ -193,7 +194,11 @@ export function AdminContractRequestsPanel({
                   </td>
                   <td className="py-3 px-5">
                     <div className="text-xs">
-                      {r.points_paid > 0 ? `Pagati ${r.points_paid}/${r.points_total}` : r.status === "DRAFT" ? "—" : "Non pagata"}
+                      {r.bank_transfer_pending ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/10 border-amber-500/30 text-amber-400">
+                          Bonifico da confermare{r.bank_transfer_total_cents ? ` · ${euro(r.bank_transfer_total_cents)}` : ""}
+                        </span>
+                      ) : r.points_paid > 0 ? `Pagati ${r.points_paid}/${r.points_total}` : r.status === "DRAFT" ? "—" : "Non pagata"}
                     </div>
                     <div className="text-[10px] text-slate-500">
                       {r.payment_plans.map((p) => PAYMENT_PLAN_LABELS[p] ?? p).join(", ")}
@@ -438,6 +443,10 @@ function RequestDetail({
             <ContractDocumentsPanel requestId={request.id} isStaff />
           </section>
 
+          {request.bank_transfer_pending && (
+            <BankTransferConfirm request={request} onDone={async () => { await refresh(); onContractsChanged(); }} />
+          )}
+
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-white light:text-slate-900">Tentativi di pagamento</h3>
             {request.checkouts.length === 0 ? (
@@ -670,3 +679,77 @@ function BulkApproveModal({
     </div>
   );
 }
+
+
+/** Session 65: the customer chose to pay the pratica by bank transfer. The
+    contracts are paid, at the discounted amount frozen when they chose it,
+    only when an administrator confirms the money arrived. */
+function BankTransferConfirm({ request, onDone }: { request: ContractRequestDetailRead; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toPay = request.points.filter((p) => p.payment_method === "BANK_TRANSFER" && !p.paid_at);
+
+  async function openProof() {
+    setError(null);
+    try {
+      const res = await fetch(`/api/proxy/contract-requests/${request.id}/bank-transfer/proof-url`);
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function confirm() {
+    if (!window.confirm(`Confermi di aver ricevuto il bonifico di ${euro(request.bank_transfer_total_cents ?? 0)} per la pratica #${request.code}? I ${toPay.length} contratti risulteranno pagati.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/proxy/contract-requests/${request.id}/bank-transfer/confirm`, { method: "POST" });
+      if (!res.ok) throw new Error(await friendlyApiError(res));
+      await onDone();
+    } catch (err: any) {
+      setError(err.message || "Impossibile confermare il bonifico.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Bonifico da confermare</p>
+          <p className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(request.bank_transfer_total_cents ?? 0)}</p>
+          <p className="text-xs text-slate-400 light:text-slate-500">
+            {toPay.length} {toPay.length === 1 ? "contratto" : "contratti"} · scelto il {formatDate(request.bank_transfer_requested_at)} ·
+            causale “Pratica {request.code}”
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {request.payment_proof_uploaded_at ? (
+            <button onClick={openProof} className="px-3 py-2 rounded-xl bg-sky-600/10 hover:bg-sky-600/20 border border-sky-500/20 text-sky-400 text-xs font-semibold cursor-pointer">
+              Vedi ricevuta ({formatDate(request.payment_proof_uploaded_at)})
+            </button>
+          ) : (
+            <span className="px-3 py-2 text-xs text-slate-500">Nessuna ricevuta caricata</span>
+          )}
+          <button onClick={confirm} disabled={busy} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white cursor-pointer disabled:opacity-50">
+            {busy ? "Conferma..." : "Conferma bonifico ricevuto"}
+          </button>
+        </div>
+      </div>
+      <div className="text-[11px] text-slate-400 light:text-slate-500 space-y-0.5">
+        {toPay.map((p) => (
+          <p key={p.id}>
+            {pointCode(p)} · {p.product_name ?? "—"} · {euro((p.gross_amount_cents ?? 0) - (p.payment_discount_cents ?? 0))}
+            {p.payment_discount_cents ? <span className="text-emerald-400"> (listino {euro(p.gross_amount_cents ?? 0)}, sconto pagamento unico)</span> : null}
+          </p>
+        ))}
+      </div>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+    </section>
+  );
+}
+

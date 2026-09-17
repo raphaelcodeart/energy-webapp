@@ -130,9 +130,15 @@ fornitura. In alto vedi il prezzo come canone e come totale: ad esempio
 *15,00 € /mese × 12 mesi = 180,00 €* (+ IVA per aziende e partite IVA).
 **2. Documenti**: caricali subito, oppure premi **"Vai avanti al pagamento"**
 e caricali più tardi. **3. Pagamento**: soluzione unica, 3 rate o 12 rate
-mensili addebitate in automatico sulla carta. **Pagando tutto subito hai lo
-sconto** (oggi -32% sul prezzo, IVA calcolata sul prezzo scontato): lo vedi
-evidenziato con il prezzo pieno barrato; con le rate il prezzo resta pieno. **Puoi pagare subito, anche se
+mensili addebitate in automatico sulla carta, oppure **bonifico** (in un'unica
+soluzione). **Pagando tutto subito hai lo sconto del 32%** (IVA calcolata sul
+prezzo scontato), con carta o con bonifico: lo vedi con l'etichetta verde
+"-32%" e il prezzo pieno barrato; con le rate il prezzo resta pieno. Se scegli
+il bonifico trovi importo, IBAN, intestatario e causale da copiare, e puoi
+caricare la ricevuta: i contratti risultano pagati appena l'amministrazione
+riceve il bonifico. In **I miei Contratti** ogni pratica ha il pulsante
+**Riepilogo**: tutto quello che hai compilato e il costo di ogni POD (prezzo,
+IVA, totale, sconto, pagamento). **Puoi pagare subito, anche se
 i documenti mancano o non sono ancora stati approvati.** Appena il pagamento
 va a buon fine ricevi il **cashback LialCash dell'intero importo** sul wallet
 — con le rate, a ogni rata pagata. Il contratto però diventa **Attivo** (e
@@ -342,6 +348,11 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   contratto dall'addebito mensile, gli altri continuano). **"Approva i N
   contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e li
   approva tutti in un colpo, ognuno con la sua anteprima salvata.
+- **Pratiche → Bonifici da confermare** (Session 65) — le pratiche per cui il
+  cliente ha scelto il bonifico. Nel dettaglio trovi importo (già scontato),
+  contratti, eventuale ricevuta caricata dal cliente e **Conferma bonifico
+  ricevuto**: da quel momento i contratti risultano pagati, con cashback e
+  attivazione come per un pagamento con carta.
 - **Impostazioni → Sconto per il pagamento in un'unica soluzione** (Session 64)
   — la percentuale di sconto per chi paga il contratto tutto subito con carta
   (predefinita 32%, 0 per toglierla). Vale per i pagamenti successivi; le rate

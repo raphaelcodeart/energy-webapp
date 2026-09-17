@@ -167,7 +167,17 @@ sconto). 3 e 12 rate restano a prezzo pieno.
   per i pagamenti successivi.
 - Il **cashback** di un pagamento unico scontato è calcolato su quanto pagato
   (open-questions #18). I gettoni provvigionali non cambiano.
-- Un bonifico confermato a mano dallo staff è a prezzo pieno.
+- **Bonifico della pratica (Session 65)**: il cliente può scegliere "Paga con
+  bonifico" nel checkout finale. È sempre una soluzione unica, con lo stesso
+  sconto, congelato su ogni contratto al momento della scelta. I contratti
+  risultano pagati solo quando un amministratore conferma "bonifico ricevuto"
+  dalla pratica: da lì tutto (rata registrata, cashback, attivazione) segue lo
+  stesso percorso del pagamento con carta. Il cliente può caricare la ricevuta;
+  un pagamento con carta fatto dopo chiude comunque la pratica.
+- Un bonifico confermato a mano dallo staff su un contratto per cui il cliente
+  non l'aveva scelto è a prezzo pieno.
+- Percentuale confermata dall'azienda: 32%. Cambiandola, i pagamenti già
+  scelti o fatti restano con lo sconto di allora.
 
 ### Quando si può pagare {#contract-prepayment}
 

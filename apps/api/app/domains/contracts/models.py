@@ -72,6 +72,18 @@ class ContractRequest(UUIDPKMixin, TimestampMixin, Base):
     submitted_at: Mapped[datetime | None] = mapped_column(nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # --- Session 65: paying the pratica by bank transfer -------------------------
+    #: The customer chose "bonifico" (single payment, with the one-go discount):
+    #: the amount frozen at that moment, confirmed later by an administrator.
+    bank_transfer_requested_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    bank_transfer_total_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    bank_transfer_confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    bank_transfer_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    payment_proof_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    payment_proof_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payment_proof_uploaded_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class ContractRequestCheckout(UUIDPKMixin, TimestampMixin, Base):

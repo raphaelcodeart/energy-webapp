@@ -407,6 +407,10 @@ async def get_payment_options(
     full_payment_cashback = await requests_service.cashback_total_cents(
         db, points=payable, discount_percentage=discount_percentage
     )
+    bank_available = await organizations_service.is_bank_transfer_configured(
+        db, organization_id=current_user.organization_id
+    )
+    bank = await organizations_service.get_settings(db, organization_id=current_user.organization_id)
     return ContractRequestPaymentOptionsRead(
         contract_request_id=request.id,
         card_available=await organizations_service.is_stripe_configured(
@@ -435,6 +439,15 @@ async def get_payment_options(
         cashback_mode=await organizations_service.get_contract_instalment_cashback_mode(
             db, organization_id=current_user.organization_id
         ),
+        bank_transfer_available=bank_available,
+        bank_transfer_pending=requests_service.bank_transfer_pending(request, points),
+        bank_transfer_total_cents=request.bank_transfer_total_cents,
+        bank_transfer_requested_at=request.bank_transfer_requested_at,
+        payment_proof_uploaded_at=request.payment_proof_uploaded_at,
+        bank_iban=bank.get("bank_iban") if bank_available else None,
+        bank_account_holder=(bank.get("bank_account_holder") or "Lial Energy") if bank_available else None,
+        bank_transfer_instructions=bank.get("bank_transfer_instructions") if bank_available else None,
+        bank_transfer_reference=f"Pratica {str(request.id)[:8].upper()}",
     )
 
 
@@ -467,6 +480,78 @@ async def create_checkout_session(
     except payments_service.PaymentsError as exc:
         raise _bad_request(exc) from exc
     return {"checkout_url": url}
+
+
+@router.post("/{request_id}/bank-transfer", response_model=ContractRequestDetailRead)
+async def request_bank_transfer(
+    request_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRequestDetailRead:
+    """"Paga con bonifico": single payment with the one-go discount, paid
+    when an administrator confirms the transfer arrived."""
+    request, access = await _load(db, current_user, request_id)
+    if not access.is_owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Il pagamento lo sceglie il cliente dal proprio account.")
+    try:
+        request = await requests_service.request_bank_transfer(db, request=request, actor_user_id=current_user.user_id)
+    except requests_service.BankTransferError as exc:
+        raise _bad_request(exc) from exc
+    return await _detail(db, request, access)
+
+
+@router.post(
+    "/{request_id}/bank-transfer/proof",
+    response_model=ContractRequestDetailRead,
+    dependencies=[Depends(rate_limit("contract-request-payment-proof", max_requests=20, window_seconds=300))],
+)
+async def upload_bank_transfer_proof(
+    request_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRequestDetailRead:
+    request, access = await _load(db, current_user, request_id)
+    if not access.is_owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "La ricevuta la carica il cliente dal proprio account.")
+    try:
+        request = await requests_service.upload_bank_transfer_proof(
+            db, request=request, file_bytes=await file.read(), content_type=file.content_type or "",
+            original_filename=file.filename or "ricevuta-bonifico", actor_user_id=current_user.user_id,
+        )
+    except requests_service.BankTransferError as exc:
+        raise _bad_request(exc) from exc
+    return await _detail(db, request, access)
+
+
+@router.get("/{request_id}/bank-transfer/proof-url")
+async def get_bank_transfer_proof_url(
+    request_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    request, _access = await _load(db, current_user, request_id)
+    url = requests_service.payment_proof_url(request)
+    if url is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nessuna ricevuta caricata.")
+    return {"url": url}
+
+
+@router.post("/{request_id}/bank-transfer/confirm", response_model=ContractRequestDetailRead)
+async def confirm_bank_transfer(
+    request_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("contracts.review")),
+    db: AsyncSession = Depends(get_db),
+) -> ContractRequestDetailRead:
+    """"Conferma bonifico ricevuto": every contract announced for transfer is
+    paid at the discounted amount frozen when the customer chose it."""
+    request, access = await _load(db, current_user, request_id)
+    try:
+        await requests_service.confirm_bank_transfer(db, request=request, actor_user_id=current_user.user_id)
+    except requests_service.BankTransferError as exc:
+        raise _bad_request(exc) from exc
+    await db.refresh(request)
+    return await _detail(db, request, access)
 
 
 # --- Documenti della pratica ---------------------------------------------------

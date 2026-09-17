@@ -484,7 +484,7 @@ La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
 ricostruzione a memoria (**rigenerato 2026-09-17, allineato alla revision
-Alembic `b9e5f7a1c426` / migrazione `0047_contract_full_payment_discount`**;
+Alembic `c1f6a8b2d537` / migrazione `0048_contract_request_bank_transfer`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
 usa un utente Postgres diverso da `lial`). Contiene tutte le **71 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,

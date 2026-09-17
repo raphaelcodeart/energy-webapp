@@ -159,6 +159,7 @@ async def to_read_dicts(db: AsyncSession, contracts: list[Contract]) -> list[dic
             "vat_amount_cents": c.vat_amount_cents,
             "gross_amount_cents": c.gross_amount_cents,
             "payment_plan": c.payment_plan,
+            "payment_discount_cents": int(c.payment_discount_cents or 0),
             "payment_method": c.payment_method,
             "paid_at": c.paid_at,
             "billing_stopped_at": c.billing_stopped_at,
@@ -769,11 +770,14 @@ async def transition_contract(
         # transfer, which is always the whole amount in one go -- whatever
         # card plan the customer may have opened and abandoned before.
         contract.paid_at = utcnow()
+        # A transfer the customer announced from the pratica (Session 65)
+        # keeps the discount frozen then; any other confirmation by staff is
+        # the list price, whatever card plan was opened and abandoned before.
+        chosen_transfer = contract.payment_method == "BANK_TRANSFER" and contract.payment_plan == "FULL"
         contract.payment_plan = "FULL"
         contract.payment_method = "BANK_TRANSFER"
-        # The one-go discount is a card checkout offer (Session 64); a
-        # transfer confirmed by staff is the list price.
-        contract.payment_discount_cents = 0
+        if not chosen_transfer:
+            contract.payment_discount_cents = 0
     if to_status == "PAID":
         from app.domains.contracts import instalments as instalments_service
 
@@ -1205,6 +1209,7 @@ async def record_card_payment(
     contract: Contract,
     stripe_invoice_id: str | None = None,
     notify_staff: bool = True,
+    bank_transfer_confirmed_by: uuid.UUID | None = None,
 ) -> Contract:
     """Stripe confirmed the (first) card payment of this contract.
 
@@ -1218,15 +1223,30 @@ async def record_card_payment(
     in one notification instead of ten (see contracts/requests.py)."""
     from app.domains.contracts import instalments as instalments_service
 
+    # Session 65: the same recording serves a bank transfer an administrator
+    # confirmed -- one path, so nothing (instalment row, cashback, activation)
+    # can differ between the two ways of paying.
+    if bank_transfer_confirmed_by is not None:
+        source = instalments_service.SOURCE_ADMIN
+        reason = "Bonifico confermato dall'amministrazione"
+    else:
+        source = instalments_service.SOURCE_STRIPE_CHECKOUT
+        reason = "Pagamento confermato da Stripe"
+
     if contract.status == "PAYMENT_PENDING" and await has_accepted_commission_plan(db, contract_id=contract.id):
+        # paid_at first: otherwise the PAID transition takes this for a
+        # transfer confirmed by staff and rewrites the plan the customer paid
+        # with to FULL / BANK_TRANSFER (a 12-instalment card payment recorded
+        # as one payment -- fixed in Session 65).
+        contract.paid_at = utcnow()
         await instalments_service.record_payment(
-            db, contract=contract, source=instalments_service.SOURCE_STRIPE_CHECKOUT, number=1,
-            invoice_id=stripe_invoice_id,
+            db, contract=contract, source=source, number=1, invoice_id=stripe_invoice_id,
+            actor_user_id=bank_transfer_confirmed_by,
         )
         return await transition_contract(
             db, organization_id=organization_id, contract=contract, to_status="PAID",
-            actor_user_id=contract.created_by_user_id or contract.customer_id,
-            reason="Pagamento confermato da Stripe", notes=None, correlation_id=str(uuid.uuid4()),
+            actor_user_id=bank_transfer_confirmed_by or contract.created_by_user_id or contract.customer_id,
+            reason=reason, notes=None, correlation_id=str(uuid.uuid4()),
         )
     if contract.paid_at is not None:
         # Already handled (a redelivery that slipped past the event guard,
@@ -1253,15 +1273,15 @@ async def record_card_payment(
     accepted = contract.status in PREPAYABLE_STATUSES
     if accepted:
         await instalments_service.record_payment(
-            db, contract=contract, source=instalments_service.SOURCE_STRIPE_CHECKOUT, number=1,
-            invoice_id=stripe_invoice_id,
+            db, contract=contract, source=source, number=1, invoice_id=stripe_invoice_id,
+            actor_user_id=bank_transfer_confirmed_by,
         )
     await audit_service.record(
-        db, organization_id=organization_id, actor_user_id=None,
+        db, organization_id=organization_id, actor_user_id=bank_transfer_confirmed_by,
         action="contract.paid_before_approval" if accepted else "contract.paid_while_not_activatable",
         entity_type="contract", entity_id=str(contract.id),
         new_value={"status": contract.status, "payment_plan": contract.payment_plan},
-        reason="Pagamento confermato da Stripe",
+        reason=reason,
     )
     if notify_staff or not accepted:
         await notifications_service.notify_roles(

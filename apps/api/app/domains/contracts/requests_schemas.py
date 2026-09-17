@@ -119,6 +119,13 @@ class ContractRequestSummaryRead(BaseModel):
     total_gross_cents: int = 0
     payment_plans: list[str] = []
     instalments_failed: int = 0
+    #: Session 65: the customer announced a bank transfer, not yet confirmed.
+    bank_transfer_pending: bool = False
+    bank_transfer_total_cents: int | None = None
+    bank_transfer_requested_at: datetime | None = None
+    payment_proof_uploaded_at: datetime | None = None
+    #: What was actually paid for the paid points (list price minus discounts).
+    total_paid_cents: int = 0
 
 
 class ContractRequestPointRead(ContractRead):
@@ -204,6 +211,16 @@ class ContractRequestPaymentOptionsRead(BaseModel):
     #: PER_INSTALMENT / UPFRONT -- on an instalment plan, whether that
     #: cashback arrives a slice per instalment or all at the first one.
     cashback_mode: str = "PER_INSTALMENT"
+    #: Session 65: paying by bank transfer (single payment, same discount).
+    bank_transfer_available: bool = False
+    bank_transfer_pending: bool = False
+    bank_transfer_total_cents: int | None = None
+    bank_transfer_requested_at: datetime | None = None
+    payment_proof_uploaded_at: datetime | None = None
+    bank_iban: str | None = None
+    bank_account_holder: str | None = None
+    bank_transfer_instructions: str | None = None
+    bank_transfer_reference: str | None = None
 
 
 class ContractRequestCheckoutRequest(BaseModel):

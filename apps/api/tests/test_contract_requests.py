@@ -942,3 +942,60 @@ async def test_a_month_confirmed_by_hand_and_then_collected_by_stripe_earns_cash
     )
     await _second_month(db, organization_id)
     assert await _credits(db, contracts[0]) == [10_00, 10_00]
+
+
+# --- Bonifico (Session 65) -----------------------------------------------------------
+
+
+async def _configure_bank(db, organization_id) -> None:
+    from app.domains.organizations.models import Organization
+
+    org = await db.get(Organization, organization_id)
+    org.settings = {**(org.settings or {}), "bank_iban": "IT66W0883330410000000015702", "bank_account_holder": "Lial Energy"}
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_pratica_paid_by_bank_transfer_is_paid_only_when_an_admin_confirms(db, organization_id):
+    await _configure_bank(db, organization_id)
+    user, customer, request, contracts = await _sent_pratica(db, organization_id)
+
+    request = await requests_service.request_bank_transfer(db, request=request, actor_user_id=user.id)
+    assert request.bank_transfer_total_cents == 81_60 + 163_20 + 40_80  # one-go discount, 32%
+    for contract in contracts:
+        await db.refresh(contract)
+        assert contract.paid_at is None
+        assert (contract.payment_plan, contract.payment_method) == (payment_plans.PLAN_FULL, "BANK_TRANSFER")
+        assert contract.payment_discount_cents == contract.gross_amount_cents * 32 // 100
+    [summary] = await requests_service.summaries(db, [request])
+    assert summary["bank_transfer_pending"] is True and summary["points_payable"] == 3
+
+    admin_id = user.id  # the permission is checked by the router; the service records who confirmed
+    paid = await requests_service.confirm_bank_transfer(db, request=request, actor_user_id=admin_id)
+    assert len(paid) == 3
+    for contract in contracts:
+        await db.refresh(contract)
+        assert contract.paid_at is not None and contract.payment_method == "BANK_TRANSFER"
+        assert contract.payment_discount_cents == contract.gross_amount_cents * 32 // 100
+        rows = list((await db.execute(
+            select(ContractInstalment).where(ContractInstalment.contract_id == contract.id)
+        )).scalars())
+        assert [(r.status, r.amount_cents, r.payment_source) for r in rows] == [
+            ("PAID", contract.gross_amount_cents - contract.payment_discount_cents, "ADMIN")
+        ]
+    credits = list((await db.execute(
+        select(WalletTransaction).where(WalletTransaction.reference_contract_id.in_([c.id for c in contracts]))
+    )).scalars())
+    assert [t.amount_cents for t in credits] == [81_60]  # Luce A, 100% of what was paid
+    [summary] = await requests_service.summaries(db, [request])
+    assert summary["bank_transfer_pending"] is False and summary["points_paid"] == 3
+    with pytest.raises(requests_service.BankTransferError):
+        await requests_service.confirm_bank_transfer(db, request=request, actor_user_id=admin_id)
+
+
+@pytest.mark.asyncio
+async def test_bank_transfer_needs_an_iban_configured(db, organization_id):
+    user, _customer, request, _contracts = await _sent_pratica(db, organization_id)
+    with pytest.raises(requests_service.BankTransferError):
+        await requests_service.request_bank_transfer(db, request=request, actor_user_id=user.id)
+

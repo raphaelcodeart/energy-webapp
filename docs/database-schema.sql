@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict yXqyugcpsG0mDVTm7QYUsqTcCNYcQ6qUdSYsbDOVbFxjMZkPBVLArnNA0fPoz16
+\restrict toNNJJ8SK5dchdvQtxM00gs0DV2LVi5TAmvemhxCcf3Rh8aWViRNKBcjPUABbc9
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -557,7 +557,14 @@ CREATE TABLE public.contract_requests (
     street character varying(255),
     city character varying(128),
     province character varying(8),
-    postal_code character varying(16)
+    postal_code character varying(16),
+    bank_transfer_requested_at timestamp with time zone,
+    bank_transfer_total_cents bigint,
+    bank_transfer_confirmed_at timestamp with time zone,
+    bank_transfer_confirmed_by_user_id uuid,
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp with time zone
 );
 
 
@@ -3766,6 +3773,14 @@ ALTER TABLE ONLY public.contract_requests
 
 
 --
+-- Name: contract_requests fk_contract_requests_bank_transfer_confirmed_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.contract_requests
+    ADD CONSTRAINT fk_contract_requests_bank_transfer_confirmed_by_user_id_users FOREIGN KEY (bank_transfer_confirmed_by_user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: contract_requests fk_contract_requests_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4785,5 +4800,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict yXqyugcpsG0mDVTm7QYUsqTcCNYcQ6qUdSYsbDOVbFxjMZkPBVLArnNA0fPoz16
+\unrestrict toNNJJ8SK5dchdvQtxM00gs0DV2LVi5TAmvemhxCcf3Rh8aWViRNKBcjPUABbc9
 

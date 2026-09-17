@@ -320,3 +320,24 @@ async def test_an_event_for_an_unknown_subscription_is_harmless(db, organization
         paid=True, amount_cents=100,
     )
     assert "nessun contratto" in outcome
+
+
+@pytest.mark.asyncio
+async def test_an_approved_contract_paid_in_instalments_keeps_its_plan(db, organization_id):
+    """Regression (Session 65): paying an already approved contract went
+    through the PAID transition with paid_at still empty, which is how a
+    bank transfer confirmed by staff looks -- the plan was rewritten to
+    FULL / BANK_TRANSFER and a 12-instalment card payment got one row."""
+    from app.domains.contracts.models import ContractInstalment
+
+    await _configure_stripe(db, organization_id)
+    contract = await _make_payable_contract(db, organization_id, gross_cents=180_00)
+    await contract_service.attach_stripe_checkout_session(
+        db, contract=contract, session_id="cs_twelve_approved", plan_key=payment_plans.PLAN_MONTHLY_12
+    )
+    contract = await contract_service.record_card_payment(db, organization_id=organization_id, contract=contract)
+    assert contract.payment_plan == payment_plans.PLAN_MONTHLY_12
+    assert contract.payment_method == "CARD"
+    rows = list((await db.execute(select(ContractInstalment).where(ContractInstalment.contract_id == contract.id))).scalars())
+    assert len(rows) == 12 and rows[0].amount_cents == 15_00 and rows[0].status == "PAID"
+

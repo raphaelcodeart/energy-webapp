@@ -37,6 +37,14 @@ function nextStepFor(r: ContractRequestSummaryRead, canPay: boolean): { text: st
     };
   }
   if (r.instalments_failed > 0) return { text: "Una rata non è stata addebitata: controlla la carta.", tone: "action" };
+  if (r.bank_transfer_pending) {
+    return {
+      text: canPay
+        ? `Bonifico scelto${r.bank_transfer_total_cents ? ` (${euro(r.bank_transfer_total_cents)})` : ""}: in attesa di conferma dall'amministrazione.`
+        : "Bonifico in attesa di conferma dall'amministrazione.",
+      tone: "wait",
+    };
+  }
   if (r.points_payable > 0) {
     return {
       text: canPay
@@ -79,6 +87,7 @@ export function ContractRequestsList({
     refetchOnWindowFocus: true,
   });
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [summaryOf, setSummaryOf] = useState<string | null>(null);
 
   if (isLoading) return <div className="h-28 rounded-2xl bg-white/5 light:bg-slate-900/5 animate-pulse" />;
   if (error) return <p className="text-sm text-rose-400">{(error as Error).message}</p>;
@@ -128,6 +137,9 @@ export function ContractRequestsList({
                 >
                   {next.text}
                 </p>
+                {r.holder_name && (
+                  <p className="text-[11px] text-slate-400 light:text-slate-500 mt-1">Intestatario: {r.holder_name}</p>
+                )}
                 {r.status !== "DRAFT" && r.points_total > 0 && (
                   <div className="mt-2 flex items-center gap-2">
                     <div className="h-1.5 flex-1 max-w-48 rounded-full bg-white/10 light:bg-slate-200 overflow-hidden">
@@ -141,7 +153,20 @@ export function ContractRequestsList({
               </button>
               <div className="flex items-center gap-2 shrink-0">
                 {r.total_gross_cents > 0 && (
-                  <span className="text-sm font-bold text-white light:text-slate-900 tabular-nums mr-1">{euro(r.total_gross_cents)}</span>
+                  <span className="text-right mr-1">
+                    <span className="block text-sm font-bold text-white light:text-slate-900 tabular-nums">{euro(r.total_gross_cents)}</span>
+                    {r.points_paid > 0 && r.total_paid_cents > 0 && r.total_paid_cents !== r.total_gross_cents && (
+                      <span className="block text-[10px] text-emerald-400 tabular-nums">pagati {euro(r.total_paid_cents)}</span>
+                    )}
+                  </span>
+                )}
+                {r.status !== "DRAFT" && (
+                  <button
+                    onClick={() => setSummaryOf(r.id)}
+                    className="px-3 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-xs font-semibold text-slate-300 light:text-slate-600 transition cursor-pointer"
+                  >
+                    Riepilogo
+                  </button>
                 )}
                 {r.status === "DRAFT" ? (
                   <button
@@ -155,7 +180,7 @@ export function ContractRequestsList({
                     onClick={() => onOpenWizard({ requestId: r.id, step: "summary" })}
                     className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition cursor-pointer"
                   >
-                    Paga
+                    {r.bank_transfer_pending ? "Dati bonifico" : "Paga"}
                   </button>
                 ) : (
                   <button
@@ -171,6 +196,145 @@ export function ContractRequestsList({
           </div>
         );
       })}
+      {summaryOf && <RequestSummaryModal requestId={summaryOf} onClose={() => setSummaryOf(null)} />}
+    </div>
+  );
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = { CARD: "Carta", BANK_TRANSFER: "Bonifico" };
+
+/** Everything the customer filled in and what each POD costs, in one read
+    (Session 65): holder, address, IBAN, and for every POD its package,
+    price with VAT, payment and state. */
+function RequestSummaryModal({ requestId, onClose }: { requestId: string; onClose: () => void }) {
+  const { data, error } = useQuery({
+    queryKey: ["contract-request", requestId],
+    queryFn: () => fetchJson<ContractRequestDetailRead>(`/api/proxy/contract-requests/${requestId}`),
+  });
+  const live = (data?.points ?? []).filter((p) => !["REJECTED", "CANCELLED"].includes(p.status));
+  const listTotal = live.reduce((sum, p) => sum + (p.gross_amount_cents ?? 0), 0);
+  const discounts = live.reduce((sum, p) => sum + (p.payment_discount_cents ?? 0), 0);
+  const address = data ? [data.street, [data.postal_code, data.city].filter(Boolean).join(" "), data.province && `(${data.province})`].filter(Boolean).join(", ") : "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto glass-card rounded-2xl border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 light:border-slate-200 bg-slate-950/95 light:bg-white/95 backdrop-blur">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Riepilogo pratica</p>
+            <h3 className="text-base font-bold text-white light:text-slate-900">{data ? `Pratica #${data.code}` : "Pratica"}</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 cursor-pointer" aria-label="Chiudi">✕</button>
+        </div>
+        <div className="p-6 space-y-5">
+          {error && <p className="text-sm text-rose-400">{(error as Error).message}</p>}
+          {!data && !error && <div className="h-40 rounded-xl bg-white/5 animate-pulse" />}
+          {data && (
+            <>
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                <SummaryFact label="Intestatario" value={data.holder_name ?? "—"} />
+                <SummaryFact label="Inviata il" value={formatDate(data.submitted_at ?? data.created_at)} />
+                <SummaryFact label="Email" value={data.email ?? "—"} />
+                <SummaryFact label="PEC" value={data.pec ?? "—"} />
+                <SummaryFact label="IBAN per addebito" value={data.iban ?? "—"} mono />
+                <SummaryFact label="Indirizzo di fornitura" value={address || "—"} />
+                {data.activated_by_promoter_name && <SummaryFact label="Compilata da" value={data.activated_by_promoter_name} />}
+              </section>
+
+              <section className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Punti di fornitura ({data.points.length})
+                </p>
+                {data.points.map((p) => {
+                  const discount = p.payment_discount_cents ?? 0;
+                  const paid = (p.gross_amount_cents ?? 0) - discount;
+                  return (
+                    <div key={p.id} className="rounded-xl border border-white/10 light:border-slate-200 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white light:text-slate-900">
+                            {pointCode(p)} · {ENERGY_POINT_LABELS[p.energy_type ?? ""] ?? "Fornitura"}
+                          </p>
+                          <p className="text-xs text-slate-300 light:text-slate-700">{p.product_name ?? "Contratto non scelto"}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {[p.street, [p.postal_code, p.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") || "—"}
+                            {p.meter_number ? ` · contatore ${p.meter_number}` : ""}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${contractStatusBadge(p.status)}`}>
+                          {CONTRACT_STATUS_LABELS[p.status] ?? p.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-[11px]">
+                        <SummaryFact label="Prezzo" value={p.net_amount_cents != null ? euro(p.net_amount_cents) : "—"} />
+                        <SummaryFact
+                          label={p.vat_rate ? `IVA ${p.vat_rate}%` : "IVA"}
+                          value={p.vat_amount_cents ? euro(p.vat_amount_cents) : "non applicata"}
+                        />
+                        <SummaryFact label="Totale" value={p.gross_amount_cents != null ? euro(p.gross_amount_cents) : "—"} strong />
+                        <SummaryFact
+                          label="Pagamento"
+                          value={
+                            p.paid_at
+                              ? `${PAYMENT_PLAN_LABELS[p.payment_plan ?? ""] ?? "Pagato"}${p.payment_method ? ` · ${PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method}` : ""}`
+                              : p.payment_method === "BANK_TRANSFER"
+                                ? "Bonifico in attesa"
+                                : "Da pagare"
+                          }
+                        />
+                      </div>
+                      {discount > 0 && (
+                        <p className="mt-2 text-[11px] text-emerald-400">
+                          Sconto pagamento unico: -{euro(discount)} → {p.paid_at ? "pagati" : "da pagare"} {euro(paid)}
+                        </p>
+                      )}
+                      {p.instalments_total && p.instalments_total > 1 ? (
+                        <p className="mt-1 text-[11px] text-slate-500">Rate pagate {p.instalments_paid}/{p.instalments_total}</p>
+                      ) : null}
+                      {(p.activated_at || p.expires_at) && (
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Attivo dal {formatDate(p.activated_at)} · scadenza {formatDate(p.expires_at)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+
+              <section className="rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 p-4 space-y-1 text-sm">
+                <div className="flex justify-between text-slate-400 light:text-slate-500">
+                  <span>Totale contratti</span>
+                  <span className="tabular-nums">{euro(listTotal)}</span>
+                </div>
+                {discounts > 0 && (
+                  <div className="flex justify-between text-emerald-400">
+                    <span>Sconti pagamento unico</span>
+                    <span className="tabular-nums">-{euro(discounts)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-white light:text-slate-900 pt-1 border-t border-white/10 light:border-slate-200">
+                  <span>Totale</span>
+                  <span className="tabular-nums">{euro(listTotal - discounts)}</span>
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryFact({ label, value, mono = false, strong = false }: { label: string; value: string; mono?: boolean; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-slate-500">{label}</p>
+      <p className={`truncate ${strong ? "text-white light:text-slate-900 font-bold" : "text-slate-300 light:text-slate-700 font-semibold"} ${mono ? "font-mono" : ""}`}>
+        {value}
+      </p>
     </div>
   );
 }

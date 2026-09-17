@@ -85,6 +85,8 @@ class ContractRead(BaseModel):
 
     # --- Payment -----------------------------------------------------------
     payment_plan: str | None = None
+    #: Session 64: taken off a single payment (0 otherwise).
+    payment_discount_cents: int = 0
     payment_method: str | None = None
     paid_at: datetime | None = None
     billing_stopped_at: datetime | None = None

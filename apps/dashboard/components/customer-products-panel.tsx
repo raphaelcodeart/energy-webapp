@@ -219,14 +219,16 @@ export function CustomerProductsPanel({
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-white light:text-slate-900">
-          {contractsOnly ? "I pacchetti Lial Energy" : "Prodotti & Servizi"}
+          {contractsOnly ? "I pacchetti Lial Energy" : showImportedTab && !referralCode ? "Shop" : "Prodotti & Servizi"}
         </h3>
         <p className="text-xs text-slate-400 light:text-slate-500">
           {referralCode
             ? "Condividi un'offerta con un cliente: il link lo porta dritto alla registrazione, già associato a te."
             : contractsOnly
               ? "Apri “Dettagli” per leggere ogni pacchetto. Per attivarli usa “Attiva nuovo contratto”: una pratica può contenere uno o più POD."
-              : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
+              : showImportedTab
+                ? "Usa il tuo cashback LialCash con i nostri partner e acquista prodotti per la casa e per te, con consegna a domicilio."
+                : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
         </p>
       </div>
 
