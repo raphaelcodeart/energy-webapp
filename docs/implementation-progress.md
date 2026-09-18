@@ -4,6 +4,38 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 66 — 2026-09-18 — Attivazione contratti: stessa pratica per promoter e amministratore
+
+Richiesta dell'utente: il promoter deve poter attivare contratti per i suoi
+clienti con gli stessi passaggi del cliente (senza il pagamento finale, che
+resta al cliente, avvisato per email), e l'amministratore deve poter fare lo
+stesso con un percorso semplice, accanto agli strumenti amministrativi. La
+parte cliente non è stata toccata.
+
+- [x] Nessuna modifica di schema. Il wizard della pratica è lo stesso per tutti
+  e tre: cambia solo chi lo apre e cosa può fare dopo.
+- [x] Backend: `POST /contract-requests` accetta ora anche lo staff — pratica
+  `created_by_role="ADMIN"` con `producer_agent_id` facoltativo (il promoter a
+  cui attribuirla, validato ACTIVE; senza, guadagna il promoter del cliente
+  come nel self-service). Lo staff può anche compilare e inviare una pratica
+  (`_Access.can_edit` include `is_staff`); il pagamento resta del solo cliente.
+- [x] Email e notifica "i tuoi contratti sono pronti da pagare" ora partono per
+  ogni pratica compilata **per** il cliente (promoter o amministrazione), non
+  solo dal promoter.
+- [x] Nuovo `GET /contract-requests/for-my-customers`: tutte le pratiche dei
+  clienti reclutati dal promoter, dalla più recente.
+- [x] Promoter, nuova voce di menu **Attiva Contratti**: scelta del cliente con
+  ricerca, stesso wizard del cliente, e sotto l'elenco di tutte le pratiche dei
+  suoi clienti (stato, POD, documenti, riepilogo) — prima si passava solo da
+  "Miei Clienti", un cliente alla volta.
+- [x] Admin, **Nuovo Contratto**: percorso principale "Pratica di attivazione"
+  (scegli cliente, eventuale promoter, poi lo stesso wizard); il vecchio modulo
+  a contratto singolo resta come "Modulo avanzato". Verifiche, approvazioni,
+  bonifici e stati restano in **Pratiche**.
+- [x] Test: pratica aperta dall'amministrazione (ruolo ADMIN, attribuzione al
+  promoter scelto, avviso al cliente, pagabile con lo sconto del 32%); suite
+  405 verde.
+
 ## Session 65 — 2026-09-17 — Pratiche pagabili con bonifico, -32% in evidenza, riepilogo della pratica, Shop
 
 Richieste dell'utente: confermato lo sconto al **32%** (i pagamenti già fatti

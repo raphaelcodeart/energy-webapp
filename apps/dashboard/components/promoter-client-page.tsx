@@ -15,6 +15,7 @@ import { CustomerProductsPanel } from "@/components/customer-products-panel";
 import { FriendReferralsPanel } from "@/components/friend-referrals-panel";
 import { NetworkCustomersPanel } from "@/components/network-customers-panel";
 import { DocumentationFeed } from "@/components/documentation-feed";
+import { PraticheForCustomersPanel } from "@/components/pratiche-for-customers-panel";
 import { PromoterAziendaPanel } from "@/components/promoter-azienda-panel";
 import { RecruitForm } from "@/components/recruit-form";
 import { SectionBanner } from "@/components/section-banner";
@@ -72,6 +73,15 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
+  {
+    key: "pratiche",
+    label: "Attiva Contratti",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-3-3v6m-5 7h10a2 2 0 002-2V7a2 2 0 00-2-2h-3l-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
     ),
   },
@@ -230,7 +240,7 @@ const PROMOTER_VALID_TABS = [
 ] as const;
 
 export function PromoterClientPage({ me, branch, email, organizationId }: PromoterClientPageProps) {
-  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "invita-amici" | "customers" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
+  const [activeTab, setActiveTab] = useState<"azienda" | "network" | "invita-amici" | "pratiche" | "customers" | "products" | "commissions" | "simulator" | "support" | "documentation" | "wallet" | "cashback">("azienda");
   const router = useRouter();
   const searchParams = useSearchParams();
   const maxDepth = branch.reduce((max, m) => Math.max(max, m.depth), 0);
@@ -367,6 +377,16 @@ export function PromoterClientPage({ me, branch, email, organizationId }: Promot
           {activeTab === "invita-amici" && (
             <div className="space-y-6">
               <FriendReferralsPanel organizationId={organizationId} />
+            </div>
+          )}
+
+          {activeTab === "pratiche" && (
+            <div className="space-y-6">
+              <PraticheForCustomersPanel
+                mode="promoter"
+                title="Attiva contratti per i tuoi clienti"
+                description="Gli stessi passaggi che fa il cliente: dati dell'intestatario, quanti POD, documenti d'identità e l'offerta per ogni POD. Il pagamento no: quando invii la pratica il cliente riceve un'email e paga dalla sua area."
+              />
             </div>
           )}
 

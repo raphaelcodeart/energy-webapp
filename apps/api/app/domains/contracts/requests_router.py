@@ -47,6 +47,7 @@ from app.domains.documents.schemas import (
     DocumentRead,
     RequiredDocumentStatus,
 )
+from app.domains.network.models import AgentProfile
 from app.domains.organizations import service as organizations_service
 from app.domains.rbac.service import get_permission_codes_for_user
 from app.domains.support.service import actor_role_for
@@ -93,7 +94,10 @@ class _Access:
 
     @property
     def can_edit(self) -> bool:
-        return self.is_owner or self.is_promoter
+        # Staff too since Session 66: an administrator opens and fills in a
+        # pratica for a customer exactly like the customer or their promoter
+        # would -- everything except paying it.
+        return self.is_owner or self.is_promoter or self.is_staff
 
 
 async def _load(
@@ -181,6 +185,38 @@ async def list_requests_for_my_customer(
     return [ContractRequestSummaryRead(**s) for s in await requests_service.summaries(db, list(rows))]
 
 
+@router.get("/for-my-customers", response_model=list[ContractRequestSummaryRead])
+async def list_requests_for_my_customers(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ContractRequestSummaryRead]:
+    """Every pratica of every customer this promoter recruited, newest first
+    (Session 66): one place to follow the POD they opened, instead of one
+    customer at a time."""
+    from app.domains.network import service as network_service
+
+    customers = await network_service.list_recruited_customers(
+        db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id
+    )
+    customer_ids = [row["id"] for row in customers]
+    if not customer_ids:
+        return []
+    requests = list(
+        (
+            await db.execute(
+                select(ContractRequest)
+                .where(
+                    ContractRequest.organization_id == current_user.organization_id,
+                    ContractRequest.customer_id.in_(customer_ids),
+                    ContractRequest.status != "CANCELLED",
+                )
+                .order_by(ContractRequest.created_at.desc())
+            )
+        ).scalars()
+    )
+    return [ContractRequestSummaryRead(**row) for row in await requests_service.summaries(db, requests)]
+
+
 @router.get("", response_model=list[ContractRequestSummaryRead])
 async def list_requests(
     current_user: CurrentUser = Depends(require_permission("contracts.review")),
@@ -213,14 +249,24 @@ async def create_request(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nessuna anagrafica cliente collegata a questo account.")
         customer_id, promoter_agent_id, role = own.id, None, "CUSTOMER"
     else:
-        try:
-            promoter = await contract_service.resolve_promoter_for_customer(
-                db, organization_id=current_user.organization_id, promoter_user_id=current_user.user_id,
-                customer_id=payload.customer_id,
+        promoter = None
+        if "PROMOTER" in current_user.roles:
+            promoter = await _promoter_may_act_for(db, current_user, payload.customer_id)
+        if promoter is not None:
+            customer_id, promoter_agent_id, role = payload.customer_id, promoter.id, "PROMOTER"
+        elif await _is_staff(db, current_user):
+            # An administrator filling a pratica in for a customer: the
+            # promoter they attribute it to earns the commissions, or -- left
+            # out -- the customer's own referrer, exactly as in self-service.
+            customer_id, promoter_agent_id, role = payload.customer_id, payload.producer_agent_id, "ADMIN"
+            if promoter_agent_id is not None:
+                agent = await db.get(AgentProfile, promoter_agent_id)
+                if agent is None or agent.organization_id != current_user.organization_id or agent.status != "ACTIVE":
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Promoter non valido o non attivo.")
+        else:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Questo cliente non è tra i tuoi: non puoi aprire una pratica per lui."
             )
-        except contract_service.SelfServiceContractError as exc:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
-        customer_id, promoter_agent_id, role = payload.customer_id, promoter.id, "PROMOTER"
     try:
         request = await requests_service.create_request(
             db, organization_id=current_user.organization_id, customer_id=customer_id,
@@ -230,7 +276,10 @@ async def create_request(
         )
     except requests_service.ContractRequestError as exc:
         raise _bad_request(exc) from exc
-    return await _detail(db, request, _Access(is_owner=role == "CUSTOMER", is_promoter=role == "PROMOTER", is_staff=False))
+    return await _detail(
+        db, request,
+        _Access(is_owner=role == "CUSTOMER", is_promoter=role == "PROMOTER", is_staff=role == "ADMIN"),
+    )
 
 
 @router.get("/{request_id}", response_model=ContractRequestDetailRead)

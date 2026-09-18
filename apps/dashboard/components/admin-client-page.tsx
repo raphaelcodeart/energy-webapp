@@ -10,6 +10,7 @@ import { AdminProductsPanel } from "@/components/admin-products-panel";
 import { AdminNetworkPanel } from "@/components/admin-network-panel";
 import { AdminContractRequestsPanel } from "@/components/admin-contract-requests-panel";
 import { AdminCreateContractPanel } from "@/components/admin-create-contract-panel";
+import { PraticheForCustomersPanel } from "@/components/pratiche-for-customers-panel";
 import { ContractDocumentsPanel } from "@/components/contract-documents-panel";
 import { ContractDossierActions } from "@/components/contract-dossier-actions";
 import { AdminTicketsPanel } from "@/components/admin-tickets-panel";
@@ -305,6 +306,50 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
 ];
+
+/** "Nuovo Contratto" (Session 66): the simple path is the same pratica the
+    customer and the promoter use -- one or more POD, an offer each, the
+    customer pays afterwards from their own area. The old single-contract
+    form stays one click away, for the cases that need it (a contract to
+    record by hand on a supply point that already exists). */
+function AdminNewContractTab({ onCreated }: { onCreated: (contract: ContractRead) => void }) {
+  const [advanced, setAdvanced] = useState(false);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setAdvanced(false)}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            !advanced
+              ? "bg-orange-600 border-orange-600 text-white"
+              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+          }`}
+        >
+          Pratica di attivazione (consigliato)
+        </button>
+        <button
+          onClick={() => setAdvanced(true)}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            advanced
+              ? "bg-orange-600 border-orange-600 text-white"
+              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
+          }`}
+        >
+          Modulo avanzato: contratto singolo
+        </button>
+      </div>
+      {advanced ? (
+        <AdminCreateContractPanel onCreated={onCreated} />
+      ) : (
+        <PraticheForCustomersPanel
+          mode="admin"
+          title="Apri una pratica per un cliente"
+          description="Gli stessi passaggi del cliente: dati dell'intestatario, quanti POD, documenti e l'offerta per ogni POD. Puoi scegliere il promoter a cui attribuirla. Il pagamento lo fa il cliente dalla sua area: quando invii la pratica riceve un'email."
+        />
+      )}
+    </div>
+  );
+}
 
 export function AdminClientPage({ initialContracts, email, organizationId, isSuperAdmin }: AdminClientPageProps) {
   const [contracts, setContracts] = useState<ContractRead[]>(initialContracts);
@@ -761,7 +806,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
         {activeTab === "create" && (
           <div className="space-y-6">
             <SectionBanner image="energy" alt="Nuovo contratto" />
-            <AdminCreateContractPanel onCreated={handleContractCreated} />
+            <AdminNewContractTab onCreated={handleContractCreated} />
           </div>
         )}
 

@@ -1861,6 +1861,24 @@ Then, cosmetic/UX polish on top of the already-correct backend:
   mobile half of "primary tools as big buttons, bottom on mobile / top on
   desktop."
 
+## Chi può aprire una pratica di attivazione (Session 66) {#pratica-authors}
+
+Una pratica è sempre la stessa cosa — intestatario, N POD, un'offerta per POD,
+documenti — e cambia solo chi la compila:
+
+- **il cliente**, per sé (`created_by_role="CUSTOMER"`): guadagna il promoter
+  che lo ha portato (o il primo sponsor attivo sopra di lui);
+- **il promoter**, per un cliente suo (`PROMOTER`): guadagna lui, e il cliente
+  riceve notifica ed email per pagare dalla propria area;
+- **l'amministrazione** (`ADMIN`, Session 66): può indicare a quale promoter
+  attribuirla (validato ACTIVE); senza indicazione vale la regola del
+  self-service. Il cliente riceve lo stesso avviso.
+
+**Il pagamento è sempre del cliente**: promoter e staff non possono aprire il
+checkout né pagarlo (la pratica accetta il pagamento solo dall'intestatario);
+lo staff può però confermare un bonifico ricevuto. Chi ha compilato la pratica
+resta scritto sulla pratica e su ogni contratto.
+
 ## Shop Lial Partner: CJ Dropshipping (Session 60) {#partner-shop}
 
 Un secondo negozio "importato", accanto ad "Acquisti LialEnergy", collegato

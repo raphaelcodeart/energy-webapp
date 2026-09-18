@@ -31,10 +31,17 @@ from app.domains.catalog.models import Product, ProductVersion
 from app.domains.contracts import payment_plans
 from app.domains.contracts import requests as requests_service
 from app.domains.contracts import service as contracts_service
-from app.domains.contracts.models import Contract, ContractInstalment, ContractRequest, ContractRequestCheckout
+from app.domains.contracts.models import (
+    Contract,
+    ContractAttribution,
+    ContractInstalment,
+    ContractRequest,
+    ContractRequestCheckout,
+)
 from app.domains.customers.models import Customer
 from app.domains.documents import service as documents_service
 from app.domains.network import service as network_service
+from app.domains.notifications.models import Notification
 from app.domains.payments import service as payments_service
 from app.domains.rbac.models import Role
 from app.domains.referral import service as referral_service
@@ -998,4 +1005,53 @@ async def test_bank_transfer_needs_an_iban_configured(db, organization_id):
     user, _customer, request, _contracts = await _sent_pratica(db, organization_id)
     with pytest.raises(requests_service.BankTransferError):
         await requests_service.request_bank_transfer(db, request=request, actor_user_id=user.id)
+
+
+# --- Pratiche compilate dall'amministrazione (Session 66) ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_admin_can_open_a_pratica_for_a_customer_and_attribute_it_to_a_promoter(db, organization_id):
+    """Same pratica as the customer's and the promoter's, only filled in by
+    staff: the promoter chosen earns, the customer pays."""
+    user, customer = await _customer(db, organization_id)
+    package = await _package(db, organization_id, name="Luce Admin", energy_type="ELECTRICITY", price_cents=180_00)
+    agent = await network_service.create_agent(
+        db, organization_id=organization_id, first_name="Ada", last_name="Venditrice",
+        promoter_code=f"PR-{uuid.uuid4().hex[:8]}", parent_agent_id=None,
+    )
+    await db.commit()
+
+    request = await requests_service.create_request(
+        db, organization_id=organization_id, customer_id=customer.id,
+        holder=requests_service.HolderData(
+            first_name="Mario", last_name="Rossi", email="mario@example.com", pec=None,
+            iban="IT60X0542811101000000123456",
+            address=requests_service.AddressData(street="Via Roma 1", city="Roma", province="RM", postal_code="00100"),
+        ),
+        actor_user_id=user.id, actor_role="ADMIN", promoter_agent_id=agent.id, points_count=2,
+    )
+    assert request.created_by_role == "ADMIN" and request.activated_by_promoter_id == agent.id
+    points = await requests_service.list_points(db, request=request)
+    assert len(points) == 2
+    for contract in points:
+        attribution = await db.get(ContractAttribution, contract.contract_attribution_id)
+        assert attribution.producer_agent_id == agent.id
+        assert contract.activated_by_promoter_id == agent.id
+        await requests_service.set_point_product(
+            db, request=request, contract=contract, product_version_id=package.id, actor_user_id=user.id
+        )
+
+    request = await requests_service.submit_request(db, request=request, actor_user_id=user.id)
+    assert request.status == "SUBMITTED"
+    # The customer is told it is waiting for their payment, as when a promoter fills it in.
+    notes = list((await db.execute(
+        select(Notification).where(Notification.recipient_user_id == user.id, Notification.type == "CONTRACT_CREATED")
+    )).scalars())
+    assert any("pronti da pagare" in n.title for n in notes)
+    # And it is payable by the customer, with the one-go discount.
+    payable = requests_service.payable_points(await requests_service.list_points(db, request=request))
+    assert len(payable) == 2
+    by_key = {o.plan.key: o for o in requests_service.plan_options(payable, discount_percentage=32)}
+    assert by_key[payment_plans.PLAN_FULL].total_cents == 2 * (180_00 - 57_60)
 

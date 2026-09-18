@@ -73,6 +73,7 @@ export function ContractRequestWizard({
   initialStep,
   initialProduct,
   customer,
+  producerAgentId,
   customerKind,
   accountEmail,
   holder,
@@ -85,6 +86,8 @@ export function ContractRequestWizard({
   initialProduct?: ProductCatalogRead | null;
   /** Promoter mode: the customer this pratica is for. */
   customer?: { id: string; kind: string | null; email: string | null; firstName?: string | null; lastName?: string | null; pec?: string | null };
+  /** Staff only (Session 66): the promoter this pratica is attributed to. */
+  producerAgentId?: string | null;
   customerKind?: string | null;
   accountEmail?: string;
   holder?: { firstName?: string | null; lastName?: string | null; pec?: string | null };
@@ -228,6 +231,7 @@ export function ContractRequestWizard({
                   ...body,
                   points_count: count,
                   customer_id: customer?.id ?? null,
+                  producer_agent_id: producerAgentId ?? null,
                   product_version_id: initialProduct?.current_version?.id ?? null,
                 }),
               });

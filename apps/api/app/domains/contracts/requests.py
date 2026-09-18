@@ -552,25 +552,33 @@ async def submit_request(db: AsyncSession, *, request: ContractRequest, actor_us
         action="contract_request.submitted", entity_type="contract_request", entity_id=str(request.id),
         new_value={"points": len(points)},
     )
+    # Filled in FOR the customer -- by their promoter, or by the
+    # administration (Session 66): either way the customer is the one who
+    # pays, so they are told it is waiting for them.
+    filled_in_for_customer = request.created_by_role in ("PROMOTER", "ADMIN") and customer is not None
     promoter_name = None
-    if request.activated_by_promoter_id is not None and customer is not None:
-        promoter = await db.get(AgentProfile, request.activated_by_promoter_id)
-        promoter_name = promoter.display_name if promoter else None
+    if filled_in_for_customer:
+        if request.activated_by_promoter_id is not None:
+            promoter = await db.get(AgentProfile, request.activated_by_promoter_id)
+            promoter_name = promoter.display_name if promoter else None
+        who = promoter_name or ("Il tuo promoter" if request.created_by_role == "PROMOTER" else "Lial Energy")
         if customer.user_id is not None:
             await notifications_service.notify_user(
                 db, organization_id=request.organization_id, user_id=customer.user_id,
                 type_="CONTRACT_CREATED", entity_type="contract_request", entity_id=request.id,
-                title="Il tuo promoter ha preparato i tuoi contratti",
+                title="I tuoi contratti sono pronti da pagare",
                 body=(
-                    f"{promoter_name or 'Il tuo promoter'} ha compilato per te la pratica {_code(request)} con "
+                    f"{who} ha compilato per te la pratica {_code(request)} con "
                     f"{len(points)} POD. Controllala in “I miei Contratti” e procedi con il pagamento."
                 ),
             )
     await db.commit()
     await db.refresh(request)
-    if request.activated_by_promoter_id is not None and customer is not None:
+    if filled_in_for_customer:
         _email_customer_about_promoter_pratica(
-            request=request, customer=customer, promoter_name=promoter_name, points=points
+            request=request, customer=customer,
+            promoter_name=promoter_name or (None if request.created_by_role == "PROMOTER" else "Lial Energy"),
+            points=points,
         )
     return request
 
@@ -578,9 +586,10 @@ async def submit_request(db: AsyncSession, *, request: ContractRequest, actor_us
 def _email_customer_about_promoter_pratica(
     *, request: ContractRequest, customer: Customer, promoter_name: str | None, points: list[Contract]
 ) -> None:
-    """A promoter filled the pratica in for the customer (Session 55): the
-    customer is the one who pays, so they have to find out it is waiting.
-    Best-effort and after the commit -- the pratica is sent either way."""
+    """Somebody filled the pratica in for the customer -- their promoter
+    (Session 55) or the administration (Session 66): the customer is the one
+    who pays, so they have to find out it is waiting. Best-effort and after
+    the commit -- the pratica is sent either way."""
     import html
 
     from app.core.config import get_settings
@@ -591,6 +600,7 @@ def _email_customer_about_promoter_pratica(
     if not to:
         return
     who = html.escape(promoter_name or "Il tuo promoter")
+    heading_who = "Il tuo promoter ha preparato i tuoi contratti" if promoter_name != "Lial Energy" else "Abbiamo preparato i tuoi contratti"
     total = sum(int(p.gross_amount_cents or 0) for p in points)
     body_html = (
         f"<p>{who} ha preparato per te la pratica <strong>{_code(request)}</strong> con "
@@ -604,7 +614,7 @@ def _email_customer_about_promoter_pratica(
         to=to,
         subject="I tuoi contratti Lial Energy sono pronti - Lial Energy",
         html_body=render_email(
-            preheader="Il tuo promoter ha preparato i tuoi contratti",
+            preheader=heading_who,
             heading="I tuoi contratti sono pronti",
             body_html=body_html,
             cta_label="Vai ai miei contratti",

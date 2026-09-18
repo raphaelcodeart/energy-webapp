@@ -81,6 +81,9 @@ class ContractRequestCreate(ContractRequestHolder):
     #: The contract the customer started from in the catalog, pre-chosen for
     #: every POD.
     product_version_id: uuid.UUID | None = None
+    #: Staff only (Session 66): which promoter this pratica is attributed to.
+    #: Left out, the customer's own referrer earns, as in self-service.
+    producer_agent_id: uuid.UUID | None = None
 
 
 class ContractRequestPointsCount(BaseModel):

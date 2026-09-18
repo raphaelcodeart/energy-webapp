@@ -15,7 +15,13 @@ import {
 import { formatEuroCents as euro } from "@/lib/product-audience";
 import type { ContractRequestDetailRead, ContractRequestPointRead, ContractRequestSummaryRead } from "@/lib/types";
 
-export type WizardTarget = { requestId: string; step?: "documents" | "packages" | "summary" };
+export type WizardTarget = {
+  requestId: string;
+  step?: "documents" | "packages" | "summary";
+  /** Session 66: which customer the pratica belongs to, when the list spans
+      several of them (the promoter's "Attivazioni"). */
+  customer?: { id: string; kind: string | null; email: string | null; firstName?: string | null; lastName?: string | null };
+};
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -77,12 +83,19 @@ export function ContractRequestsList({
   onOpenWizard,
 }: {
   mode: "customer" | "promoter";
+  /** Left out in promoter mode: every pratica of every customer of theirs. */
   customerId?: string;
   onOpenWizard: (target: WizardTarget) => void;
 }) {
-  const path = mode === "customer" ? "/api/proxy/contract-requests/mine" : `/api/proxy/contract-requests/for-customer/${customerId}`;
+  const allCustomers = mode === "promoter" && !customerId;
+  const path =
+    mode === "customer"
+      ? "/api/proxy/contract-requests/mine"
+      : allCustomers
+        ? "/api/proxy/contract-requests/for-my-customers"
+        : `/api/proxy/contract-requests/for-customer/${customerId}`;
   const { data, error, isLoading } = useQuery({
-    queryKey: ["contract-requests", mode, customerId ?? "mine"],
+    queryKey: ["contract-requests", mode, customerId ?? (allCustomers ? "all" : "mine")],
     queryFn: () => fetchJson<ContractRequestSummaryRead[]>(path),
     refetchOnWindowFocus: true,
   });
@@ -98,7 +111,9 @@ export function ContractRequestsList({
         <p className="text-xs text-slate-500 mt-1">
           {mode === "customer"
             ? "Attiva il tuo primo contratto: puoi inserire uno o più punti di fornitura insieme."
-            : "Questo cliente non ha ancora nessuna pratica di attivazione."}
+            : allCustomers
+              ? "Nessuna pratica per i tuoi clienti: aprine una con “Attiva nuovo contratto”."
+              : "Questo cliente non ha ancora nessuna pratica di attivazione."}
         </p>
       </div>
     );
@@ -114,7 +129,10 @@ export function ContractRequestsList({
             <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
               <button onClick={() => setExpanded(isOpen ? null : r.id)} className="text-left min-w-0 flex-1 cursor-pointer">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-bold text-white light:text-slate-900">Pratica #{r.code}</span>
+                  <span className="text-sm font-bold text-white light:text-slate-900">
+                    {allCustomers && r.customer_name ? r.customer_name : `Pratica #${r.code}`}
+                  </span>
+                  {allCustomers && <span className="text-[11px] text-slate-500 font-mono">#{r.code}</span>}
                   {r.status === "DRAFT" && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-500/10 text-slate-400 border-slate-500/20">
                       Bozza
@@ -170,14 +188,14 @@ export function ContractRequestsList({
                 )}
                 {r.status === "DRAFT" ? (
                   <button
-                    onClick={() => onOpenWizard({ requestId: r.id })}
+                    onClick={() => onOpenWizard({ requestId: r.id, customer: wizardCustomer(r) })}
                     className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition cursor-pointer"
                   >
                     Riprendi
                   </button>
                 ) : mode === "customer" && r.points_payable > 0 ? (
                   <button
-                    onClick={() => onOpenWizard({ requestId: r.id, step: "summary" })}
+                    onClick={() => onOpenWizard({ requestId: r.id, step: "summary", customer: wizardCustomer(r) })}
                     className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition cursor-pointer"
                   >
                     {r.bank_transfer_pending ? "Dati bonifico" : "Paga"}
@@ -339,6 +357,19 @@ function SummaryFact({ label, value, mono = false, strong = false }: { label: st
   );
 }
 
+/** Enough for the wizard to open an existing pratica of a customer the
+    promoter is looking at from the all-customers list. */
+function wizardCustomer(r: ContractRequestSummaryRead) {
+  const [firstName, ...rest] = (r.holder_name ?? "").split(" ");
+  return {
+    id: r.customer_id,
+    kind: r.customer_kind,
+    email: null,
+    firstName: firstName || null,
+    lastName: rest.join(" ") || null,
+  };
+}
+
 function RequestPoints({
   requestId,
   mode,
@@ -367,7 +398,7 @@ function RequestPoints({
         </span>
         {data.status !== "DRAFT" && (
           <button
-            onClick={() => onOpenWizard({ requestId, step: "documents" })}
+            onClick={() => onOpenWizard({ requestId, step: "documents", customer: wizardCustomer(data) })}
             className="font-semibold text-orange-400 hover:text-orange-300 cursor-pointer"
           >
             Documenti d&apos;identità →

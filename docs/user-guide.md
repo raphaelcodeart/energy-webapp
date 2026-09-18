@@ -249,6 +249,14 @@ anche tutte le rate con la data di incasso. Resta il pulsante **Esporta CSV**.
 
 ### 3.2 Area Promoter (`/promoter`)
 
+**Attiva Contratti** (Session 66) — il posto da cui attivi i contratti per i
+tuoi clienti: scegli il cliente e compili la stessa pratica che compilerebbe
+lui (dati dell'intestatario, quanti POD, documenti d'identità, l'offerta per
+ogni POD). Il pagamento no: quando invii la pratica, il cliente riceve un'email
+"i tuoi contratti sono pronti da pagare" e paga dalla sua area. Sotto trovi
+tutte le pratiche dei tuoi clienti, con lo stato di ogni POD, i documenti che
+mancano e il riepilogo.
+
 Pensata per far gestire al promoter la propria rete **come una vera azienda**:
 
 - **La mia Azienda** (schermata di apertura) — statistiche generali in alto:
@@ -348,6 +356,12 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   contratto dall'addebito mensile, gli altri continuano). **"Approva i N
   contratti in revisione"** mostra l'anteprima provvigioni di ciascuno e li
   approva tutti in un colpo, ognuno con la sua anteprima salvata.
+- **Nuovo Contratto** (Session 66) — la via consigliata è **Pratica di
+  attivazione**: scegli il cliente (con ricerca), eventualmente il promoter a cui
+  attribuirla, e compili gli stessi passaggi che fa il cliente (dati, quanti POD,
+  documenti, offerta per ogni POD). Quando invii la pratica, il cliente riceve
+  un'email e paga dalla sua area. Il vecchio modulo per un singolo contratto
+  resta sotto **Modulo avanzato**.
 - **Pratiche → Bonifici da confermare** (Session 65) — le pratiche per cui il
   cliente ha scelto il bonifico. Nel dettaglio trovi importo (già scontato),
   contratti, eventuale ricevuta caricata dal cliente e **Conferma bonifico
