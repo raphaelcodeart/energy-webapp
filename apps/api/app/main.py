@@ -36,6 +36,7 @@ from app.domains.imported_products.router import router as imported_products_rou
 from app.domains.integrations.router import router as integrations_router
 from app.domains.invoice_redemptions import models as _invoice_redemptions_models  # noqa: F401
 from app.domains.invoice_redemptions.router import router as invoice_redemptions_router
+from app.domains.marketplaces.router import router as marketplaces_router
 from app.domains.network import models as _network_models  # noqa: F401
 from app.domains.network.router import router as network_router
 from app.domains.notifications import models as _notifications_models  # noqa: F401
@@ -54,6 +55,8 @@ from app.domains.referral import models as _referral_models  # noqa: F401
 from app.domains.referral.router import authenticated_router as referral_authenticated_router
 from app.domains.referral.router import router as referral_router
 from app.domains.reports.router import router as reports_router
+from app.domains.shopify_dropshipping import models as _shopify_models  # noqa: F401
+from app.domains.shopify_dropshipping.router import router as shopify_router
 from app.domains.support import models as _support_models  # noqa: F401
 from app.domains.support.router import router as support_router
 from app.domains.users import models as _users_models  # noqa: F401
@@ -101,6 +104,8 @@ app.include_router(invoice_redemptions_router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(imported_products_router, prefix="/api")
 app.include_router(cj_router, prefix="/api")
+app.include_router(shopify_router, prefix="/api")
+app.include_router(marketplaces_router, prefix="/api")
 app.include_router(friend_referrals_router, prefix="/api")
 app.include_router(organizations_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")

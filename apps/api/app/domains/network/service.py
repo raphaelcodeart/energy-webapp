@@ -556,41 +556,128 @@ async def create_recruited_customer(
     "primo accesso" is a normal click-a-link-to-set-your-password flow
     (auth/service.py::send_account_invite_email), not a temp-password
     handoff through the promoter."""
+    promoter_agent = await get_own_agent_profile(db, organization_id=organization_id, user_id=promoter_user_id)
+    if promoter_agent is None or promoter_agent.status != "ACTIVE":
+        raise RecruitedCustomerError("Solo un promoter attivo può registrare nuovi clienti.")
+    return await _register_customer_with_account(
+        db, organization_id=organization_id, promoter_agent=promoter_agent, payload=payload,
+        actor_user_id=actor_user_id, audit_action="customer.recruited_by_promoter",
+        invited_by_display_name=promoter_agent.display_name,
+    )
+
+
+async def create_customer_with_account_by_staff(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    promoter_agent_id: uuid.UUID | None,
+    payload: "CustomerCreate",
+    actor_user_id: uuid.UUID,
+) -> "Customer":
+    """The administration's "Nuovo cliente" (Session 67): the same thing a
+    promoter's "Miei Clienti" does -- anagrafica, a real login and the
+    set-your-password invite -- so the customer can pay the pratica opened
+    for them. The customer goes under the promoter the administrator picks,
+    exactly as if they had registered through that promoter's link; with no
+    promoter they are a direct customer of the company."""
+    promoter_agent = None
+    if promoter_agent_id is not None:
+        promoter_agent = await db.get(AgentProfile, promoter_agent_id)
+        if (
+            promoter_agent is None
+            or promoter_agent.organization_id != organization_id
+            or promoter_agent.status != "ACTIVE"
+        ):
+            raise RecruitedCustomerError("Promoter non valido o non attivo.")
+    return await _register_customer_with_account(
+        db, organization_id=organization_id, promoter_agent=promoter_agent, payload=payload,
+        actor_user_id=actor_user_id, audit_action="customer.created_with_account_by_staff",
+        invited_by_display_name="Lial Energy",
+    )
+
+
+async def _register_customer_with_account(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    promoter_agent: "AgentProfile | None",
+    payload: "CustomerCreate",
+    actor_user_id: uuid.UUID,
+    audit_action: str,
+    invited_by_display_name: str,
+) -> "Customer":
+    from app.domains.customers import service as customers_service
+
+    await _ensure_email_free(db, organization_id=organization_id, email=payload.email)
+    try:
+        customer = await customers_service.create_customer(
+            db, organization_id=organization_id, payload=payload, actor_user_id=actor_user_id, commit=False
+        )
+    except customers_service.CustomerValidationError as exc:
+        raise RecruitedCustomerError(str(exc)) from exc
+    return await _attach_login_and_invite(
+        db, organization_id=organization_id, customer=customer, promoter_agent=promoter_agent,
+        actor_user_id=actor_user_id, audit_action=audit_action, invited_by_display_name=invited_by_display_name,
+    )
+
+
+async def create_login_for_existing_customer(
+    db: AsyncSession, *, organization_id: uuid.UUID, customer_id: uuid.UUID, actor_user_id: uuid.UUID
+) -> "Customer":
+    """A customer the administration registered as an anagrafica only (the
+    pre-Session-67 "Nuovo Cliente") has no login, so they could never pay a
+    pratica opened for them: this gives them one, on the email already on
+    file, and sends the same set-your-password invite. Their promoter
+    attribution, if any, is left as it is."""
+    from app.domains.customers.models import Customer
+
+    customer = await db.get(Customer, customer_id)
+    if customer is None or customer.organization_id != organization_id:
+        raise RecruitedCustomerError("Cliente non trovato.")
+    if customer.user_id is not None:
+        raise RecruitedCustomerError("Questo cliente ha già un accesso.")
+    await _ensure_email_free(db, organization_id=organization_id, email=customer.email)
+    return await _attach_login_and_invite(
+        db, organization_id=organization_id, customer=customer, promoter_agent=None,
+        actor_user_id=actor_user_id, audit_action="customer.login_created_by_staff",
+        invited_by_display_name="Lial Energy",
+    )
+
+
+async def _ensure_email_free(db: AsyncSession, *, organization_id: uuid.UUID, email: str) -> None:
+    from app.domains.users.models import User
+
+    existing_user = (
+        await db.execute(
+            select(User).where(User.organization_id == organization_id, func.lower(User.email) == email.lower())
+        )
+    ).scalar_one_or_none()
+    if existing_user is not None:
+        raise RecruitedCustomerError(f"Esiste già un account con l'email '{email}'.")
+
+
+async def _attach_login_and_invite(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    customer: "Customer",
+    promoter_agent: "AgentProfile | None",
+    actor_user_id: uuid.UUID,
+    audit_action: str,
+    invited_by_display_name: str,
+) -> "Customer":
+    """The customer gets a real login (random, never-revealed password), the
+    CUSTOMER role, the attribution to `promoter_agent` when given, then the
+    set-your-password invite once everything is committed."""
     from app.core.security import hash_password
     from app.domains.auth import service as auth_service
-    from app.domains.customers import service as customers_service
     from app.domains.rbac import service as rbac_service
     from app.domains.referral import service as referral_service
     from app.domains.referral.models import CustomerAttribution
     from app.domains.users.models import User
 
-    promoter_agent = await get_own_agent_profile(db, organization_id=organization_id, user_id=promoter_user_id)
-    if promoter_agent is None or promoter_agent.status != "ACTIVE":
-        raise RecruitedCustomerError("Solo un promoter attivo può registrare nuovi clienti.")
-
-    existing_user = (
-        await db.execute(
-            select(User).where(
-                User.organization_id == organization_id, func.lower(User.email) == payload.email.lower()
-            )
-        )
-    ).scalar_one_or_none()
-    if existing_user is not None:
-        raise RecruitedCustomerError(f"Esiste già un account con l'email '{payload.email}'.")
-
-    promoter_code = await referral_service.get_or_create_promoter_code(
-        db, organization_id=organization_id, agent_id=promoter_agent.id
-    )
-
-    try:
-        customer = await customers_service.create_customer(
-            db, organization_id=organization_id, payload=payload, actor_user_id=actor_user_id
-        )
-    except customers_service.CustomerValidationError as exc:
-        raise RecruitedCustomerError(str(exc)) from exc
-
     user = User(
-        organization_id=organization_id, email=payload.email,
+        organization_id=organization_id, email=customer.email,
         password_hash=hash_password(_generate_temp_password()), status="ACTIVE",
     )
     db.add(user)
@@ -598,24 +685,29 @@ async def create_recruited_customer(
     await rbac_service.assign_role(db, user_id=user.id, organization_id=organization_id, role_code="CUSTOMER")
     customer.user_id = user.id
 
-    db.add(
-        CustomerAttribution(
-            organization_id=organization_id, customer_id=customer.id,
-            promoter_code_id=promoter_code.id, referral_session_id=None, attributed_at=utcnow(),
+    if promoter_agent is not None:
+        promoter_code = await referral_service.get_or_create_promoter_code(
+            db, organization_id=organization_id, agent_id=promoter_agent.id
         )
-    )
+        db.add(
+            CustomerAttribution(
+                organization_id=organization_id, customer_id=customer.id,
+                promoter_code_id=promoter_code.id, referral_session_id=None, attributed_at=utcnow(),
+            )
+        )
     await audit_service.record(
         db, organization_id=organization_id, actor_user_id=actor_user_id,
-        action="customer.recruited_by_promoter", entity_type="customer", entity_id=str(customer.id),
-        new_value={"promoter_agent_id": str(promoter_agent.id), "email": payload.email},
+        action=audit_action, entity_type="customer", entity_id=str(customer.id),
+        new_value={
+            "promoter_agent_id": str(promoter_agent.id) if promoter_agent else None,
+            "email": customer.email,
+        },
     )
     await db.commit()
     await db.refresh(customer)
     await db.refresh(user)
 
-    await auth_service.send_account_invite_email(
-        db, user=user, invited_by_display_name=promoter_agent.display_name
-    )
+    await auth_service.send_account_invite_email(db, user=user, invited_by_display_name=invited_by_display_name)
     return customer
 
 

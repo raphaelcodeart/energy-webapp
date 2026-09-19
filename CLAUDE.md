@@ -138,6 +138,10 @@ Sono scritte per esteso in `docs/business-rules.md`; qui l'essenziale.
 - **Gli snapshot sono congelati**: la rete al momento dell'attivazione, il
   prezzo al momento della creazione del contratto. Non si ricalcolano mai a
   posteriori.
+- **Marketplace (AliExpress, CJ, Shopify)**: regole solo in
+  `domains/marketplaces/rules.py` — carta +5% congelato sull'ordine, niente
+  cashback, LialCash 30% sui nuovi prodotti e mai 100% (max 99, vincolo nel
+  DB). Un quarto shop importato deve usare le stesse funzioni, non copiarle.
 - **Un'email che non parte non deve mai far fallire l'operazione che la
   precede** — c'è `send_html_email_best_effort()` per questo. Con due
   eccezioni volute: i link di reset password e i codici OTP, dove se l'invio
@@ -215,3 +219,31 @@ La regola di scrittura del codice è una sola: il codice nuovo deve
 assomigliare a quello che ha intorno — stessa densità di commenti, stessi
 nomi, stesse abitudini. E un commento spiega *perché* una cosa è fatta così,
 non *cosa* fa la riga sotto.
+
+---
+
+## 10. Reinstallare tutto su un altro server
+
+La procedura completa, con le verifiche, è `docs/server-migration-guide.md`
+(§4 per un doppione di questo sistema, §12 per un'altra azienda, §14 per i
+Marketplace). In sintesi, nell'ordine:
+
+1. Server Ubuntu con `docker.io docker-compose-v2 git openssl`; clona
+   `git@github.com:raphaelcodeart/energy-webapp.git` in `/opt/lialenergy`.
+2. `.env` da `.env.example`, con segreti nuovi (guida §4.2).
+3. `docker compose -f docker-compose.dev.yml build && … up -d`: il container
+   `api` esegue `alembic upgrade head` da solo e costruisce **tutto** lo schema.
+4. Dati minimi: `python -m app.seed.bootstrap` (organizzazione, permessi,
+   ruoli, gradi, piano provvigioni, primo amministratore) — oppure il
+   ripristino di un backup con dati (`scripts/restore.sh`).
+5. nginx + HTTPS (§4.6), crontab di backup e certificato (§4.8).
+6. Dall'interfaccia: SMTP, Stripe (webhook con `checkout.session.completed`,
+   `invoice.paid`, `invoice.payment_failed`), IBAN, prodotti, poi i
+   Marketplace (§14).
+
+`docs/database-schema.sql` è il **modello della struttura** (solo struttura,
+nessun dato), generato da un database costruito da Alembic: serve a
+verificare che una reinstallazione sia identica (stesso numero di tabelle,
+stessa revision) o a leggere lo schema senza avviare nulla. Non va caricato
+a mano al posto delle migrazioni: se proprio lo si usa (`psql -f`), poi
+`alembic stamp head`, altrimenti Alembic proverebbe a ricreare tutto.

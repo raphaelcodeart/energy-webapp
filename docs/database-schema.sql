@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict toNNJJ8SK5dchdvQtxM00gs0DV2LVi5TAmvemhxCcf3Rh8aWViRNKBcjPUABbc9
+\restrict bCezn1zgSD6grGj9gdtp7gKNmmay9zOGEj2DQoUe9fS0eTV2fHbm6zfdo1ygcSd
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -49,14 +49,14 @@ CREATE TABLE public.agent_profiles (
     display_name character varying(255) NOT NULL,
     promoter_code character varying(32) NOT NULL,
     status character varying(32) NOT NULL,
-    photo_url character varying(1000),
     joined_at timestamp with time zone NOT NULL,
     current_rank_id uuid,
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    photo_url character varying(1000),
     approved_by_user_id uuid,
     approved_at timestamp with time zone,
     rejection_reason character varying(500),
-    id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
     is_blacklisted boolean DEFAULT false NOT NULL,
     first_name character varying(120),
     last_name character varying(120),
@@ -202,6 +202,7 @@ CREATE TABLE public.cj_orders (
     last_attempt_at timestamp with time zone,
     next_retry_at timestamp with time zone,
     last_error_kind character varying(24),
+    card_surcharge_cents bigint DEFAULT '0'::bigint NOT NULL,
     CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
     CONSTRAINT ck_cj_orders_ck_cj_orders_credit_applied_not_over_amount CHECK ((credit_applied_cents <= amount_cents)),
     CONSTRAINT ck_cj_orders_ck_cj_orders_quantity_positive CHECK ((quantity > 0))
@@ -233,7 +234,8 @@ CREATE TABLE public.cj_products (
     sync_error character varying(500),
     created_by_user_id uuid NOT NULL,
     updated_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_cj_products_credit_below_100 CHECK (((credit_discount_percentage >= 0) AND (credit_discount_percentage <= 99)))
 );
 
 
@@ -257,13 +259,14 @@ CREATE TABLE public.cj_settings (
     markup_fixed_cents integer DEFAULT 0 NOT NULL,
     price_rounding character varying(8) DEFAULT '90'::character varying NOT NULL,
     shipping_mode character varying(16) DEFAULT 'CUSTOMER_PAYS'::character varying NOT NULL,
-    default_credit_percentage integer DEFAULT 100 NOT NULL,
+    default_credit_percentage integer DEFAULT 30 NOT NULL,
     destination_country character varying(2) DEFAULT 'IT'::character varying NOT NULL,
     auto_forward boolean DEFAULT false NOT NULL,
     last_balance_usd numeric(12,2),
     last_balance_at timestamp with time zone,
     updated_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_cj_settings_default_credit_below_100 CHECK (((default_credit_percentage >= 0) AND (default_credit_percentage <= 99)))
 );
 
 
@@ -597,12 +600,12 @@ CREATE TABLE public.contracts (
     contract_attribution_id uuid,
     network_snapshot_id uuid,
     status character varying(32) NOT NULL,
-    notes character varying(2000),
-    iban character varying(34),
-    activated_at timestamp with time zone,
-    expires_at timestamp with time zone,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
+    notes character varying(2000),
+    activated_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    iban character varying(34),
     email character varying(320),
     updated_at timestamp with time zone,
     created_by_user_id uuid,
@@ -675,10 +678,10 @@ CREATE TABLE public.customers (
     vat_number character varying(32),
     email character varying(255) NOT NULL,
     phone character varying(32),
-    pec character varying(255),
-    photo_url character varying(1000),
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    pec character varying(255),
+    photo_url character varying(1000)
 );
 
 
@@ -845,6 +848,7 @@ CREATE TABLE public.imported_product_orders (
     cancelled_by_user_id uuid,
     cancelled_at timestamp with time zone,
     cancellation_reason character varying(500),
+    card_surcharge_cents bigint DEFAULT '0'::bigint NOT NULL,
     CONSTRAINT ck_imported_product_orders_ck_imported_orders_credit_ap_3f85 CHECK ((credit_applied_cents <= amount_cents)),
     CONSTRAINT ck_imported_product_orders_ck_imported_orders_credit_ap_4bb7 CHECK ((credit_applied_cents >= 0))
 );
@@ -867,7 +871,8 @@ CREATE TABLE public.imported_products (
     price_cents bigint NOT NULL,
     credit_discount_percentage integer DEFAULT 0 NOT NULL,
     status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL,
-    created_by_user_id uuid NOT NULL
+    created_by_user_id uuid NOT NULL,
+    CONSTRAINT ck_imported_products_credit_below_100 CHECK (((credit_discount_percentage >= 0) AND (credit_discount_percentage <= 99)))
 );
 
 
@@ -995,6 +1000,8 @@ CREATE TABLE public.network_snapshots (
 --
 
 CREATE TABLE public.notifications (
+    id uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
     organization_id uuid NOT NULL,
     recipient_user_id uuid NOT NULL,
     type character varying(64) NOT NULL,
@@ -1002,9 +1009,7 @@ CREATE TABLE public.notifications (
     entity_id character varying(64) NOT NULL,
     title character varying(255) NOT NULL,
     body character varying(1000),
-    is_read boolean NOT NULL,
-    id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    is_read boolean DEFAULT false NOT NULL
 );
 
 
@@ -1120,12 +1125,10 @@ CREATE TABLE public.product_versions (
     version_label character varying(32) NOT NULL,
     name character varying(255) NOT NULL,
     description character varying(2000) NOT NULL,
-    image_url character varying(1000),
     base_price_cents bigint NOT NULL,
     initial_fee_cents bigint NOT NULL,
     recurring_fee_cents bigint NOT NULL,
     billing_period character varying(16) NOT NULL,
-    contract_duration_months integer,
     tax_configuration jsonb NOT NULL,
     commission_plan_version_id uuid,
     required_documents jsonb NOT NULL,
@@ -1135,6 +1138,8 @@ CREATE TABLE public.product_versions (
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
+    image_url character varying(1000),
+    contract_duration_months integer DEFAULT 12,
     commission_tokens jsonb DEFAULT '{}'::jsonb NOT NULL,
     credit_discount_percentage integer DEFAULT 0 NOT NULL,
     cashback_enabled boolean DEFAULT false NOT NULL,
@@ -1151,12 +1156,12 @@ CREATE TABLE public.product_versions (
 CREATE TABLE public.products (
     organization_id uuid NOT NULL,
     code character varying(64) NOT NULL,
-    product_type character varying(32) NOT NULL,
     energy_type character varying(16),
     customer_type character varying(32) NOT NULL,
     status character varying(32) NOT NULL,
     id uuid NOT NULL,
     created_at timestamp with time zone NOT NULL,
+    product_type character varying(32) DEFAULT 'ENERGY_CONTRACT'::character varying NOT NULL,
     category character varying(16) DEFAULT 'INTERNAL'::character varying NOT NULL
 );
 
@@ -1270,6 +1275,151 @@ CREATE TABLE public.sessions (
 
 
 --
+-- Name: shopify_orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.shopify_orders (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    customer_user_id uuid NOT NULL,
+    shopify_product_id uuid NOT NULL,
+    shopify_variant_id uuid NOT NULL,
+    created_by_user_id uuid NOT NULL,
+    quantity integer DEFAULT 1 NOT NULL,
+    unit_price_cents bigint NOT NULL,
+    shipping_cents bigint DEFAULT '0'::bigint NOT NULL,
+    amount_cents bigint NOT NULL,
+    credit_applied_cents bigint DEFAULT '0'::bigint NOT NULL,
+    card_surcharge_cents bigint DEFAULT '0'::bigint NOT NULL,
+    credit_debit_transaction_id uuid,
+    status character varying(16) DEFAULT 'AWAITING_PAYMENT'::character varying NOT NULL,
+    payment_method character varying(16) DEFAULT 'BANK_TRANSFER'::character varying NOT NULL,
+    stripe_checkout_session_id character varying(255),
+    note character varying(1000),
+    payment_proof_storage_key character varying(500),
+    payment_proof_original_filename character varying(255),
+    payment_proof_uploaded_at timestamp with time zone,
+    paid_by_user_id uuid,
+    paid_at timestamp with time zone,
+    cancelled_by_user_id uuid,
+    cancelled_at timestamp with time zone,
+    cancellation_reason character varying(500),
+    recipient_name character varying(128) NOT NULL,
+    recipient_phone character varying(32),
+    address_line1 character varying(255) NOT NULL,
+    address_line2 character varying(255),
+    city character varying(128) NOT NULL,
+    province character varying(64) NOT NULL,
+    postal_code character varying(16) NOT NULL,
+    country_code character varying(2) DEFAULT 'IT'::character varying NOT NULL,
+    shipping_days character varying(32),
+    unit_cost_amount numeric(12,2),
+    currency_rate numeric(10,6) DEFAULT '1'::numeric NOT NULL,
+    fulfillment_status character varying(16) DEFAULT 'NOT_SENT'::character varying NOT NULL,
+    shopify_draft_order_id character varying(128),
+    shopify_order_id character varying(128),
+    shopify_order_name character varying(64),
+    shopify_fulfillment_status character varying(32),
+    forwarded_at timestamp with time zone,
+    forwarded_by_user_id uuid,
+    forward_error character varying(500),
+    tracking_number character varying(128),
+    tracking_url character varying(1000),
+    tracking_company character varying(128),
+    shipped_at timestamp with time zone,
+    delivered_at timestamp with time zone,
+    last_sync_at timestamp with time zone,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_attempt_at timestamp with time zone,
+    next_retry_at timestamp with time zone,
+    last_error_kind character varying(24),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_shopify_orders_ck_shopify_orders_credit_applied_non_negative CHECK ((credit_applied_cents >= 0)),
+    CONSTRAINT ck_shopify_orders_ck_shopify_orders_credit_applied_not__3b88 CHECK ((credit_applied_cents <= amount_cents)),
+    CONSTRAINT ck_shopify_orders_ck_shopify_orders_quantity_positive CHECK ((quantity > 0))
+);
+
+
+--
+-- Name: shopify_products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.shopify_products (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    shopify_product_id character varying(128) NOT NULL,
+    handle character varying(255),
+    name character varying(255) NOT NULL,
+    source_title character varying(500),
+    vendor character varying(255),
+    description character varying(8000) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(1000),
+    images jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status character varying(16) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    credit_discount_percentage integer DEFAULT 30 NOT NULL,
+    markup_percentage integer,
+    last_synced_at timestamp with time zone,
+    sync_error character varying(500),
+    created_by_user_id uuid NOT NULL,
+    updated_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_shopify_products_ck_shopify_products_credit_discount_456a CHECK (((credit_discount_percentage >= 0) AND (credit_discount_percentage <= 99)))
+);
+
+
+--
+-- Name: shopify_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.shopify_settings (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    shop_domain character varying(255),
+    access_token character varying(255),
+    api_version character varying(16) DEFAULT '2025-07'::character varying NOT NULL,
+    enabled boolean DEFAULT false NOT NULL,
+    shop_name character varying(255),
+    shop_currency character varying(3),
+    currency_rate numeric(10,6) DEFAULT '1'::numeric NOT NULL,
+    price_basis character varying(8) DEFAULT 'COST'::character varying NOT NULL,
+    markup_percentage integer DEFAULT 100 NOT NULL,
+    markup_fixed_cents integer DEFAULT 0 NOT NULL,
+    price_rounding character varying(8) DEFAULT '90'::character varying NOT NULL,
+    shipping_mode character varying(16) DEFAULT 'CUSTOMER_PAYS'::character varying NOT NULL,
+    shipping_flat_cents integer DEFAULT 590 NOT NULL,
+    shipping_days character varying(32) DEFAULT '7-15'::character varying,
+    default_credit_percentage integer DEFAULT 30 NOT NULL,
+    auto_forward boolean DEFAULT true NOT NULL,
+    last_connected_at timestamp with time zone,
+    updated_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: shopify_variants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.shopify_variants (
+    id uuid NOT NULL,
+    product_id uuid NOT NULL,
+    shopify_variant_id character varying(128) NOT NULL,
+    sku character varying(128),
+    label character varying(255) DEFAULT ''::character varying NOT NULL,
+    image_url character varying(1000),
+    cost_amount numeric(12,2),
+    source_price_amount numeric(12,2) NOT NULL,
+    price_cents bigint NOT NULL,
+    price_override_cents bigint,
+    inventory integer,
+    active boolean DEFAULT true NOT NULL,
+    available_in_store boolean DEFAULT true NOT NULL,
+    last_synced_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: stripe_webhook_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1291,7 +1441,6 @@ CREATE TABLE public.stripe_webhook_events (
 CREATE TABLE public.supply_points (
     organization_id uuid NOT NULL,
     customer_id uuid NOT NULL,
-    label character varying(255),
     energy_type character varying(16),
     pod_code character varying(32),
     pdr_code character varying(32),
@@ -1301,7 +1450,8 @@ CREATE TABLE public.supply_points (
     actual_consumption bigint,
     provider_reference character varying(128),
     id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    label character varying(255)
 );
 
 
@@ -1396,6 +1546,7 @@ CREATE TABLE public.wallet_transactions (
     reference_order_id uuid,
     reference_imported_order_id uuid,
     reference_cj_order_id uuid,
+    reference_shopify_order_id uuid,
     CONSTRAINT ck_wallet_transactions_ck_wallet_transactions_has_a_side CHECK (((from_wallet_id IS NOT NULL) OR (to_wallet_id IS NOT NULL)))
 );
 
@@ -1922,6 +2073,38 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: shopify_orders pk_shopify_orders; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT pk_shopify_orders PRIMARY KEY (id);
+
+
+--
+-- Name: shopify_products pk_shopify_products; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_products
+    ADD CONSTRAINT pk_shopify_products PRIMARY KEY (id);
+
+
+--
+-- Name: shopify_settings pk_shopify_settings; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_settings
+    ADD CONSTRAINT pk_shopify_settings PRIMARY KEY (id);
+
+
+--
+-- Name: shopify_variants pk_shopify_variants; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_variants
+    ADD CONSTRAINT pk_shopify_variants PRIMARY KEY (id);
+
+
+--
 -- Name: stripe_webhook_events pk_stripe_webhook_events; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2207,6 +2390,38 @@ ALTER TABLE ONLY public.ranks
 
 ALTER TABLE ONLY public.roles
     ADD CONSTRAINT uq_roles_org_code UNIQUE (organization_id, code);
+
+
+--
+-- Name: shopify_orders uq_shopify_orders_stripe_checkout_session_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT uq_shopify_orders_stripe_checkout_session_id UNIQUE (stripe_checkout_session_id);
+
+
+--
+-- Name: shopify_products uq_shopify_products_organization_id_shopify_product_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_products
+    ADD CONSTRAINT uq_shopify_products_organization_id_shopify_product_id UNIQUE (organization_id, shopify_product_id);
+
+
+--
+-- Name: shopify_settings uq_shopify_settings_organization_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_settings
+    ADD CONSTRAINT uq_shopify_settings_organization_id UNIQUE (organization_id);
+
+
+--
+-- Name: shopify_variants uq_shopify_variants_product_id_shopify_variant_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_variants
+    ADD CONSTRAINT uq_shopify_variants_product_id_shopify_variant_id UNIQUE (product_id, shopify_variant_id);
 
 
 --
@@ -3046,6 +3261,69 @@ CREATE UNIQUE INDEX ix_sessions_refresh_token_hash ON public.sessions USING btre
 --
 
 CREATE INDEX ix_sessions_user_id ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: ix_shopify_orders_customer_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_customer_user_id ON public.shopify_orders USING btree (customer_user_id);
+
+
+--
+-- Name: ix_shopify_orders_fulfillment_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_fulfillment_status ON public.shopify_orders USING btree (fulfillment_status);
+
+
+--
+-- Name: ix_shopify_orders_next_retry_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_next_retry_at ON public.shopify_orders USING btree (next_retry_at);
+
+
+--
+-- Name: ix_shopify_orders_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_organization_id ON public.shopify_orders USING btree (organization_id);
+
+
+--
+-- Name: ix_shopify_orders_shopify_order_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_shopify_order_id ON public.shopify_orders USING btree (shopify_order_id);
+
+
+--
+-- Name: ix_shopify_orders_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_orders_status ON public.shopify_orders USING btree (status);
+
+
+--
+-- Name: ix_shopify_products_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_products_organization_id ON public.shopify_products USING btree (organization_id);
+
+
+--
+-- Name: ix_shopify_products_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_products_status ON public.shopify_products USING btree (status);
+
+
+--
+-- Name: ix_shopify_variants_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_shopify_variants_product_id ON public.shopify_variants USING btree (product_id);
 
 
 --
@@ -4597,6 +4875,110 @@ ALTER TABLE ONLY public.sessions
 
 
 --
+-- Name: shopify_orders fk_shopify_orders_cancelled_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_cancelled_by_user_id_users FOREIGN KEY (cancelled_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_credit_debit_transaction_id_wallet_tr_0474; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_credit_debit_transaction_id_wallet_tr_0474 FOREIGN KEY (credit_debit_transaction_id) REFERENCES public.wallet_transactions(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_customer_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_customer_user_id_users FOREIGN KEY (customer_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_forwarded_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_forwarded_by_user_id_users FOREIGN KEY (forwarded_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_paid_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_paid_by_user_id_users FOREIGN KEY (paid_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_shopify_product_id_shopify_products; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_shopify_product_id_shopify_products FOREIGN KEY (shopify_product_id) REFERENCES public.shopify_products(id);
+
+
+--
+-- Name: shopify_orders fk_shopify_orders_shopify_variant_id_shopify_variants; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_orders
+    ADD CONSTRAINT fk_shopify_orders_shopify_variant_id_shopify_variants FOREIGN KEY (shopify_variant_id) REFERENCES public.shopify_variants(id);
+
+
+--
+-- Name: shopify_products fk_shopify_products_created_by_user_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_products
+    ADD CONSTRAINT fk_shopify_products_created_by_user_id_users FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: shopify_products fk_shopify_products_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_products
+    ADD CONSTRAINT fk_shopify_products_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: shopify_settings fk_shopify_settings_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_settings
+    ADD CONSTRAINT fk_shopify_settings_organization_id_organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
+-- Name: shopify_variants fk_shopify_variants_product_id_shopify_products; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shopify_variants
+    ADD CONSTRAINT fk_shopify_variants_product_id_shopify_products FOREIGN KEY (product_id) REFERENCES public.shopify_products(id);
+
+
+--
 -- Name: stripe_webhook_events fk_stripe_webhook_events_organization_id_organizations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4765,6 +5147,14 @@ ALTER TABLE ONLY public.wallet_transactions
 
 
 --
+-- Name: wallet_transactions fk_wallet_transactions_reference_shopify_order_id_shopi_ef35; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT fk_wallet_transactions_reference_shopify_order_id_shopi_ef35 FOREIGN KEY (reference_shopify_order_id) REFERENCES public.shopify_orders(id);
+
+
+--
 -- Name: wallet_transactions fk_wallet_transactions_reverses_transaction_id_wallet_t_a759; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4800,5 +5190,5 @@ ALTER TABLE ONLY public.wallets
 -- PostgreSQL database dump complete
 --
 
-\unrestrict toNNJJ8SK5dchdvQtxM00gs0DV2LVi5TAmvemhxCcf3Rh8aWViRNKBcjPUABbc9
+\unrestrict bCezn1zgSD6grGj9gdtp7gKNmmay9zOGEj2DQoUe9fS0eTV2fHbm6zfdo1ygcSd
 

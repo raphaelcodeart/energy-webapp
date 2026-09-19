@@ -128,6 +128,10 @@ class WalletTransaction(UUIDPKMixin, TimestampMixin, Base):
     reference_cj_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cj_orders.id"), nullable=True
     )
+    # Session 68's Marketplace 3 (Shopify) -- same, for a ShopifyOrder.
+    reference_shopify_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shopify_orders.id"), nullable=True
+    )
     # Self-FK: set only on a REVERSAL row, pointing back at the
     # ADMIN_CREDIT/TRANSFER row it corrects. The original row is never
     # mutated -- mirrors CommissionReversal.original_movement_id.

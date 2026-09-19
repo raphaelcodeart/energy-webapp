@@ -12,6 +12,7 @@ from app.domains.invoice_redemptions.models import InvoiceRedemption
 from app.domains.orders import service as orders_service
 from app.domains.orders.models import Order
 from app.domains.partners.models import Partner
+from app.domains.shopify_dropshipping import service as shopify_service
 from app.domains.wallets import service as wallets_service
 
 
@@ -71,6 +72,20 @@ async def _product_name_lookups(db: AsyncSession, wallet_txns: list[dict]) -> tu
         )
         for cj_order_id, name in cj_rows.all():
             product_name_by_order_id[cj_order_id] = name
+
+    shopify_order_ids = {
+        t["reference_shopify_order_id"] for t in wallet_txns if t.get("reference_shopify_order_id") is not None
+    }
+    if shopify_order_ids:
+        from app.domains.shopify_dropshipping.models import ShopifyOrder, ShopifyProduct
+
+        shopify_rows = await db.execute(
+            select(ShopifyOrder.id, ShopifyProduct.name)
+            .join(ShopifyProduct, ShopifyProduct.id == ShopifyOrder.shopify_product_id)
+            .where(ShopifyOrder.id.in_(shopify_order_ids))
+        )
+        for shopify_order_id, name in shopify_rows.all():
+            product_name_by_order_id[shopify_order_id] = name
 
     redemption_ids = {
         t["reference_invoice_redemption_id"] for t in wallet_txns if t["reference_invoice_redemption_id"] is not None
@@ -170,7 +185,12 @@ def _order_payment_row(row: dict) -> dict | None:
     cashback surcharge added back in (it's part of what was genuinely
     charged). None when credit alone covered the whole price -- nothing
     real-money to show."""
-    paid_amount_cents = row["amount_cents"] - row["credit_applied_cents"] + row.get("cashback_surcharge_cents", 0)
+    paid_amount_cents = (
+        row["amount_cents"] - row["credit_applied_cents"]
+        + row.get("cashback_surcharge_cents", 0)
+        # Session 67: a Marketplace order (CJ, Shopify) paid by card costs more.
+        + row.get("card_surcharge_cents", 0)
+    )
     if paid_amount_cents <= 0:
         return None
     return {
@@ -250,6 +270,7 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         # here on -- see FinancialMovementRead's docstring for why.
         unified_order_id = (
             t["reference_order_id"] or t["reference_imported_order_id"] or t.get("reference_cj_order_id")
+            or t.get("reference_shopify_order_id")
         )
         product_name = None
         if unified_order_id:
@@ -307,6 +328,13 @@ async def list_my_movements(db: AsyncSession, *, organization_id: uuid.UUID, use
         if movement is not None:
             movements.append(movement)
 
+    for shopify_order in await shopify_service.list_orders(
+        db, organization_id=organization_id, customer_user_id=user_id, status_filter="PAID"
+    ):
+        movement = _order_payment_row(await shopify_service.order_read_dict(db, shopify_order, admin=False))
+        if movement is not None:
+            movements.append(movement)
+
     redemptions_mine = await invoice_redemptions_service.list_mine(db, organization_id=organization_id, user_id=user_id)
     credited_redemptions = [r for r in redemptions_mine if r.status == "CREDITED"]
     redemption_rows = await invoice_redemptions_service.hydrate(db, credited_redemptions)
@@ -353,6 +381,7 @@ async def list_all_movements(
             cust_id, cust_name, is_outgoing = t.get("from_user_id"), t.get("from_display_name"), True
         unified_order_id = (
             t["reference_order_id"] or t["reference_imported_order_id"] or t.get("reference_cj_order_id")
+            or t.get("reference_shopify_order_id")
         )
         product_name = None
         if unified_order_id:
@@ -405,6 +434,13 @@ async def list_all_movements(
     )
     for cj_order in cj_orders_all:
         movement = _order_payment_row(await cj_service.order_read_dict(db, cj_order, admin=False))
+        if movement is not None:
+            movements.append(movement)
+
+    for shopify_order in await shopify_service.list_orders(
+        db, organization_id=organization_id, customer_user_id=customer_user_id, status_filter="PAID"
+    ):
+        movement = _order_payment_row(await shopify_service.order_read_dict(db, shopify_order, admin=False))
         if movement is not None:
             movements.append(movement)
 

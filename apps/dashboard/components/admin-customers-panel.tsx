@@ -2,6 +2,8 @@
 
 import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ContractRequestWizard } from "@/components/contract-request-wizard";
+import { NewCustomerForm } from "@/components/new-customer-form";
 import { Pagination, usePagination } from "@/components/pagination";
 import { PhotoUpload } from "@/components/photo-upload";
 import { friendlyApiError } from "@/lib/api-error";
@@ -319,54 +321,24 @@ export function AdminCustomersPanel({
     }
   }
 
-  // Create form state
-  const [kind, setKind] = useState("PRIVATE");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [pec, setPec] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [fiscalCode, setFiscalCode] = useState("");
-  const [vatNumber, setVatNumber] = useState("");
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  // A pratica opened from this list (Session 67): right after registering a
+  // customer, or from a row's "Attiva contratti".
+  const [wizardFor, setWizardFor] = useState<{ customer: CustomerRead; producer: string | null } | null>(null);
+  const [loginLoadingId, setLoginLoadingId] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setCreateLoading(true);
-    setCreateError(null);
+  async function handleCreateLogin(c: CustomerRead) {
+    if (!window.confirm(`Creare l'accesso per ${c.display_name} e inviare a ${c.email} l'email per impostare la password?`)) return;
+    setLoginLoadingId(c.id);
+    setLoginError(null);
     try {
-      const res = await fetch("/api/proxy/customers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          email,
-          phone: phone || null,
-          pec: pec || null,
-          fiscal_code: fiscalCode || null,
-          vat_number: vatNumber || null,
-          first_name: PRIVATE_LIKE.has(kind) ? firstName : null,
-          last_name: PRIVATE_LIKE.has(kind) ? lastName : null,
-          company_name: PRIVATE_LIKE.has(kind) ? null : companyName,
-        }),
-      });
+      const res = await fetch(`/api/proxy/customers/${c.id}/account`, { method: "POST" });
       if (!res.ok) throw new Error(await friendlyApiError(res));
-      setShowCreate(false);
-      setEmail("");
-      setPhone("");
-      setPec("");
-      setFirstName("");
-      setLastName("");
-      setCompanyName("");
-      setFiscalCode("");
-      setVatNumber("");
       await queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
     } catch (err: any) {
-      setCreateError(err.message || "Impossibile creare il cliente.");
+      setLoginError(err.message || "Impossibile creare l'accesso.");
     } finally {
-      setCreateLoading(false);
+      setLoginLoadingId(null);
     }
   }
 
@@ -434,6 +406,7 @@ export function AdminCustomersPanel({
 
       {loadError && <p className="text-sm text-rose-400">Impossibile caricare i clienti.</p>}
       {freezeError && <p className="text-sm text-rose-400">{freezeError}</p>}
+      {loginError && <p className="text-sm text-rose-400">{loginError}</p>}
 
       <div className="glass-card rounded-2xl border-white/5 light:border-slate-200 bg-slate-950/40 light:bg-white/70 overflow-hidden">
         <div className="overflow-x-auto">
@@ -465,6 +438,11 @@ export function AdminCustomersPanel({
                       <p className="font-medium text-white light:text-slate-900">{c.display_name}</p>
                       <p className="text-[10px] text-slate-500">{c.email}</p>
                       <p className="text-[10px] text-slate-500">Iscritto: {new Date(c.created_at).toLocaleDateString("it-IT")}</p>
+                      {!c.user_id && (
+                        <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                          Senza accesso
+                        </span>
+                      )}
                       {c.user_id && (
                         <div className="flex items-center gap-1 mt-1.5">
                           <span
@@ -504,6 +482,24 @@ export function AdminCustomersPanel({
                     <td className="py-4 px-6">{c.phone ?? "—"}</td>
                     <td className="py-4 px-6">
                       <div className="flex items-center justify-end gap-1.5">
+                        {c.user_id ? (
+                          <button
+                            onClick={() => setWizardFor({ customer: c, producer: null })}
+                            title="Attiva contratti per questo cliente"
+                            className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-bold transition cursor-pointer whitespace-nowrap"
+                          >
+                            + Contratti
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleCreateLogin(c)}
+                            disabled={loginLoadingId === c.id}
+                            title="Il cliente non ha un accesso: senza, non può pagare i contratti"
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[11px] font-bold transition cursor-pointer whitespace-nowrap disabled:opacity-50"
+                          >
+                            {loginLoadingId === c.id ? "Creazione..." : "Crea accesso"}
+                          </button>
+                        )}
                         <button
                           onClick={() => openView(c.id)}
                           title="Mostra dettagli"
@@ -558,6 +554,21 @@ export function AdminCustomersPanel({
         </div>
       </div>
 
+      {wizardFor && (
+        <ContractRequestWizard
+          customer={{
+            id: wizardFor.customer.id,
+            kind: wizardFor.customer.kind,
+            email: wizardFor.customer.email,
+            firstName: wizardFor.customer.first_name,
+            lastName: wizardFor.customer.last_name,
+            pec: wizardFor.customer.pec,
+          }}
+          producerAgentId={wizardFor.producer}
+          onClose={() => setWizardFor(null)}
+        />
+      )}
+
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[90vh] overflow-y-auto">
@@ -573,89 +584,20 @@ export function AdminCustomersPanel({
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Tipo cliente</label>
-                <select
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value)}
-                  className="w-full rounded-xl glass-input px-3 py-2.5 text-sm bg-slate-900 light:bg-white focus:border-orange-500"
-                >
-                  {Object.entries(KIND_LABELS).map(([code, label]) => (
-                    <option key={code} value={code}>{label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {PRIVATE_LIKE.has(kind) ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Nome</label>
-                    <input required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Cognome</label>
-                    <input required value={lastName} onChange={(e) => setLastName(e.target.value)}
-                      className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Ragione sociale</label>
-                  <input required value={companyName} onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Email</label>
-                  <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Telefono</label>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">PEC</label>
-                <input type="email" value={pec} onChange={(e) => setPec(e.target.value)}
-                  placeholder="nome@pec.it"
-                  className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Codice Fiscale</label>
-                  <input value={fiscalCode} onChange={(e) => setFiscalCode(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 light:text-slate-600 uppercase block">Partita IVA</label>
-                  <input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)}
-                    className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500" />
-                </div>
-              </div>
-
-              {createError && (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">{createError}</div>
-              )}
-
-              <div className="flex justify-end gap-3 mt-4">
-                <button type="button" onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 text-xs font-semibold text-slate-300 light:text-slate-600 border border-white/5 light:border-slate-200 transition cursor-pointer">
-                  Annulla
-                </button>
-                <button type="submit" disabled={createLoading}
-                  className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50">
-                  {createLoading ? "Creazione..." : "Crea Cliente"}
-                </button>
-              </div>
-            </form>
+            <p className="text-xs text-slate-400 light:text-slate-500 mb-4">
+              Il cliente riceve l&apos;email per impostare la password: così potrà pagare i contratti che attivi per lui.
+            </p>
+            <NewCustomerForm
+              mode="admin"
+              agents={agentsForReassign}
+              submitLabel="Registra e attiva i contratti"
+              onCancel={() => setShowCreate(false)}
+              onCreated={async (customer, promoterAgentId) => {
+                setShowCreate(false);
+                await queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+                setWizardFor({ customer, producer: promoterAgentId });
+              }}
+            />
           </div>
         </div>
       )}

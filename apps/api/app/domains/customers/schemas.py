@@ -136,6 +136,14 @@ class CustomerDetailRead(CustomerRead):
     current_promoter_name: str | None = None
 
 
+class StaffCustomerCreate(CustomerCreate):
+    """The administration's "Nuovo cliente" (Session 67): anagrafica and
+    login together, under the promoter chosen here (none = direct customer
+    of the company)."""
+
+    promoter_agent_id: uuid.UUID | None = None
+
+
 class ReassignPromoterRequest(BaseModel):
     new_agent_id: uuid.UUID
     reason: str

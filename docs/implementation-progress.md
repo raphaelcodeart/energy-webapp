@@ -4,6 +4,98 @@ Updated at the end of each work session. This is the authoritative "what's actua
 done vs. planned" record — `architecture.md` describes the target, this file describes
 reality.
 
+## Session 68 — 2026-09-19 — Tre Marketplace (AliExpress, CJ, Shopify) con regole comuni
+
+Richiesta dell'utente: nel menu admin nomi chiari e vicini per i prodotti
+importati da AliExpress, CJ Dropshipping e un nuovo **Shopify** (stessa logica
+di CJ, tabelle proprie, "Marketplace 3" per il cliente); AliExpress diventa
+Marketplace 1; "Fai la spesa con Lial Energy" diventa il titolo dello Shop;
++5% con carta su tutti gli shop importati; niente cashback; mai 100% in
+LialCash, 30% di default; documentazione e istruzioni di installazione
+complete, modello dello schema senza dati, push.
+
+- [x] Nuovo dominio `marketplaces` (`rules.py` + `GET/PATCH /marketplaces/config`):
+  nomi dei tre Marketplace e percentuale carta in `organizations.settings`
+  (`marketplace_labels`, `marketplace_card_surcharge_percentage`, default 5),
+  costanti LialCash 30/99. Sostituisce la colonna `cj_settings.card_surcharge_percentage`
+  della Session 67 (mai andata in produzione): un'impostazione sola per tre shop.
+- [x] Numerazione scelta: AliExpress = Marketplace 1, CJ = Marketplace 2,
+  Shopify = Marketplace 3 (l'ordine del menu). La richiesta diceva anche
+  "Marketplace 1 è CJ": i nomi sono modificabili dalla card "Regole dei
+  Marketplace", nessun codice da cambiare.
+- [x] AliExpress: `imported_product_orders.card_surcharge_cents`, congelato alla
+  creazione, al cambio metodo e prima del Checkout Stripe; importo, email,
+  ordini e contabilità con il totale reale; checkout con i due prezzi.
+- [x] CJ: stesse regole dal modulo condiviso; `default_credit_percentage` 30.
+- [x] Migrazione `0049_marketplace_rules` (sostituisce `0049_cj_card_surcharge`,
+  stessa revision `d2a7b9c3e648`, mai applicata): colonne surcharge, l'unico
+  prodotto CJ al 100% riportato al 30%, vincoli `BETWEEN 0 AND 99`.
+- [x] Menu admin: **Prodotti AliExpress**, **Prodotti CJ Dropshipping**,
+  **Prodotti Shopify**, uno dopo l'altro, con la card "Regole dei Marketplace".
+- [x] Shop cliente: titolo "Fai la spesa con Lial Energy"; schede Marketplace
+  1/2/3 (solo se hanno prodotti); la vecchia scheda catalogo DROPSHIPPING si
+  chiama "Offerte Lial".
+- [x] **Shopify (Marketplace 3)**: dominio `shopify_dropshipping`, tabelle
+  `shopify_settings/products/variants/orders`, migrazione `0050_shopify_dropshipping`,
+  client Admin GraphQL (throttling con backoff), importazione con ricarico 100%
+  sul costo, sincronizzazione prodotti e ordini via Celery, checkout identico
+  (LialCash con OTP, carta +5%, bonifico con ricevuta), invio al negozio come
+  draft order completata (tag `lial-<id>`, mai doppia anche ritentando),
+  tracciamento e notifiche; ordini nella lista unica "Ordini" e in Contabilità;
+  `wallet_transactions.reference_shopify_order_id`.
+- [x] **Bug corretto (CJ e AliExpress)**: l'email di conferma crea un link
+  Stripe, il pulsante "Paga" ne crea un altro e sovrascrive l'id salvato:
+  pagando dal link dell'email l'ordine non risultava mai pagato. Ora il
+  webhook ritrova l'ordine anche dall'id nei metadata della sessione.
+- [x] `docs/database-schema.sql` rigenerato da un database costruito dalle
+  migrazioni (`scripts/dump-schema.sh dev --from-migrations`, opzione nuova):
+  75 tabelle. Confronto con il database reale: identico salvo 3 default di
+  colonna presenti nelle migrazioni ma non nel database reale
+  (`notifications.is_read`, `product_versions.contract_duration_months`,
+  `products.product_type`), innocui.
+- [x] CLAUDE.md §10 "Reinstallare tutto su un altro server", guida §14 sui
+  Marketplace, business-rules#marketplace, database-model §18, user-guide.
+- [ ] **Da valutare**: nota legale sulla maggiorazione con carta
+  (business-rules#marketplace); unificare `cj-product-modal.tsx` e
+  `shopify-product-modal.tsx` (oggi copia).
+
+## Session 67 — 2026-09-19 — Un solo percorso "Attiva contratti" per promoter e admin; Marketplace 1 +5% con carta
+
+Richiesta dell'utente: la parte promoter ("Miei Clienti", sia per un cliente
+nuovo sia per uno già iscritto) e quella admin/superadmin allineate al wizard
+del cliente, chiare e semplici; la parte cliente non si tocca. Prodotti CJ
+("Marketplace 1"): +5% se si paga con carta, il bonifico istantaneo costa meno.
+
+- [x] **Bug trovato**: il "Nuovo Cliente" dell'admin creava solo l'anagrafica,
+  senza account (12 clienti su 33 in produzione): una pratica aperta per loro
+  non poteva essere pagata. Nuovi `POST /customers/with-account` (anagrafica +
+  accesso + email "imposta la password", sotto il promoter scelto o nessuno) e
+  `POST /customers/{id}/account` (accesso per un cliente che non l'ha), solo
+  staff (`customers.update`: i promoter hanno `customers.create`).
+  `network/service.py`: la registrazione del promoter e quella dello staff
+  condividono lo stesso codice, ora atomico (`create_customer(commit=False)`).
+- [x] Schermata unica `PraticheForCustomersPanel` per promoter ("Miei Clienti")
+  e admin ("Nuovo Contratto"): percorso 1-5 visibile, due ingressi **Nuovo
+  cliente** / **Cliente già registrato**, poi lo stesso wizard del cliente.
+  Form condiviso `new-customer-form.tsx`. La voce promoter separata "Attiva
+  Contratti" (Session 66) è confluita in "Miei Clienti" (`?tab=pratiche` porta lì).
+- [x] Admin: "Nuovo Contratto" mostra le pratiche aperte dall'amministrazione
+  (`GET /contract-requests?created_by_role=ADMIN`, bozze riprendibili); il
+  modulo a contratto singolo è in fondo, "Casi particolari". "Anagrafiche
+  Clienti": "+ Contratti" su ogni riga, "Crea accesso" e badge "Senza accesso"
+  per chi non ha login, "Nuovo Cliente" con il form condiviso.
+- [x] Badge "Aperta dall'amministrazione"; il cliente legge "Preparata da Lial Energy".
+- [x] CJ: `cj_settings.card_surcharge_percentage` (5, 0 = spento, in Impostazioni
+  dello Shop Lial Partner) e `cj_orders.card_surcharge_cents` congelato dal
+  server sul residuo dopo LialCash, arrotondato al centesimo (half up);
+  ricalcolato al cambio metodo e prima di ogni checkout Stripe. Migrazione
+  `0049_cj_card_surcharge`. Prezzi mostrati = bonifico, riga "Con carta +5%".
+  Email, ordini cliente/admin, contabilità e margine usano il totale reale.
+- [ ] **Nota legale da valutare**: in Italia/UE la maggiorazione sui pagamenti
+  con carta dei consumatori è vietata (PSD2 art. 62(4), D.Lgs. 11/2010 art. 3);
+  uno sconto per il bonifico è ammesso. Importi come richiesto.
+- [x] Test: 413 verdi.
+
 ## Session 66 — 2026-09-18 — Attivazione contratti: stessa pratica per promoter e amministratore
 
 Richiesta dell'utente: il promoter deve poter attivare contratti per i suoi

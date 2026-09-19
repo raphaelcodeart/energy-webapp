@@ -15,6 +15,7 @@ from app.domains.customers.schemas import (
     CustomerRead,
     CustomerUpdate,
     ReassignPromoterRequest,
+    StaffCustomerCreate,
     SupplyPointCreate,
     SupplyPointRead,
     SupplyPointUpdate,
@@ -100,6 +101,54 @@ async def create_customer(
 
     row = await customer_service.get_customer_detail(
         db, organization_id=current_user.organization_id, customer_id=customer.id
+    )
+    return CustomerRead(**row)
+
+
+@router.post("/with-account", response_model=CustomerRead, status_code=status.HTTP_201_CREATED)
+async def create_customer_with_account(
+    payload: StaffCustomerCreate,
+    current_user: CurrentUser = Depends(require_permission("customers.update")),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    """Staff only (customers.update -- promoters hold customers.create but
+    must never pick someone else's attribution): anagrafica + login + the
+    set-your-password invite, under the chosen promoter. What "Miei Clienti"
+    does for a promoter, so a pratica opened for this customer can be paid."""
+    from app.domains.network import service as network_service
+
+    try:
+        customer = await network_service.create_customer_with_account_by_staff(
+            db, organization_id=current_user.organization_id, promoter_agent_id=payload.promoter_agent_id,
+            payload=payload, actor_user_id=current_user.user_id,
+        )
+    except network_service.RecruitedCustomerError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    row = await customer_service.get_customer_detail(
+        db, organization_id=current_user.organization_id, customer_id=customer.id
+    )
+    return CustomerRead(**row)
+
+
+@router.post("/{customer_id}/account", response_model=CustomerRead)
+async def create_customer_login(
+    customer_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_permission("customers.update")),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerRead:
+    """Gives a login to a customer registered as an anagrafica only, and
+    emails them the invite to set their password."""
+    from app.domains.network import service as network_service
+
+    try:
+        await network_service.create_login_for_existing_customer(
+            db, organization_id=current_user.organization_id, customer_id=customer_id,
+            actor_user_id=current_user.user_id,
+        )
+    except network_service.RecruitedCustomerError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    row = await customer_service.get_customer_detail(
+        db, organization_id=current_user.organization_id, customer_id=customer_id
     )
     return CustomerRead(**row)
 

@@ -177,8 +177,16 @@ carta (Stripe). Il risultato si vede nella nuova voce **I miei Ordini**: stato
 caricabile per un ordine a bonifico, possibilità di cambiare metodo di
 pagamento o pagare subito con carta un ordine già creato a bonifico.
 
-**Marketplace 1** — nello Shop trovi la categoria **Marketplace 1** con
-prodotti con varianti e consegna a domicilio (sulla card vedi i
+**Fai la spesa con Lial Energy** (Session 68) — lo Shop del cliente. Oltre a
+"Prodotti Partner" e "Offerte Lial" ci sono fino a tre **Marketplace**
+(Marketplace 1, 2 e 3: compaiono solo quando hanno prodotti). Regole uguali
+per tutti e tre: il prezzo grande è quello con **bonifico istantaneo**;
+pagando con **carta di credito** il prezzo aumenta del 5% (è scritto sulla
+card, nel prodotto e al pagamento, con il totale di ciascuna scelta). Si può
+usare il LialCash solo per una parte del prezzo (la percentuale è sulla card,
+mai il 100%), e questi prodotti non danno cashback.
+
+**Marketplace 2** (e allo stesso modo il 3) — prodotti con varianti e consegna a domicilio (sulla card vedi i
 giorni di consegna e "+ spedizione"). Apri un prodotto per vedere le foto,
 scegliere la variante (colore, misura...) e la quantità, e i tempi di
 consegna. Con **Acquista** inserisci l'indirizzo (già compilato con quello del
@@ -469,7 +477,14 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   caso, per non poter mai accreditare cashback senza un pagamento reale
   confermato da Stripe). **Nuovo Ordine** crea un ordine per conto di un
   cliente.
-- **Shop Lial Partner** — il negozio collegato a CJ Dropshipping.
+- **Prodotti AliExpress / Prodotti CJ Dropshipping / Prodotti Shopify**
+  (Session 68) — le tre voci del menu, una sotto l'altra, dei tre Marketplace
+  (per i clienti "Marketplace 1/2/3"). In cima a ciascuna la card **Regole dei
+  Marketplace**: il nome di ogni Marketplace nello Shop del cliente e
+  l'**aumento con carta** (5%, uno solo per tutti e tre). Ogni prodotto nuovo
+  entra con il **30%** pagabile in LialCash; lo puoi alzare da Modifica fino al
+  99%, mai al 100%.
+- **Prodotti CJ Dropshipping** (prima "Shop Lial Partner") — il negozio collegato a CJ Dropshipping.
   **Impostazioni**: incolla la chiave API (la trovi su cjdropshipping.com → My
   CJ → Authorization → API), premi **Verifica connessione e saldo**, poi
   scegli cambio USD/EUR, ricarico, arrotondamento, chi paga la spedizione e i
@@ -477,8 +492,8 @@ Per ruoli di staff (Admin, Back Office, Accounting, Sales Manager, Super Admin
   aggiorna mentre scrivi). **Modalità test (sandbox)**: gli ordini inviati a CJ
   sono finti; spegnila solo quando vuoi spedire davvero. **Invia a CJ in
   automatico**: l'ordine parte appena il cliente ha pagato. **Shop visibile ai
-  clienti**: i prodotti importati compaiono ai clienti dentro "Fai la spesa con
-  Lial" (senza indicare da dove arrivano). Se lo accendi con la sandbox ancora
+  clienti**: i prodotti importati compaiono ai clienti come "Marketplace 2"
+  (senza indicare da dove arrivano). Se lo accendi con la sandbox ancora
   attiva compare un avviso: i clienti pagherebbero ordini che CJ non spedisce. **Catalogo CJ**: cerca (in
   inglese), filtra per categoria e prezzo, vedi già il prezzo a cui lo
   venderesti; aprendo un prodotto vedi varianti, stock, da dove parte e la

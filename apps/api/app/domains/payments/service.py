@@ -20,6 +20,8 @@ from app.domains.orders import service as orders_service
 from app.domains.orders.models import Order
 from app.domains.organizations import service as organizations_service
 from app.domains.payments.models import StripeWebhookEvent
+from app.domains.shopify_dropshipping import service as shopify_service
+from app.domains.shopify_dropshipping.models import ShopifyOrder
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +157,17 @@ async def create_checkout_session_for_imported_order(
     if not secret_key:
         raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
 
+    # Session 68: paying by card adds the Marketplace card surcharge, frozen
+    # on the order right here (never taken from the browser).
+    await imported_products_service.prepare_card_payment(db, order=order)
     residual_cents = order.amount_cents - order.credit_applied_cents
+    surcharge_cents = order.card_surcharge_cents or 0
+    product_data: dict = {"name": f"Ordine {str(order.id)[:8].upper()} — Lial Energy"}
+    if surcharge_cents:
+        product_data["description"] = (
+            f"Prodotti {residual_cents / 100:.2f} EUR + aumento per pagamento con carta "
+            f"{surcharge_cents / 100:.2f} EUR (con bonifico istantaneo paghi {residual_cents / 100:.2f} EUR)"
+        )
     session = stripe.checkout.Session.create(
         api_key=secret_key,
         mode="payment",
@@ -163,8 +175,8 @@ async def create_checkout_session_for_imported_order(
             {
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": f"Ordine {order.id}"},
-                    "unit_amount": residual_cents,
+                    "product_data": product_data,
+                    "unit_amount": residual_cents + surcharge_cents,
                 },
                 "quantity": 1,
             }
@@ -194,7 +206,17 @@ async def create_checkout_session_for_cj_order(
     if not secret_key:
         raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
 
+    # Session 67: paying by card adds the organization's card surcharge,
+    # frozen on the order right here (never taken from the browser).
+    await cj_service.prepare_card_payment(db, order=order)
     residual_cents = order.amount_cents - order.credit_applied_cents
+    surcharge_cents = order.card_surcharge_cents or 0
+    product_data: dict = {"name": f"Ordine {str(order.id)[:8].upper()} — Lial Energy"}
+    if surcharge_cents:
+        product_data["description"] = (
+            f"Prodotti {residual_cents / 100:.2f} EUR + aumento per pagamento con carta "
+            f"{surcharge_cents / 100:.2f} EUR (con bonifico istantaneo paghi {residual_cents / 100:.2f} EUR)"
+        )
     session = stripe.checkout.Session.create(
         api_key=secret_key,
         mode="payment",
@@ -202,8 +224,8 @@ async def create_checkout_session_for_cj_order(
             {
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": f"Ordine {str(order.id)[:8].upper()} — Lial Energy"},
-                    "unit_amount": residual_cents,
+                    "product_data": product_data,
+                    "unit_amount": residual_cents + surcharge_cents,
                 },
                 "quantity": 1,
             }
@@ -214,6 +236,54 @@ async def create_checkout_session_for_cj_order(
         cancel_url=cancel_url,
     )
     await cj_service.attach_stripe_checkout_session(db, order=order, session_id=session.id)
+    if not session.url:
+        raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
+    return session.url
+
+
+async def create_checkout_session_for_shopify_order(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    order: ShopifyOrder,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Same as create_checkout_session_for_cj_order, for a Marketplace 3
+    (Shopify) order: metadata.kind="shopify_order". The card surcharge is
+    frozen on the order right here, never taken from the browser."""
+    secret_key = await organizations_service.get_stripe_secret_key(db, organization_id=organization_id)
+    if not secret_key:
+        raise StripeNotConfiguredError("Stripe non è configurato per questa organizzazione.")
+
+    await shopify_service.prepare_card_payment(db, order=order)
+    residual_cents = order.amount_cents - order.credit_applied_cents
+    surcharge_cents = order.card_surcharge_cents or 0
+    product_data: dict = {"name": f"Ordine {str(order.id)[:8].upper()} — Lial Energy"}
+    if surcharge_cents:
+        product_data["description"] = (
+            f"Prodotti {residual_cents / 100:.2f} EUR + aumento per pagamento con carta "
+            f"{surcharge_cents / 100:.2f} EUR (con bonifico istantaneo paghi {residual_cents / 100:.2f} EUR)"
+        )
+    session = stripe.checkout.Session.create(
+        api_key=secret_key,
+        mode="payment",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": product_data,
+                    "unit_amount": residual_cents + surcharge_cents,
+                },
+                "quantity": 1,
+            }
+        ],
+        client_reference_id=str(order.id),
+        metadata={"kind": "shopify_order", "shopify_order_id": str(order.id), "organization_id": str(organization_id)},
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    await shopify_service.attach_stripe_checkout_session(db, order=order, session_id=session.id)
     if not session.url:
         raise StripeNotConfiguredError("Stripe non ha restituito un URL di checkout valido.")
     return session.url
@@ -875,13 +945,20 @@ async def handle_webhook_event(
         elif kind == "imported_order":
             try:
                 await imported_products_service.mark_paid_via_stripe(
-                    db, organization_id=organization_id, stripe_checkout_session_id=session["id"]
+                    db, organization_id=organization_id, stripe_checkout_session_id=session["id"],
+                    order_id=getattr(getattr(session, "metadata", None), "imported_order_id", None),
                 )
             except imported_products_service.ImportedProductsError:
                 pass
         elif kind == "cj_order":
             await cj_service.mark_paid_via_stripe(
-                db, organization_id=organization_id, stripe_checkout_session_id=session["id"]
+                db, organization_id=organization_id, stripe_checkout_session_id=session["id"],
+                order_id=getattr(getattr(session, "metadata", None), "cj_order_id", None),
+            )
+        elif kind == "shopify_order":
+            await shopify_service.mark_paid_via_stripe(
+                db, organization_id=organization_id, stripe_checkout_session_id=session["id"],
+                order_id=getattr(getattr(session, "metadata", None), "shopify_order_id", None),
             )
         elif kind == "contract_request":
             outcome = await _handle_request_checkout(

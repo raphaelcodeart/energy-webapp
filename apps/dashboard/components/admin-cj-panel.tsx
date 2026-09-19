@@ -98,7 +98,7 @@ export function AdminCjPanel() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-white light:text-slate-900">Shop Lial Partner</h2>
+          <h2 className="text-xl font-bold text-white light:text-slate-900">Prodotti CJ Dropshipping</h2>
           <p className="text-xs text-slate-400 light:text-slate-500 mt-0.5">
             Prodotti CJ Dropshipping venduti nello Shop: importa, prezza, spedisci e segui gli ordini.
           </p>
@@ -242,7 +242,7 @@ function SettingsForm({ settings }: { settings: CjSettingsRead }) {
 
         <div className="pt-4 border-t border-white/5 light:border-slate-200 space-y-3">
           <Switch checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })}
-            title="Shop visibile ai clienti" hint="Aggiunge la scheda “Shop Lial Partner” nello Shop del cliente." />
+            title="Shop visibile ai clienti" hint="Aggiunge la scheda del Marketplace nello Shop del cliente." />
           <Switch checked={form.sandbox} onChange={(v) => setForm({ ...form, sandbox: v })}
             title="Modalità test (sandbox)" hint="Gli ordini inviati a CJ sono di prova: nessuna spedizione reale, nessun addebito. Spegnila quando sei pronto a vendere." />
           <Switch checked={form.auto_forward} onChange={(v) => setForm({ ...form, auto_forward: v })}
@@ -292,14 +292,16 @@ function SettingsForm({ settings }: { settings: CjSettingsRead }) {
             </select>
           </div>
           <div>
-            <span className={label}>LialCash usabili (default %)</span>
+            <span className={label}>LialCash usabili sui nuovi prodotti (%)</span>
             <input className={input} inputMode="numeric" value={form.default_credit_percentage}
               onChange={(e) => setForm({ ...form, default_credit_percentage: e.target.value as unknown as number })} />
+            <span className="block text-[10px] text-slate-500 mt-1">30% consigliato, massimo 99%: mai tutto in LialCash.</span>
           </div>
         </div>
         <div className="p-3 rounded-xl bg-orange-500/5 border border-orange-500/20 text-xs text-slate-300 light:text-slate-600">
           Esempio: un prodotto che su CJ costa <strong>$10</strong> sarà in vendita a <strong className="text-orange-400">{euro(sampleCents)}</strong>
           {form.shipping_mode === "CUSTOMER_PAYS" ? " + spedizione." : " (più la stima di spedizione, inclusa)."}
+          {" "}È il prezzo con bonifico istantaneo; con carta si aggiunge l&apos;aumento delle Regole dei Marketplace.
           <p className="text-[11px] text-slate-500 mt-1">L&apos;arrotondamento è sempre per eccesso: il margine non scende mai sotto il ricarico impostato.</p>
         </div>
         <ErrorBox message={error} />
@@ -461,7 +463,7 @@ function ImportModal({ pid, settings, onClose, onImported }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 light:bg-slate-900/40 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto glass-card rounded-2xl p-6 border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-white light:text-slate-900">Importa nello Shop Lial Partner</h3>
+          <h3 className="text-lg font-bold text-white light:text-slate-900">Importa da CJ Dropshipping</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 cursor-pointer" aria-label="Chiudi">✕</button>
         </div>
         <ErrorBox message={error ? (error as Error).message : null} />
@@ -487,7 +489,7 @@ function ImportForm({ pid, preview, settings, onImported }: {
 }) {
   const [name, setName] = useState(preview.name_en.slice(0, 255));
   const [description, setDescription] = useState(preview.description_text);
-  const [creditPct, setCreditPct] = useState(String(settings?.default_credit_percentage ?? 100));
+  const [creditPct, setCreditPct] = useState(String(settings?.default_credit_percentage ?? 30));
   const generalMarkup = settings?.markup_percentage ?? 100;
   const [markup, setMarkup] = useState(String(generalMarkup));
   const markupValue = markup.trim() === "" || Number.isNaN(Number(markup)) ? generalMarkup : Number(markup);
@@ -1007,7 +1009,7 @@ function OrdersTab() {
                       {customerPaid && <Pill badge={CJ_PAYMENT[o.cj_payment_status ?? ""]} />}
                     </div>
                     <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
-                      {o.product_name} · {o.variant_label} × {o.quantity} · cliente {euro(o.amount_cents)}
+                      {o.product_name} · {o.variant_label} × {o.quantity} · cliente {euro(o.amount_cents + o.card_surcharge_cents)}
                       {o.cj_cost_usd !== undefined && (
                         <> · CJ ${o.cj_cost_usd.toFixed(2)}{o.cj_cost_is_actual ? "" : " (stima)"}</>
                       )}
@@ -1064,7 +1066,10 @@ function OrdersTab() {
                     <div className="space-y-0.5">
                       <p className="font-semibold text-slate-300 light:text-slate-700">Cliente</p>
                       <p>{o.quantity} × {euro(o.unit_price_cents)} + spedizione {euro(o.shipping_cents)} = {euro(o.amount_cents)}</p>
-                      <p>LialCash {euro(o.credit_applied_cents)} · in euro {euro(o.residual_amount_cents)} ({o.payment_method === "CARD" ? "carta" : "bonifico"})</p>
+                      <p>
+                        LialCash {euro(o.credit_applied_cents)} · in euro {euro(o.amount_due_cents)} ({o.payment_method === "CARD" ? "carta" : "bonifico"})
+                        {o.card_surcharge_cents > 0 && <> · di cui aumento carta {euro(o.card_surcharge_cents)}</>}
+                      </p>
                       <p>Pagato {formatDate(o.paid_at)}</p>
                       <p className="font-semibold text-slate-300 light:text-slate-700 pt-1">Costo CJ</p>
                       {o.cj_cost_is_actual ? (

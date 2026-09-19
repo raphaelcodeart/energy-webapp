@@ -1213,3 +1213,31 @@ promoter's link puts them in that promoter's tree; a plain customer's link
 puts them under that customer's own promoter. There is exactly one
 `CustomerAttribution` per registered customer either way, and these three
 tables could be dropped without changing a single euro of commission.
+
+
+## 18. Marketplace: regole comuni e Shopify (added Sessions 67-68)
+
+- `organizations.settings` (JSONB): `marketplace_labels` (`{aliexpress, cj,
+  shopify}` → nome nello Shop, default "Marketplace 1/2/3"),
+  `marketplace_card_surcharge_percentage` (default 5). Letti solo da
+  `domains/marketplaces/rules.py`.
+- `imported_product_orders.card_surcharge_cents`, `cj_orders.card_surcharge_cents`,
+  `shopify_orders.card_surcharge_cents` (BIGINT, default 0): aumento carta
+  congelato sull'ordine; pagato in euro = `amount_cents - credit_applied_cents + card_surcharge_cents`.
+- CHECK `credit_discount_percentage BETWEEN 0 AND 99` su `imported_products`,
+  `cj_products`, `shopify_products`; `default_credit_percentage BETWEEN 0 AND 99`
+  su `cj_settings`, `shopify_settings` (mai 100% LialCash).
+- **Shopify** (migrazione `0050_shopify_dropshipping`), stesso schema di CJ:
+  - `shopify_settings` (una riga per organizzazione): dominio, token Admin API
+    (mai restituito per intero), versione API, `enabled`, cambio, base prezzo
+    (`COST`/`PRICE`), ricarico, arrotondamento, spedizione fissa o inclusa,
+    LialCash di default, invio automatico.
+  - `shopify_products` / `shopify_variants`: prodotto importato (GID Shopify,
+    testi, foto, stato, % LialCash, ricarico proprio) e varianti (GID, SKU,
+    costo e prezzo della fonte, prezzo nostro, override, stock).
+  - `shopify_orders`: come `cj_orders` — importi, LialCash, surcharge, metodo,
+    Stripe, ricevuta bonifico, indirizzo, stato di invio (`fulfillment_status`),
+    `shopify_draft_order_id` / `shopify_order_id` per l'invio idempotente,
+    tracciamento, tentativi ed errori.
+  - `wallet_transactions.reference_shopify_order_id`: il LialCash speso su un
+    ordine Shopify, come `reference_cj_order_id`.

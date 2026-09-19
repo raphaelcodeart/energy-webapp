@@ -170,10 +170,16 @@ async def _user(db, organization_id, role_code="CUSTOMER"):
     return user
 
 
-async def _shop(db, organization_id, admin, **settings_updates):
+async def _shop(db, organization_id, admin, card_surcharge_percentage=None, credit_percentage=50, **settings_updates):
+    from app.domains.marketplaces import rules
+
     await organizations_service.update_settings(
         db, organization_id=organization_id, payload=OrganizationSettingsUpdate(bank_iban="IT66W0883330410000000015702")
     )
+    if card_surcharge_percentage is not None:
+        await rules.update_config(
+            db, organization_id=organization_id, labels=None, card_surcharge_percentage=card_surcharge_percentage
+        )
     row = await cj_service.get_settings_row(db, organization_id=organization_id)
     await cj_service.update_settings(
         db, row=row, actor_user_id=admin.id,
@@ -184,7 +190,7 @@ async def _shop(db, organization_id, admin, **settings_updates):
     )
     product = await cj_service.import_product(
         db, row=row, actor_user_id=admin.id, pid="P1", name="Auricolari wireless", description=None,
-        credit_discount_percentage=None, markup_percentage=None, vids=None, activate=True,
+        credit_discount_percentage=credit_percentage, markup_percentage=None, vids=None, activate=True,
     )
     variants = (await db.execute(select(CjVariant).where(CjVariant.product_id == product.id))).scalars().all()
     return row, product, {v.cj_vid: v for v in variants}
@@ -307,7 +313,7 @@ async def test_checkout_with_lialcash_and_shipping_like_every_shop(db, organizat
     assert quote["items_cents"] == 2580
     assert quote["shipping_cents"] == 719
     assert quote["amount_cents"] == 3299
-    assert quote["max_creditable_cents"] == 3299  # 100% by default
+    assert quote["max_creditable_cents"] == 1650  # 50% on this product (never 100%)
 
     with pytest.raises(cj_service.CjValidationError):  # out of stock variant
         await cj_service.get_quote(
@@ -353,7 +359,7 @@ async def test_checkout_with_lialcash_and_shipping_like_every_shop(db, organizat
     detail = await accounting_details._order_detail(
         db, organization_id=organization_id, entity_id=order.id, owner_user_id=customer.id
     )
-    assert detail["subtitle"].endswith("Marketplace 1")
+    assert detail["subtitle"].endswith("Marketplace 2")
     assert "CJ" not in detail["subtitle"] and "Partner" not in detail["subtitle"]
     assert not any(f and f["label"] == "Ordine CJ" for f in detail["facts"])
 
@@ -662,3 +668,142 @@ def test_stock_comes_from_the_inventory_endpoint_and_picks_the_nearest_warehouse
     assert cj_service._choose_origin(both_in_de, None) == "DE"
     assert cj_service._choose_origin(cj_service._stock_by_variant(detail, None), None) == "CN"
 
+
+
+# --- Session 67: paying by card costs 5% more ----------------------------------------------------------
+
+
+def test_card_surcharge_is_the_percentage_of_the_residual_rounded_half_up():
+    assert pricing.card_surcharge_cents(residual_cents=2000, percentage=5) == 100
+    assert pricing.card_surcharge_cents(residual_cents=250, percentage=5) == 13  # 12.5 -> 13
+    assert pricing.card_surcharge_cents(residual_cents=249, percentage=5) == 12  # 12.45 -> 12
+    assert pricing.card_surcharge_cents(residual_cents=0, percentage=5) == 0
+    assert pricing.card_surcharge_cents(residual_cents=2000, percentage=0) == 0
+
+
+async def _card_ready(db, organization_id, monkeypatch):
+    import stripe
+
+    from app.domains.organizations.models import Organization
+
+    org = await db.get(Organization, organization_id)
+    org.settings = {**(org.settings or {}), "stripe_secret_key": "sk_test_fake", "stripe_publishable_key": "pk_test_fake"}
+    await db.commit()
+    created = []
+
+    class _Session:
+        def __init__(self, n):
+            self.id = f"cs_cj_{n}_{uuid.uuid4().hex[:6]}"
+            self.url = f"https://stripe.example/{self.id}"
+
+    monkeypatch.setattr(
+        stripe.checkout.Session, "create", staticmethod(lambda **p: created.append(p) or _Session(len(created)))
+    )
+    return created
+
+
+@pytest.mark.asyncio
+async def test_card_costs_five_percent_more_on_the_residual_only(db, organization_id, fake_cj, monkeypatch):
+    from app.domains.payments import service as payments_service
+
+    created = await _card_ready(db, organization_id, monkeypatch)
+    admin = await _user(db, organization_id, "ADMIN")
+    customer = await _user(db, organization_id)
+    _row, _product, variants = await _shop(db, organization_id, admin)
+    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
+    await wallet_service.credit_wallet(
+        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=1299, type_="ADMIN_CREDIT",
+        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    )
+
+    quote = await cj_service.get_quote(
+        db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id, quantity=2
+    )
+    assert quote["amount_cents"] == 3299
+    assert quote["card_surcharge_percentage"] == 5
+    assert quote["card_amount_cents"] == 3299 + 165  # 164.95 -> 165
+
+    await _otp(db, customer.id)
+    order = await cj_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id,
+        quantity=2, address=ADDRESS, credit_applied_cents=1299, payment_method="CARD",
+        actor_user_id=customer.id, otp_code=OTP, note=None,
+    )
+    # 5% of the 20.00 still to pay, not of the whole 32.99: LialCash is never surcharged.
+    assert order.card_surcharge_cents == 100
+    assert cj_service.amount_due_cents(order) == 2100
+    # The confirmation email's Stripe link already charges the surcharge.
+    assert created[-1]["line_items"][0]["price_data"]["unit_amount"] == 2100
+    assert "carta" in created[-1]["line_items"][0]["price_data"]["product_data"]["description"]
+
+    read = await cj_service.order_read_dict(db, order, admin=False)
+    assert read["card_surcharge_cents"] == 100 and read["amount_due_cents"] == 2100
+
+    # Switching to bank transfer drops it; back to card puts it back.
+    await cj_service.change_payment_method(
+        db, organization_id=organization_id, order=order, new_payment_method="BANK_TRANSFER"
+    )
+    assert order.card_surcharge_cents == 0 and cj_service.amount_due_cents(order) == 2000
+    url = await payments_service.create_checkout_session_for_cj_order(
+        db, organization_id=organization_id, order=order, success_url="https://x/ok", cancel_url="https://x/ko",
+    )
+    assert url.startswith("https://stripe.example/")
+    await db.refresh(order)
+    assert order.payment_method == "CARD" and order.card_surcharge_cents == 100
+    assert created[-1]["line_items"][0]["price_data"]["unit_amount"] == 2100
+
+    await cj_service.mark_paid_via_stripe(
+        db, organization_id=organization_id, stripe_checkout_session_id=order.stripe_checkout_session_id
+    )
+    movements = await accounting_service.list_my_movements(db, organization_id=organization_id, user_id=customer.id)
+    euro_rows = [m for m in movements if m["kind"] == "ORDER_PAYMENT" and m["order_id"] == order.id]
+    assert euro_rows and euro_rows[0]["amount_cents"] == 2100
+
+
+@pytest.mark.asyncio
+async def test_bank_transfer_has_no_surcharge_and_zero_percent_switches_it_off(db, organization_id, fake_cj, monkeypatch):
+    await _card_ready(db, organization_id, monkeypatch)
+    admin = await _user(db, organization_id, "ADMIN")
+    customer = await _user(db, organization_id)
+    _row, _product, variants = await _shop(db, organization_id, admin, card_surcharge_percentage=0)
+    order = await cj_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id,
+        quantity=1, address=ADDRESS, credit_applied_cents=0, payment_method="CARD",
+        actor_user_id=customer.id, otp_code=None, note=None,
+    )
+    assert order.card_surcharge_cents == 0
+
+    from app.domains.marketplaces import rules
+
+    await rules.update_config(db, organization_id=organization_id, labels=None, card_surcharge_percentage=5)
+    bank = await cj_service.create_order(
+        db, organization_id=organization_id, customer_user_id=customer.id, variant_id=variants["V1"].id,
+        quantity=1, address=ADDRESS, credit_applied_cents=0, payment_method="BANK_TRANSFER",
+        actor_user_id=customer.id, otp_code=None, note=None,
+    )
+    assert bank.card_surcharge_cents == 0
+    assert cj_service.amount_due_cents(bank) == bank.amount_cents
+
+
+@pytest.mark.asyncio
+async def test_a_new_product_starts_at_30_percent_lialcash_and_never_100(db, organization_id, fake_cj):
+    """Session 68: Marketplace products are never bought entirely with
+    LialCash; they enter at 30%, the administrator may raise it below 100."""
+    admin = await _user(db, organization_id, "ADMIN")
+    row = await cj_service.get_settings_row(db, organization_id=organization_id)
+    await cj_service.update_settings(
+        db, row=row, actor_user_id=admin.id, updates={"api_key": "CJ123@api@secret-abcd", "auto_forward": False}
+    )
+    product = await cj_service.import_product(
+        db, row=row, actor_user_id=admin.id, pid="P1", name="Auricolari", description=None,
+        credit_discount_percentage=None, markup_percentage=None, vids=None, activate=True,
+    )
+    assert product.credit_discount_percentage == 30
+    with pytest.raises(cj_service.CjValidationError):
+        await cj_service.update_product(
+            db, row=row, product=product, updates={"credit_discount_percentage": 100}, actor_user_id=admin.id
+        )
+    product = await cj_service.update_product(
+        db, row=row, product=product, updates={"credit_discount_percentage": 80}, actor_user_id=admin.id
+    )
+    assert product.credit_discount_percentage == 80

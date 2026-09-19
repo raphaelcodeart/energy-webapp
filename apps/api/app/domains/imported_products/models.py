@@ -54,6 +54,10 @@ class ImportedProduct(UUIDPKMixin, TimestampMixin, Base):
     mint new cashback, so there is no cashback_enabled column here at all."""
 
     __tablename__ = "imported_products"
+    # Session 68: never 100% LialCash on a Marketplace product.
+    __table_args__ = (
+        CheckConstraint("credit_discount_percentage BETWEEN 0 AND 99", name="credit_below_100"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
@@ -71,7 +75,8 @@ class ImportedProduct(UUIDPKMixin, TimestampMixin, Base):
     # catalog/models.py::ProductVersion.credit_discount_percentage -- how
     # much of price_cents a customer may pay from wallet LialCash instead of
     # bank transfer/card.
-    credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=0)
+    #: Session 68: 30 for a new product, never 100 (marketplaces/rules.py).
+    credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE")  # ACTIVE / INACTIVE
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
@@ -110,6 +115,10 @@ class ImportedProductOrder(UUIDPKMixin, TimestampMixin, Base):
 
     amount_cents: Mapped[int] = mapped_column(BigInteger)
     credit_applied_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    #: Session 68: extra for paying the residual by card, frozen by the server
+    #: whenever the method is (re)chosen; 0 for a bank transfer. See
+    #: marketplaces/rules.py.
+    card_surcharge_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     credit_debit_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("wallet_transactions.id"), nullable=True
     )

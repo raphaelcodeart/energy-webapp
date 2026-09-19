@@ -82,18 +82,24 @@ export function ContractRequestsList({
   customerId,
   onOpenWizard,
 }: {
-  mode: "customer" | "promoter";
+  /** "admin" (Session 67): the pratiche the administration opened, or one
+      customer's; like the promoter, everything but paying. */
+  mode: "customer" | "promoter" | "admin";
   /** Left out in promoter mode: every pratica of every customer of theirs. */
   customerId?: string;
   onOpenWizard: (target: WizardTarget) => void;
 }) {
-  const allCustomers = mode === "promoter" && !customerId;
+  const allCustomers = mode !== "customer" && !customerId;
   const path =
     mode === "customer"
       ? "/api/proxy/contract-requests/mine"
-      : allCustomers
-        ? "/api/proxy/contract-requests/for-my-customers"
-        : `/api/proxy/contract-requests/for-customer/${customerId}`;
+      : mode === "admin"
+        ? customerId
+          ? `/api/proxy/contract-requests?customer_id=${customerId}`
+          : "/api/proxy/contract-requests?created_by_role=ADMIN&limit=100"
+        : allCustomers
+          ? "/api/proxy/contract-requests/for-my-customers"
+          : `/api/proxy/contract-requests/for-customer/${customerId}`;
   const { data, error, isLoading } = useQuery({
     queryKey: ["contract-requests", mode, customerId ?? (allCustomers ? "all" : "mine")],
     queryFn: () => fetchJson<ContractRequestSummaryRead[]>(path),
@@ -111,8 +117,10 @@ export function ContractRequestsList({
         <p className="text-xs text-slate-500 mt-1">
           {mode === "customer"
             ? "Attiva il tuo primo contratto: puoi inserire uno o più punti di fornitura insieme."
-            : allCustomers
-              ? "Nessuna pratica per i tuoi clienti: aprine una con “Attiva nuovo contratto”."
+            : mode === "admin" && allCustomers
+              ? "L'amministrazione non ha ancora aperto nessuna pratica."
+              : allCustomers
+              ? "Nessuna pratica per i tuoi clienti: aprine una con “Attiva contratti”."
               : "Questo cliente non ha ancora nessuna pratica di attivazione."}
         </p>
       </div>
@@ -138,9 +146,20 @@ export function ContractRequestsList({
                       Bozza
                     </span>
                   )}
+                  {r.created_by_role === "ADMIN" && mode !== "customer" && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-violet-500/10 text-violet-400 border-violet-500/20">
+                      Aperta dall&apos;amministrazione
+                    </span>
+                  )}
                   {r.activated_by_promoter_name && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/10 text-sky-400 border-sky-500/20">
-                      {mode === "customer" ? `Preparata dal tuo promoter ${r.activated_by_promoter_name}` : `Compilata da ${r.activated_by_promoter_name}`}
+                      {mode === "customer"
+                        ? r.created_by_role === "ADMIN"
+                          ? "Preparata da Lial Energy"
+                          : `Preparata dal tuo promoter ${r.activated_by_promoter_name}`
+                        : r.created_by_role === "ADMIN"
+                          ? `Promoter: ${r.activated_by_promoter_name}`
+                          : `Compilata da ${r.activated_by_promoter_name}`}
                     </span>
                   )}
                   <span className="text-[11px] text-slate-500">
@@ -210,7 +229,9 @@ export function ContractRequestsList({
                 )}
               </div>
             </div>
-            {isOpen && <RequestPoints requestId={r.id} mode={mode} onOpenWizard={onOpenWizard} />}
+            {isOpen && (
+              <RequestPoints requestId={r.id} mode={mode === "customer" ? "customer" : "promoter"} onOpenWizard={onOpenWizard} />
+            )}
           </div>
         );
       })}

@@ -116,7 +116,7 @@ async def _raw_call(
 
 async def _fetch_tokens(db: AsyncSession, settings: CjSettings) -> str:
     if not settings.api_key:
-        raise CjNotConfiguredError("Inserisci la chiave API di CJ nelle impostazioni di Shop Lial Partner.")
+        raise CjNotConfiguredError("Inserisci la chiave API di CJ nelle impostazioni di Prodotti CJ Dropshipping.")
     now = utcnow()
     payload = None
     if settings.refresh_token and settings.refresh_token_expires_at and settings.refresh_token_expires_at > now:

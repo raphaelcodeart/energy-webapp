@@ -54,7 +54,8 @@ function referenceLink(t: WalletTransactionRead): { label: string; href: string 
   // columns internally (two different tables, see imported_products/models.py),
   // but both land the customer on the exact same unified "I miei Ordini"
   // list -- never distinguished here.
-  const orderId = t.reference_order_id ?? t.reference_imported_order_id;
+  const orderId =
+    t.reference_order_id ?? t.reference_imported_order_id ?? t.reference_cj_order_id ?? t.reference_shopify_order_id;
   if (orderId) {
     return { label: `Ordine #${shortCode(orderId)}`, href: `${basePath}?tab=orders` };
   }

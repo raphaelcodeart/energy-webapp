@@ -11,6 +11,7 @@ and Decimal -- never a float -- so the same inputs always give the same price.
 from decimal import ROUND_CEILING, Decimal
 
 from app.domains.cj_dropshipping.models import CjSettings
+from app.domains.marketplaces import rules
 
 
 def usd_to_eur_cents(amount_usd: Decimal | float | str, rate: Decimal) -> int:
@@ -56,3 +57,7 @@ def shipping_price_cents(*, shipping_usd: Decimal | float | str, settings: CjSet
 
 def margin_cents(*, price_cents: int, cost_usd: Decimal | float | str, rate: Decimal) -> int:
     return price_cents - usd_to_eur_cents(cost_usd, rate)
+
+
+# Session 68: the card surcharge is shared by every Marketplace.
+card_surcharge_cents = rules.card_surcharge_cents

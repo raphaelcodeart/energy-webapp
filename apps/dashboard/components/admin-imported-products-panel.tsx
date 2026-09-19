@@ -67,7 +67,7 @@ export function AdminImportedProductsPanel() {
   const [pImageUrl, setPImageUrl] = useState("");
   const [pExternalUrl, setPExternalUrl] = useState("");
   const [pPrice, setPPrice] = useState("");
-  const [pCreditPct, setPCreditPct] = useState("0");
+  const [pCreditPct, setPCreditPct] = useState("30");
   const [productCreateLoading, setProductCreateLoading] = useState(false);
   const [productCreateError, setProductCreateError] = useState<string | null>(null);
   const [productToggleId, setProductToggleId] = useState<string | null>(null);
@@ -124,7 +124,7 @@ export function AdminImportedProductsPanel() {
         body: JSON.stringify({
           provider_id: pProviderId, name: pName.trim(), description: pDescription.trim(),
           image_url: pImageUrl.trim() || null, external_url: pExternalUrl.trim() || null,
-          price_cents: priceCents, credit_discount_percentage: Math.max(0, Math.min(100, parseInt(pCreditPct, 10) || 0)),
+          price_cents: priceCents, credit_discount_percentage: Math.max(0, Math.min(99, parseInt(pCreditPct, 10) || 0)),
           status: "ACTIVE",
         }),
       });
@@ -159,11 +159,12 @@ export function AdminImportedProductsPanel() {
   return (
     <div className="space-y-8">
       <div>
-        <h3 className="text-lg font-semibold text-white light:text-slate-900">Acquisti LialEnergy</h3>
+        <h3 className="text-lg font-semibold text-white light:text-slate-900">Prodotti AliExpress</h3>
         <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
-          Prodotti importati da un provider esterno (AliExpress e, in futuro, altri) -- compaiono nello Shop del cliente
-          come una normale sottocategoria &ldquo;Acquisti LialEnergy&rdquo;, senza mai rivelare la fonte esterna. Il cliente può
-          pagarli in parte o interamente con i suoi LialCash, ma questi prodotti non generano mai cashback in cambio.
+          Prodotti importati da AliExpress -- compaiono nello Shop del cliente come un Marketplace (nome nelle Regole dei
+          Marketplace qui sopra), senza mai rivelare la fonte. Il cliente può pagarne una parte con i suoi LialCash (30%
+          quando il prodotto entra, mai il 100%); questi prodotti non generano mai cashback. Con carta costano di più
+          che con bonifico istantaneo.
           Gli ordini su questi prodotti si gestiscono insieme a tutti gli altri nella scheda &ldquo;Ordini&rdquo;.
         </p>
       </div>
@@ -347,7 +348,7 @@ export function AdminImportedProductsPanel() {
                 % massima pagabile in LialCash
               </label>
               <input
-                type="number" min={0} max={100} value={pCreditPct} onChange={(e) => setPCreditPct(e.target.value)}
+                type="number" min={0} max={99} value={pCreditPct} onChange={(e) => setPCreditPct(e.target.value)}
                 className="w-full rounded-xl glass-input px-3 py-2 text-sm focus:border-orange-500"
               />
             </div>

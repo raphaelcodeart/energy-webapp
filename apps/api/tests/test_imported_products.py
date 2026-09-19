@@ -16,7 +16,7 @@ from app.domains.auth import service as auth_service
 from app.domains.auth.models import OtpCode
 from app.domains.imported_products import service as imported_products_service
 from app.domains.organizations import service as organizations_service
-from app.domains.organizations.schemas import OrganizationSettingsUpdate
+from app.domains.organizations.schemas import OrganizationSettingsUpdate, PaymentSettingsUpdate
 from app.domains.rbac.models import Role, UserRole
 from app.domains.users.models import User
 from app.domains.wallets import service as wallet_service
@@ -140,27 +140,55 @@ async def test_partial_credit_debits_wallet_and_leaves_residual_awaiting_payment
 
 
 @pytest.mark.asyncio
-async def test_credit_covering_full_amount_skips_straight_to_paid(db, organization_id):
+async def test_lialcash_can_never_cover_the_whole_price(db, organization_id):
+    """Session 68: a Marketplace product is never bought 100% with LialCash."""
+    from app.domains.marketplaces import rules
+
+    admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
+    with pytest.raises(rules.CreditPercentageError):
+        await _make_imported_product(db, organization_id, admin.id, price_cents=3000, discount_pct=100)
+    _provider, product = await _make_imported_product(db, organization_id, admin.id, price_cents=3000, discount_pct=99)
+    with pytest.raises(rules.CreditPercentageError):
+        await imported_products_service.update_imported_product(
+            db, product=product, updates={"credit_discount_percentage": 100}
+        )
+    customer = await _make_user_with_role(db, organization_id)
+    quote = await imported_products_service.get_quote(
+        db, organization_id=organization_id, customer_user_id=customer.id, imported_product_id=product.id
+    )
+    assert quote["max_creditable_cents"] == 2970
+
+
+@pytest.mark.asyncio
+async def test_card_costs_five_percent_more_and_bank_transfer_does_not(db, organization_id):
     admin = await _make_user_with_role(db, organization_id, role_code="ADMIN")
     customer = await _make_user_with_role(db, organization_id)
-    _provider, product = await _make_imported_product(db, organization_id, admin.id, price_cents=3000, discount_pct=100)
-
-    wallet = await wallet_service.get_or_create_wallet(db, organization_id=organization_id, user_id=customer.id)
-    await wallet_service.credit_wallet(
-        db, organization_id=organization_id, wallet_id=wallet.id, amount_cents=3000, type_="ADMIN_CREDIT",
-        actor_user_id=admin.id, idempotency_key=str(uuid.uuid4()),
+    await organizations_service.update_settings(
+        db, organization_id=organization_id, payload=OrganizationSettingsUpdate(bank_iban="IT66W0883330410000000015702")
     )
+    await organizations_service.update_payment_settings(
+        db, organization_id=organization_id,
+        payload=PaymentSettingsUpdate(
+            stripe_publishable_key="pk_test_x", stripe_secret_key="sk_test_x", stripe_webhook_secret="whsec_x",
+        ),
+    )
+    _provider, product = await _make_imported_product(db, organization_id, admin.id, price_cents=3000, discount_pct=30)
+    quote = await imported_products_service.get_quote(
+        db, organization_id=organization_id, customer_user_id=customer.id, imported_product_id=product.id
+    )
+    assert quote["card_surcharge_percentage"] == 5 and quote["card_amount_cents"] == 3150
 
-    await _seed_credit_spend_otp(db, customer.id)
     order = await imported_products_service.create_order(
         db, organization_id=organization_id, customer_user_id=customer.id, imported_product_id=product.id,
-        credit_applied_cents=3000, actor_user_id=customer.id, otp_code=VALID_OTP_CODE,
+        credit_applied_cents=0, payment_method="BANK_TRANSFER", actor_user_id=customer.id,
     )
-    assert order.status == "PAID"
-    assert order.paid_at is not None
-
-    wallet_after = await wallet_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer.id)
-    assert wallet_after.balance_cents == 0
+    assert order.card_surcharge_cents == 0 and imported_products_service.amount_due_cents(order) == 3000
+    order = await imported_products_service.change_payment_method(
+        db, organization_id=organization_id, order=order, new_payment_method="CARD"
+    )
+    assert order.card_surcharge_cents == 150 and imported_products_service.amount_due_cents(order) == 3150
+    read = await imported_products_service.to_read_dict(db, order)
+    assert read["amount_due_cents"] == 3150
 
 
 @pytest.mark.asyncio

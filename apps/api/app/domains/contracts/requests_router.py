@@ -223,11 +223,16 @@ async def list_requests(
     db: AsyncSession = Depends(get_db),
     status_filter: str | None = None,
     customer_id: uuid.UUID | None = None,
+    created_by_role: str | None = None,
     limit: int = 500,
 ) -> list[ContractRequestSummaryRead]:
     stmt = select(ContractRequest).where(ContractRequest.organization_id == current_user.organization_id)
     if status_filter:
         stmt = stmt.where(ContractRequest.status == status_filter)
+    if created_by_role:
+        # "Nuovo Contratto" lists the pratiche the administration opened
+        # (Session 67); cancelled drafts are of no use there.
+        stmt = stmt.where(ContractRequest.created_by_role == created_by_role, ContractRequest.status != "CANCELLED")
     if customer_id:
         stmt = stmt.where(ContractRequest.customer_id == customer_id)
     rows = (await db.execute(stmt.order_by(ContractRequest.created_at.desc()).limit(min(limit, 2000)))).scalars()

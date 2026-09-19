@@ -21,6 +21,8 @@ import { AdminFriendReferralClaimsPanel } from "@/components/admin-friend-referr
 import { AdminInvoiceRedemptionsPanel } from "@/components/admin-invoice-redemptions-panel";
 import { AdminOrdersPanel } from "@/components/admin-orders-panel";
 import { AdminCjPanel } from "@/components/admin-cj-panel";
+import { AdminShopifyPanel } from "@/components/admin-shopify-panel";
+import { MarketplaceRulesCard } from "@/components/marketplace-rules-card";
 import { AdminImportedProductsPanel } from "@/components/admin-imported-products-panel";
 import { AdminAccountingPanel } from "@/components/admin-accounting-panel";
 import { Pagination, usePagination } from "@/components/pagination";
@@ -259,8 +261,10 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    // Session 68: the three shops of imported products, one after the other,
+    // named after their source (the customer only sees "Marketplace 1/2/3").
     key: "imported-products",
-    label: "Acquisti LialEnergy",
+    label: "Prodotti AliExpress",
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h1.5l1.5 9h9l1.5-6H6M9 20a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z" />
@@ -269,11 +273,21 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     key: "partner-shop",
-    label: "Shop Lial Partner",
+    label: "Prodotti CJ Dropshipping",
     notificationTypes: ["CJ_ORDER_PAID", "CJ_ORDER_FAILED", "CJ_ORDER_CREATED", "CJ_PAYMENT_REQUIRED"],
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
+    key: "shopify-products",
+    label: "Prodotti Shopify",
+    notificationTypes: ["SHOPIFY_ORDER_CREATED", "SHOPIFY_ORDER_PAID", "SHOPIFY_ORDER_FAILED"],
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
       </svg>
     ),
   },
@@ -307,46 +321,29 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** "Nuovo Contratto" (Session 66): the simple path is the same pratica the
-    customer and the promoter use -- one or more POD, an offer each, the
-    customer pays afterwards from their own area. The old single-contract
-    form stays one click away, for the cases that need it (a contract to
-    record by hand on a supply point that already exists). */
+/** "Nuovo Contratto" (Sessions 66-67): the same screen as the promoter's
+    "Miei Clienti" -- a new or existing customer, then the pratica wizard the
+    customer uses, the customer pays afterwards from their own area. The old
+    single-contract form is tucked away at the bottom, for the rare case that
+    needs it (a contract recorded by hand on a supply point that exists). */
 function AdminNewContractTab({ onCreated }: { onCreated: (contract: ContractRead) => void }) {
   const [advanced, setAdvanced] = useState(false);
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-6">
+      <PraticheForCustomersPanel mode="admin" />
+      <div className="pt-4 border-t border-white/5 light:border-slate-200">
         <button
-          onClick={() => setAdvanced(false)}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-            !advanced
-              ? "bg-orange-600 border-orange-600 text-white"
-              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
-          }`}
+          onClick={() => setAdvanced((v) => !v)}
+          className="text-xs font-semibold text-slate-400 hover:text-orange-400 cursor-pointer"
         >
-          Pratica di attivazione (consigliato)
+          {advanced ? "▾" : "▸"} Casi particolari: modulo avanzato a contratto singolo
         </button>
-        <button
-          onClick={() => setAdvanced(true)}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-            advanced
-              ? "bg-orange-600 border-orange-600 text-white"
-              : "bg-white/5 light:bg-slate-900/5 border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 hover:bg-white/10"
-          }`}
-        >
-          Modulo avanzato: contratto singolo
-        </button>
+        {advanced && (
+          <div className="mt-4">
+            <AdminCreateContractPanel onCreated={onCreated} />
+          </div>
+        )}
       </div>
-      {advanced ? (
-        <AdminCreateContractPanel onCreated={onCreated} />
-      ) : (
-        <PraticheForCustomersPanel
-          mode="admin"
-          title="Apri una pratica per un cliente"
-          description="Gli stessi passaggi del cliente: dati dell'intestatario, quanti POD, documenti e l'offerta per ogni POD. Puoi scegliere il promoter a cui attribuirla. Il pagamento lo fa il cliente dalla sua area: quando invii la pratica riceve un'email."
-        />
-      )}
     </div>
   );
 }
@@ -360,7 +357,7 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
   const customerNameById = new Map((customersForLookup ?? []).map((c) => [c.id, c.display_name]));
   const queryClient = useQueryClient();
   const [openRequestId, setOpenRequestId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "partner-shop" | "accounting" | "documentation" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "requests" | "list" | "create" | "customers" | "promoters" | "products" | "network" | "tickets" | "commissions" | "wallets" | "partners" | "friend-referral-claims" | "invoice-redemptions" | "orders" | "imported-products" | "partner-shop" | "shopify-products" | "accounting" | "documentation" | "settings">("overview");
   // Filters set by clicking a KPI card on Panoramica, consumed once by the
   // target tab then cleared -- e.g. "Contratti attivi" jumps to "Tutti i
   // Contratti" with statusFilter pre-set to ACTIVE.
@@ -878,13 +875,21 @@ export function AdminClientPage({ initialContracts, email, organizationId, isSup
         )}
         {activeTab === "imported-products" && (
           <div className="space-y-6">
-            <SectionBanner image="products" alt="Acquisti LialEnergy" />
+            <SectionBanner image="products" alt="Prodotti AliExpress" />
+            <MarketplaceRulesCard highlight="aliexpress" />
             <AdminImportedProductsPanel />
           </div>
         )}
         {activeTab === "partner-shop" && (
           <div className="space-y-6">
+            <MarketplaceRulesCard highlight="cj" />
             <AdminCjPanel />
+          </div>
+        )}
+        {activeTab === "shopify-products" && (
+          <div className="space-y-6">
+            <MarketplaceRulesCard highlight="shopify" />
+            <AdminShopifyPanel />
           </div>
         )}
         {activeTab === "accounting" && (

@@ -83,7 +83,10 @@ class CjSettings(UUIDPKMixin, TimestampMixin, Base):
     the tokens are never returned by any endpoint (masked, like Stripe's)."""
 
     __tablename__ = "cj_settings"
-    __table_args__ = (UniqueConstraint("organization_id"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id"),
+        CheckConstraint("default_credit_percentage BETWEEN 0 AND 99", name="default_credit_below_100"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"))
     api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -104,8 +107,9 @@ class CjSettings(UUIDPKMixin, TimestampMixin, Base):
     markup_fixed_cents: Mapped[int] = mapped_column(Integer, default=0)
     price_rounding: Mapped[str] = mapped_column(String(8), default="90")
     shipping_mode: Mapped[str] = mapped_column(String(16), default="CUSTOMER_PAYS")
-    #: Default "pagabile in LialCash" percentage of a newly imported product.
-    default_credit_percentage: Mapped[int] = mapped_column(Integer, default=100)
+    #: Default "pagabile in LialCash" percentage of a newly imported product
+    #: (30 since Session 68, never 100: see marketplaces/rules.py).
+    default_credit_percentage: Mapped[int] = mapped_column(Integer, default=30)
     destination_country: Mapped[str] = mapped_column(String(2), default="IT")
     #: Create a paid order on CJ by itself, and pay it from the CJ balance when
     #: the balance covers it (otherwise it waits as PAYMENT_REQUIRED).
@@ -120,7 +124,11 @@ class CjProduct(UUIDPKMixin, TimestampMixin, Base):
     description they gave it. Prices live on the variants."""
 
     __tablename__ = "cj_products"
-    __table_args__ = (UniqueConstraint("organization_id", "cj_pid"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "cj_pid"),
+        # Session 68: never 100% LialCash on a Marketplace product.
+        CheckConstraint("credit_discount_percentage BETWEEN 0 AND 99", name="credit_below_100"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), index=True
@@ -140,7 +148,7 @@ class CjProduct(UUIDPKMixin, TimestampMixin, Base):
     shipping_estimate_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     shipping_days: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE", index=True)
-    credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=100)
+    credit_discount_percentage: Mapped[int] = mapped_column(Integer, default=30)
     #: Overrides the organization's markup for this product only.
     markup_percentage: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -204,6 +212,11 @@ class CjOrder(UUIDPKMixin, TimestampMixin, Base):
     #: unit_price_cents x quantity + shipping_cents.
     amount_cents: Mapped[int] = mapped_column(BigInteger)
     credit_applied_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    #: Session 67: the extra charged when the residual (amount - LialCash) is
+    #: paid by card, frozen from CjSettings.card_surcharge_percentage; 0 for a
+    #: bank transfer. What the customer really pays in euro is
+    #: amount_cents - credit_applied_cents + card_surcharge_cents.
+    card_surcharge_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     credit_debit_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("wallet_transactions.id"), nullable=True
     )

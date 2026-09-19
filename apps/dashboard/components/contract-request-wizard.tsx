@@ -149,8 +149,11 @@ export function ContractRequestWizard({
     }
   }
 
+  const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || "il cliente";
   const title = promoterMode
-    ? `Nuova pratica per ${[customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || "il cliente"}`
+    ? requestId
+      ? `Pratica per ${request?.holder_name || customerName}`
+      : `Nuova pratica per ${customerName}`
     : request
       ? `Pratica ${request.code}`
       : "Attiva nuovo contratto";

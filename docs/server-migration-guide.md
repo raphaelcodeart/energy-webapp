@@ -483,10 +483,13 @@ vuoto su un server nuovo, il comando diretto sopra è più semplice e corretto.
 La fonte di verità assoluta è **`docs/database-schema.sql`** in questa stessa
 cartella — è un dump reale (`pg_dump --schema-only --no-owner --no-privileges`,
 rigenerabile con `scripts/dump-schema.sh`) del database in esecuzione, non una
-ricostruzione a memoria (**rigenerato 2026-09-17, allineato alla revision
-Alembic `c1f6a8b2d537` / migrazione `0048_contract_request_bank_transfer`**;
+ricostruzione a memoria (**rigenerato 2026-09-19 con
+`scripts/dump-schema.sh dev --from-migrations`, cioè da un database vuoto
+costruito da Alembic: revision `f3b8c1d9e274` / migrazione
+`0050_shopify_dropshipping`**;
 `--no-owner`/`--no-privileges` lo rendono portabile anche se il nuovo server
-usa un utente Postgres diverso da `lial`). Contiene tutte le **71 tabelle** con
+usa un utente Postgres diverso da `lial`). È il **modello della struttura senza
+dati**. Contiene tutte le **75 tabelle** con
 tipi esatti, vincoli, indici, foreign key. **Dopo ogni nuova migrazione,
 rilancia `scripts/dump-schema.sh` e committa il diff** — altrimenti questo
 file torna a essere stale (è già successo più di una volta: era rimasto
@@ -1280,6 +1283,9 @@ dopo i primi **promoter**.
 **Verifica**: da una casella esterna, prova un "password dimenticata" e
 controlla che l'email arrivi davvero.
 
+- **Marketplace** — facoltativi: Prodotti AliExpress, Prodotti CJ
+  Dropshipping, Prodotti Shopify (§14).
+
 ### Passo 8 — Backup e rinnovo certificato
 
 Le due righe di crontab della §4.8. Sono l'unica cosa di questo runbook che,
@@ -1387,3 +1393,59 @@ già su Drive, perché quei file appartengono all'account che li ospita.
   mostrato nelle impostazioni. Succede tipicamente cambiando dominio o
   passando da `http` a `https`: l'URI lo costruisce il server da
   `NEXT_PUBLIC_APP_URL`.
+
+
+## 14. I tre Marketplace: AliExpress, CJ Dropshipping, Shopify (Sessions 34-68)
+
+Tre shop di prodotti importati, ognuno con le sue tabelle, che il cliente vede
+nello Shop ("Fai la spesa con Lial Energy") come **Marketplace 1, 2 e 3**,
+senza mai sapere la fonte. Tutti facoltativi: uno shop spento o vuoto non
+compare. Le regole comuni stanno in `apps/api/app/domains/marketplaces/rules.py`
+e si impostano dalla card **Regole dei Marketplace** in cima a ciascuna delle
+tre pagine admin: nome nello Shop, aumento con carta (default 5%). LialCash:
+30% sui prodotti nuovi, massimo 99% (vincolo nel database), mai cashback.
+Vedi `docs/business-rules.md#marketplace`, anche per la nota legale sulla
+maggiorazione con carta.
+
+**Prerequisiti comuni**: Stripe (per la carta) e IBAN (per il bonifico)
+configurati come nel Passo 7 della §12. Gli ordini dei tre Marketplace
+compaiono nella stessa lista **Ordini** e in **Contabilità**.
+
+### 14.1 Marketplace 1 — AliExpress (`imported_products`)
+Nessuna API: in **Prodotti AliExpress** si crea un provider (tipo AliExpress)
+e si inseriscono i prodotti a mano (nome, foto, prezzo con bonifico,
+percentuale LialCash). L'ordine al fornitore lo fa l'amministrazione.
+
+### 14.2 Marketplace 2 — CJ Dropshipping (`cj_dropshipping`)
+1. Su cjdropshipping.com → My CJ → Authorization → API: copia la chiave.
+2. **Prodotti CJ Dropshipping → Impostazioni**: incolla la chiave, **Verifica
+   connessione e saldo**, cambio USD/EUR, ricarico (100% di default),
+   arrotondamento, spedizione, LialCash di default (30).
+3. **Sandbox** accesa finché si prova (ordini finti); spegnerla prima di
+   aprire ai clienti. **Shop visibile ai clienti** per mostrarlo.
+4. Catalogo CJ → importa. Celery sincronizza ordini (ogni 10-30 min) e
+   prodotti (di notte): `celery-worker` e `celery-beat` devono girare.
+Non serve saldo CJ anticipato: vedi business-rules.md#partner-shop.
+
+### 14.3 Marketplace 3 — Shopify (`shopify_dropshipping`, Session 68)
+Il fornitore è un negozio Shopify dell'azienda in cui un'app di dropshipping
+(DSers, Syncee, Spocket...) tiene il catalogo ed evade gli ordini.
+1. Shopify admin → Impostazioni → App → **Sviluppa app** → crea un'app
+   personalizzata. Ambiti Admin API: `read_products`, `read_inventory`,
+   `read_orders`, `write_draft_orders`, `read_fulfillments` (alcune app di
+   dropshipping richiedono anche `read_assigned_fulfillment_orders` per il
+   tracciamento). Installa l'app e copia il token `shpat_…` (si vede una volta).
+2. **Prodotti Shopify → Impostazioni**: dominio `negozio.myshopify.com`, token,
+   versione API (default `2025-07`), **Verifica connessione**. Prezzi: base
+   "costo per articolo" (se manca, il prezzo del negozio), ricarico 100%,
+   arrotondamento, cambio verso EUR (1 se il negozio è in euro), spedizione
+   fissa o inclusa, LialCash di default 30, invio automatico.
+3. Catalogo Shopify → importa i prodotti; **Shop visibile ai clienti**.
+4. Nell'app di dropshipping del negozio attiva l'**evasione automatica degli
+   ordini pagati**: quando il cliente paga, l'ordine viene creato nel negozio
+   come bozza completata già pagata (tag `lialenergy` + `lial-<id>`, mai
+   duplicato anche se l'invio viene ripetuto), e il tracciamento torna da
+   Shopify al cliente (notifica ed email a spedizione e consegna).
+
+**Verifica**: un ordine di prova pagato con bonifico e confermato da
+**Ordini** deve comparire nel negozio Shopify con il tag `lialenergy`.

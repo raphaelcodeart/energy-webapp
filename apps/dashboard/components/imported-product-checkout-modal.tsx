@@ -129,6 +129,11 @@ export function ImportedProductCheckoutModal({
     : 0;
   const effectiveDiscountPct = quote && quote.amount_cents > 0 ? Math.round((creditCents / quote.amount_cents) * 100) : 0;
   const residualCents = quote ? quote.amount_cents - creditCents : 0;
+  // Session 68: a card costs more than a bank transfer (the server freezes
+  // the real amount on the order; this is the same half-up rounding).
+  const surchargePct = quote?.card_surcharge_percentage ?? 0;
+  const cardSurchargeCents = residualCents > 0 && surchargePct > 0 ? Math.floor((residualCents * surchargePct + 50) / 100) : 0;
+  const dueNowCents = Math.max(residualCents, 0) + (paymentMethod === "CARD" ? cardSurchargeCents : 0);
   const needsPaymentMethod = residualCents > 0;
   const noMethodAvailable = quote ? !quote.bank_transfer_available && !quote.card_available : false;
   const otpConfirmed = creditCents === 0 || !!otpCode.trim();
@@ -262,7 +267,7 @@ export function ImportedProductCheckoutModal({
             </svg>
             <p className="text-sm text-slate-300 light:text-slate-600">
               Abbiamo aperto Stripe in una nuova scheda per completare il pagamento di{" "}
-              <strong className="text-orange-400">{euro(placedOrder.residual_amount_cents)}</strong>.
+              <strong className="text-orange-400">{euro(placedOrder.amount_due_cents ?? placedOrder.residual_amount_cents)}</strong>.
             </p>
             <p className="text-xs text-slate-500">
               Puoi tornare qui in qualsiasi momento: trovi l&apos;ordine anche in &ldquo;I miei Ordini&rdquo;.
@@ -279,7 +284,7 @@ export function ImportedProductCheckoutModal({
         {step === "bank_instructions" && placedOrder && (
           <div className="space-y-3">
             <p className="text-sm text-slate-300 light:text-slate-600">
-              Ordine creato. Paga <strong className="text-orange-400">{euro(placedOrder.residual_amount_cents)}</strong> tramite
+              Ordine creato. Paga <strong className="text-orange-400">{euro(placedOrder.amount_due_cents ?? placedOrder.residual_amount_cents)}</strong> tramite
               bonifico per confermarlo.
             </p>
             <div className="p-4 rounded-xl bg-white/5 light:bg-slate-900/5 border border-white/10 light:border-slate-200 text-xs space-y-1.5">
@@ -467,7 +472,10 @@ export function ImportedProductCheckoutModal({
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 21h18M4 10h16M4 10l8-6 8 6M6 10v9m4-9v9m4-9v9m4-9v9" />
                         </svg>
-                        Bonifico
+                        <span className="flex flex-col items-start leading-tight">
+                          <span>Bonifico istantaneo · {euro(Math.max(residualCents, 0))}</span>
+                          {cardSurchargeCents > 0 && <span className="text-[10px] font-bold text-emerald-300">Costa meno</span>}
+                        </span>
                       </button>
                     )}
                     {quote.card_available && (
@@ -483,10 +491,20 @@ export function ImportedProductCheckoutModal({
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M2 10h20M6 15h4M2 7a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7z" />
                         </svg>
-                        Carta
+                        <span className="flex flex-col items-start leading-tight">
+                          <span>
+                            Carta{surchargePct > 0 ? ` (+${surchargePct}%)` : ""} · {euro(Math.max(residualCents, 0) + cardSurchargeCents)}
+                          </span>
+                        </span>
                       </button>
                     )}
                   </div>
+                )}
+                {cardSurchargeCents > 0 && !noMethodAvailable && (
+                  <p className="pl-8 text-[11px] text-amber-400">
+                    Pagando con carta di credito il prezzo aumenta del {surchargePct}% (+{euro(cardSurchargeCents)}): con
+                    bonifico istantaneo paghi meno.
+                  </p>
                 )}
               </div>
             )}
@@ -502,10 +520,16 @@ export function ImportedProductCheckoutModal({
                   <p className="text-xs text-emerald-400">-{lialCash(creditCents)}</p>
                 </div>
               )}
+              {paymentMethod === "CARD" && cardSurchargeCents > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-amber-400">Aumento pagamento con carta (+{surchargePct}%)</p>
+                  <p className="text-xs text-amber-400">+{euro(cardSurchargeCents)}</p>
+                </div>
+              )}
               <div className="flex items-center justify-between pt-1.5 border-t border-white/10 light:border-slate-300">
                 <p className="text-sm font-bold text-white light:text-slate-900">Totale da pagare ora</p>
                 <p className={`text-xl font-extrabold ${residualCents > 0 ? "text-orange-400" : "text-emerald-400"}`}>
-                  {euro(Math.max(residualCents, 0))}
+                  {euro(dueNowCents)}
                 </p>
               </div>
               {residualCents <= 0 && (

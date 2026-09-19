@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pagination, usePagination } from "@/components/pagination";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { friendlyApiError } from "@/lib/api-error";
-import type { CjOrderRead, ImportedOrderRead, OrderRead } from "@/lib/types";
+import type { CjOrderRead, ImportedOrderRead, OrderRead, ShopifyOrderRead } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
   AWAITING_PAYMENT: "In attesa di pagamento",
@@ -47,7 +47,7 @@ const FILTER_TABS: { key: OrderFilter; label: string }[] = [
     picking the right API path. */
 type UnifiedOrder = {
   id: string;
-  source: "standard" | "imported" | "partner";
+  source: "standard" | "imported" | "partner" | "shopify";
   product_name: string;
   /** Shop Lial Partner only: what travels to the customer's door. */
   shipping?: Pick<
@@ -60,6 +60,11 @@ type UnifiedOrder = {
   amount_cents: number;
   credit_applied_cents: number;
   residual_amount_cents: number;
+  /** Shop Lial Partner (Session 67): extra for paying by card, already in
+      residual_amount_cents; `card_surcharge_percentage` is the current
+      setting, shown on "Paga subito con carta". 0 everywhere else. */
+  card_surcharge_cents: number;
+  card_surcharge_percentage: number;
   cashback_requested: boolean;
   cashback_surcharge_cents: number;
   cashback_credited_at: string | null;
@@ -78,6 +83,7 @@ type UnifiedOrder = {
     cancel...) route to -- the one and only place `source` matters. */
 function ordersBasePath(source: UnifiedOrder["source"]): string {
   if (source === "partner") return "/api/proxy/cj/orders";
+  if (source === "shopify") return "/api/proxy/shopify/orders";
   return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
 }
 
@@ -129,20 +135,27 @@ function orderCode(id: string): string {
 }
 
 async function fetchMyOrders(): Promise<UnifiedOrder[]> {
-  const [standardRes, importedRes, partnerRes] = await Promise.all([
+  const [standardRes, importedRes, partnerRes, shopifyRes] = await Promise.all([
     fetch("/api/proxy/orders/mine"),
     fetch("/api/proxy/imported-products/orders/mine"),
     fetch("/api/proxy/cj/orders/mine"),
+    fetch("/api/proxy/shopify/orders/mine"),
   ]);
   if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare i tuoi ordini.");
   const standard: OrderRead[] = await standardRes.json();
   const imported: ImportedOrderRead[] = await importedRes.json();
   const partner: CjOrderRead[] = partnerRes.ok ? await partnerRes.json() : [];
+  // Marketplace 3 (Shopify, Session 68): same shape and behaviour as CJ.
+  const shopify: ShopifyOrderRead[] = shopifyRes.ok ? await shopifyRes.json() : [];
   const merged: UnifiedOrder[] = [
-    ...standard.map((o) => ({ ...o, source: "standard" as const })),
+    ...standard.map((o) => ({ ...o, source: "standard" as const, card_surcharge_cents: 0, card_surcharge_percentage: 0 })),
     ...imported.map((o) => ({
       ...o,
       source: "imported" as const,
+      // Session 68: AliExpress (Marketplace 1) also costs more by card.
+      residual_amount_cents: o.amount_due_cents ?? o.residual_amount_cents,
+      card_surcharge_cents: o.card_surcharge_cents ?? 0,
+      card_surcharge_percentage: o.card_surcharge_percentage ?? 0,
       cashback_requested: false,
       cashback_surcharge_cents: 0,
       cashback_credited_at: null,
@@ -151,6 +164,18 @@ async function fetchMyOrders(): Promise<UnifiedOrder[]> {
       ...o,
       source: "partner" as const,
       product_name: o.quantity > 1 ? `${o.product_name} × ${o.quantity}` : o.product_name,
+      // What is really due: with the card surcharge when paying by card.
+      residual_amount_cents: o.amount_due_cents,
+      cashback_requested: false,
+      cashback_surcharge_cents: 0,
+      cashback_credited_at: null,
+      shipping: o,
+    })),
+    ...shopify.map((o) => ({
+      ...o,
+      source: "shopify" as const,
+      product_name: o.quantity > 1 ? `${o.product_name} × ${o.quantity}` : o.product_name,
+      residual_amount_cents: o.amount_due_cents,
       cashback_requested: false,
       cashback_surcharge_cents: 0,
       cashback_credited_at: null,
@@ -218,6 +243,12 @@ function OrderDetailModal({ order, onClose, onViewProof, viewProofLoading }: {
               <div>
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Cashback richiesto</p>
                 <p className="font-bold text-orange-400">+{euro(order.cashback_surcharge_cents)}</p>
+              </div>
+            )}
+            {order.card_surcharge_cents > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Aumento pagamento con carta</p>
+                <p className="font-bold text-amber-400">+{euro(order.card_surcharge_cents)}</p>
               </div>
             )}
             {order.status === "AWAITING_PAYMENT" && (
@@ -607,7 +638,13 @@ export function CustomerOrdersPanel() {
                       </span>
                     )}
                     {awaiting && (
-                      <span className="text-amber-400">Residuo {euro(o.residual_amount_cents)}</span>
+                      <span className="text-amber-400">
+                        Residuo {euro(o.residual_amount_cents)}
+                        {o.card_surcharge_cents > 0 && ` (incl. +${euro(o.card_surcharge_cents)} carta)`}
+                      </span>
+                    )}
+                    {!awaiting && o.card_surcharge_cents > 0 && (
+                      <span className="text-slate-400 light:text-slate-500">+{euro(o.card_surcharge_cents)} pagamento con carta</span>
                     )}
                     <button
                       type="button"
@@ -638,8 +675,17 @@ export function CustomerOrdersPanel() {
                           disabled={busy}
                           className="w-full px-4 py-2 rounded-xl bg-white/5 light:bg-slate-900/5 hover:bg-white/10 border border-white/10 light:border-slate-300 text-slate-300 light:text-slate-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
                         >
-                          {switchingId === o.id ? "..." : "Paga subito con carta"}
+                          {switchingId === o.id
+                            ? "..."
+                            : o.card_surcharge_percentage > 0
+                              ? `Paga con carta (+${o.card_surcharge_percentage}%)`
+                              : "Paga subito con carta"}
                         </button>
+                        {o.card_surcharge_percentage > 0 && (
+                          <p className="text-[10px] text-amber-400 text-center">
+                            Con carta il prezzo aumenta del {o.card_surcharge_percentage}%: il bonifico istantaneo costa meno.
+                          </p>
+                        )}
                         <button
                           onClick={() => openProofPicker(o)}
                           disabled={busy}

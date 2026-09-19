@@ -41,6 +41,7 @@ from app.domains.partners import models as _partners_models  # noqa: F401
 from app.domains.payments import models as _payments_models  # noqa: F401
 from app.domains.rbac import models as _rbac_models  # noqa: F401
 from app.domains.referral import models as _referral_models  # noqa: F401
+from app.domains.shopify_dropshipping import models as _shopify_models  # noqa: F401
 from app.domains.support import models as _support_models  # noqa: F401
 from app.domains.users import models as _users_models  # noqa: F401
 from app.domains.wallets import models as _wallets_models  # noqa: F401
@@ -82,6 +83,21 @@ celery_app.conf.update(
             # Cost, stock and availability of the imported CJ products.
             "task": "app.celery_app.cj_sync_products_task",
             "schedule": crontab(hour=3, minute=30),
+        },
+        "shopify-sync-orders": {
+            # Marketplace 3: fulfilment and tracking of the orders in the Shopify store.
+            "task": "app.celery_app.shopify_sync_orders_task",
+            "schedule": crontab(minute="*/30"),
+        },
+        "shopify-retry-orders": {
+            # Marketplace 3: paid orders not sent yet, temporary failures.
+            "task": "app.celery_app.shopify_retry_orders_task",
+            "schedule": crontab(minute="*/10"),
+        },
+        "shopify-sync-products": {
+            # Cost, price and stock of the imported Shopify products.
+            "task": "app.celery_app.shopify_sync_products_task",
+            "schedule": crontab(hour=3, minute=45),
         },
     },
 )
@@ -207,6 +223,85 @@ def cj_forward_order_task(order_id: str) -> str:
                     db, organization_id=order.organization_id, order_id=order.id, actor_user_id=None
                 )
             except cj_service.CjError as exc:
+                return f"skipped: {exc}"
+            return order.fulfillment_status
+
+    return asyncio.run(_run())
+
+
+def _shopify_run(job):
+    """Runs a Shopify job for every organization that has a store configured."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.core.db import AsyncSessionLocal
+    from app.domains.shopify_dropshipping.models import ShopifySettings
+
+    async def _run() -> int:
+        total = 0
+        async with AsyncSessionLocal() as db:
+            org_ids = list(
+                (
+                    await db.execute(
+                        select(ShopifySettings.organization_id).where(
+                            ShopifySettings.access_token.is_not(None), ShopifySettings.shop_domain.is_not(None)
+                        )
+                    )
+                ).scalars()
+            )
+            for org_id in org_ids:
+                try:
+                    total += await job(db, org_id)
+                except Exception:
+                    logging.getLogger(__name__).exception("Shopify job failed for organization %s", org_id)
+                    await db.rollback()
+        return total
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.celery_app.shopify_sync_orders_task")
+def shopify_sync_orders_task() -> int:
+    from app.domains.shopify_dropshipping import service as shopify_service
+
+    return _shopify_run(lambda db, org_id: shopify_service.sync_orders(db, organization_id=org_id))
+
+
+@celery_app.task(name="app.celery_app.shopify_retry_orders_task")
+def shopify_retry_orders_task() -> int:
+    from app.domains.shopify_dropshipping import service as shopify_service
+
+    return _shopify_run(lambda db, org_id: shopify_service.retry_due_orders(db, organization_id=org_id))
+
+
+@celery_app.task(name="app.celery_app.shopify_sync_products_task")
+def shopify_sync_products_task() -> int:
+    from app.domains.shopify_dropshipping import service as shopify_service
+
+    return _shopify_run(lambda db, org_id: shopify_service.sync_all_products(db, organization_id=org_id))
+
+
+@celery_app.task(name="app.celery_app.shopify_forward_order_task")
+def shopify_forward_order_task(order_id: str) -> str:
+    """Automatic "Invia a Shopify" right after payment, when enabled."""
+    import asyncio
+    import uuid
+
+    from app.core.db import AsyncSessionLocal
+    from app.domains.shopify_dropshipping import service as shopify_service
+    from app.domains.shopify_dropshipping.models import ShopifyOrder
+
+    async def _run() -> str:
+        async with AsyncSessionLocal() as db:
+            order = await db.get(ShopifyOrder, uuid.UUID(order_id))
+            if order is None:
+                return "missing"
+            try:
+                order = await shopify_service.forward_order(
+                    db, organization_id=order.organization_id, order_id=order.id, actor_user_id=None
+                )
+            except shopify_service.ShopifyError as exc:
                 return f"skipped: {exc}"
             return order.fulfillment_status
 

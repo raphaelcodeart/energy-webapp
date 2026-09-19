@@ -653,6 +653,9 @@ export type WalletTransactionRead = {
   reference_invoice_redemption_id: string | null;
   reference_order_id: string | null;
   reference_imported_order_id: string | null;
+  /** Marketplace 2 (CJ) and 3 (Shopify) orders. */
+  reference_cj_order_id?: string | null;
+  reference_shopify_order_id?: string | null;
   reverses_transaction_id: string | null;
   note: string | null;
   actor_user_id: string | null;
@@ -754,6 +757,8 @@ export type ImportedProductRead = {
   image_url: string | null;
   price_cents: number;
   credit_discount_percentage: number;
+  /** Session 68: price_cents is the bank-transfer price; card costs this % more. */
+  card_surcharge_percentage?: number;
 };
 
 export type ImportedOrderRead = {
@@ -767,6 +772,10 @@ export type ImportedOrderRead = {
   amount_cents: number;
   credit_applied_cents: number;
   residual_amount_cents: number;
+  /** Session 68: extra paid by card (frozen) and residual + that extra. */
+  card_surcharge_cents?: number;
+  amount_due_cents?: number;
+  card_surcharge_percentage?: number;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
   payment_method: "BANK_TRANSFER" | "CARD";
   stripe_checkout_session_id: string | null;
@@ -787,6 +796,9 @@ export type ImportedOrderQuoteRead = {
   customer_wallet_balance_cents: number;
   bank_transfer_available: boolean;
   card_available: boolean;
+  /** Session 68: card costs more than a bank transfer. */
+  card_surcharge_percentage?: number;
+  card_amount_cents?: number;
 };
 
 export type FinancialMovementRead = {
@@ -1186,6 +1198,14 @@ export type CjProductAdminRead = {
   variants: CjVariantAdminRead[];
 };
 
+/** Session 68: rules shared by the three shops of imported products. */
+export type MarketplaceConfigRead = {
+  labels: { aliexpress: string; cj: string; shopify: string };
+  card_surcharge_percentage: number;
+  default_credit_percentage: number;
+  max_credit_percentage: number;
+};
+
 export type CjProductRead = {
   id: string;
   name: string;
@@ -1197,6 +1217,8 @@ export type CjProductRead = {
   credit_discount_percentage: number;
   shipping_days: string | null;
   shipping_included: boolean;
+  /** Session 67: prices are the bank-transfer ones; card costs this % more. */
+  card_surcharge_percentage: number;
   in_stock: boolean;
   variants: { id: string; label: string; image_url: string | null; price_cents: number; in_stock: boolean }[];
 };
@@ -1215,6 +1237,9 @@ export type CjQuoteRead = {
   credit_discount_percentage: number;
   max_creditable_cents: number;
   customer_wallet_balance_cents: number;
+  card_surcharge_percentage: number;
+  /** amount_cents paid all by card, surcharge included (no LialCash). */
+  card_amount_cents: number;
   bank_transfer_available: boolean;
   card_available: boolean;
   default_address: { street: string | null; city: string | null; province: string | null; postal_code: string | null };
@@ -1256,6 +1281,12 @@ export type CjOrderRead = {
   amount_cents: number;
   credit_applied_cents: number;
   residual_amount_cents: number;
+  /** Session 67: extra for paying by card (0 by bank transfer). */
+  card_surcharge_cents: number;
+  /** Today's card surcharge setting, for switching an unpaid order to card. */
+  card_surcharge_percentage: number;
+  /** What is really paid in euro: residual + card surcharge. */
+  amount_due_cents: number;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
   payment_method: "BANK_TRANSFER" | "CARD";
   stripe_checkout_session_id: string | null;
@@ -1310,4 +1341,121 @@ export type CjOrderRead = {
   forwarded_at?: string | null;
   forward_error?: string | null;
   last_cj_sync_at?: string | null;
+};
+
+// --- Marketplace 3: Shopify dropshipping (Session 68) ---------------------------------------
+
+/** Same shape as CjProductRead on purpose: the Shop grid and the product
+    window treat every Marketplace the same way. */
+export type ShopifyProductRead = CjProductRead;
+/** Same fields as CjQuoteRead. */
+export type ShopifyQuoteRead = CjQuoteRead;
+
+export type ShopifySettingsRead = {
+  shop_domain: string | null;
+  access_token_configured: boolean;
+  access_token_hint: string | null;
+  api_version: string;
+  enabled: boolean;
+  shop_name: string | null;
+  shop_currency: string | null;
+  currency_rate: number;
+  price_basis: "COST" | "PRICE";
+  markup_percentage: number;
+  markup_fixed_cents: number;
+  price_rounding: "90" | "99" | "NONE";
+  shipping_mode: "CUSTOMER_PAYS" | "INCLUDED";
+  shipping_flat_cents: number;
+  shipping_days: string | null;
+  default_credit_percentage: number;
+  max_credit_percentage: number;
+  auto_forward: boolean;
+  last_connected_at: string | null;
+};
+
+export type ShopifyCatalogVariant = {
+  variant_id: string;
+  sku: string | null;
+  label: string;
+  image_url: string | null;
+  cost_amount: number | null;
+  source_price_amount: number;
+  inventory: number | null;
+  price_cents: number;
+};
+
+export type ShopifyCatalogProduct = {
+  product_id: string;
+  handle: string | null;
+  title: string;
+  vendor: string | null;
+  status: string | null;
+  description_text: string;
+  image_url: string | null;
+  images: string[];
+  variants: ShopifyCatalogVariant[];
+  min_price_cents: number | null;
+  max_price_cents: number | null;
+  currency: string | null;
+  already_imported?: boolean;
+};
+
+export type ShopifyCatalogPage = { items: ShopifyCatalogProduct[]; next_cursor: string | null };
+
+export type ShopifyProductAdminRead = {
+  id: string;
+  shopify_product_id: string;
+  handle: string | null;
+  name: string;
+  source_title: string | null;
+  vendor: string | null;
+  description: string;
+  image_url: string | null;
+  images: string[];
+  status: "ACTIVE" | "INACTIVE";
+  credit_discount_percentage: number;
+  markup_percentage: number | null;
+  last_synced_at: string | null;
+  sync_error: string | null;
+  paid_orders: number;
+  created_at: string;
+  variants: {
+    id: string;
+    shopify_variant_id: string;
+    sku: string | null;
+    label: string;
+    image_url: string | null;
+    cost_amount: number | null;
+    source_price_amount: number;
+    price_cents: number;
+    price_override_cents: number | null;
+    effective_price_cents: number;
+    inventory: number | null;
+    active: boolean;
+    available_in_store: boolean;
+  }[];
+};
+
+export type ShopifyFulfillmentStatus = "NOT_SENT" | "SENDING" | "SENT" | "SHIPPED" | "DELIVERED" | "ERROR" | "CANCELLED";
+
+export type ShopifyOrderRead = Omit<
+  CjOrderRead,
+  | "cj_product_id" | "cj_variant_id" | "fulfillment_status" | "cj_payment_status" | "cj_cost_usd" | "cj_cost_is_actual"
+  | "cj_cost_cents" | "cj_order_code" | "cj_pay_url" | "cj_product_amount_usd" | "cj_postage_amount_usd"
+  | "cj_ioss_amount_usd" | "cj_paid_at" | "cj_order_id" | "cj_order_status" | "cj_amount_usd" | "sandbox"
+  | "logistic_name" | "origin_country" | "unit_cost_usd" | "shipping_cost_usd" | "usd_eur_rate" | "last_cj_sync_at"
+> & {
+  shopify_product_id: string;
+  shopify_variant_id: string;
+  // Admin only
+  fulfillment_status?: ShopifyFulfillmentStatus;
+  shopify_order_id?: string | null;
+  shopify_order_name?: string | null;
+  shopify_draft_order_id?: string | null;
+  shopify_fulfillment_status?: string | null;
+  tracking_company?: string | null;
+  unit_cost_amount?: number | null;
+  currency_rate?: number;
+  supplier_cost_cents?: number | null;
+  last_sync_at?: string | null;
 };

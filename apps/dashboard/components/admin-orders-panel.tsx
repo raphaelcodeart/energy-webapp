@@ -8,6 +8,7 @@ import { friendlyApiError } from "@/lib/api-error";
 import type {
   CustomerRead,
   CjOrderRead,
+  ShopifyOrderRead,
   ImportedOrderRead,
   ImportedProductAdminRead,
   OrderRead,
@@ -39,7 +40,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
     which backend endpoint an action call goes to. */
 type UnifiedOrder = {
   id: string;
-  source: "standard" | "imported" | "partner";
+  source: "standard" | "imported" | "partner" | "shopify";
   /** Shop Lial Partner: supplier-side state, shown as a hint here; the
       sending and tracking are handled in "Shop Lial Partner → Ordini". */
   fulfillment_status?: string;
@@ -50,6 +51,8 @@ type UnifiedOrder = {
   amount_cents: number;
   credit_applied_cents: number;
   residual_amount_cents: number;
+  /** Shop Lial Partner (Session 67): extra paid by card, included in residual_amount_cents. */
+  card_surcharge_cents?: number;
   status: "AWAITING_PAYMENT" | "PAID" | "CANCELLED";
   payment_method: "BANK_TRANSFER" | "CARD";
   payment_proof_uploaded_at: string | null;
@@ -69,6 +72,7 @@ type UnifiedQuote = {
 
 function ordersBasePath(source: UnifiedOrder["source"]): string {
   if (source === "partner") return "/api/proxy/cj/orders";
+  if (source === "shopify") return "/api/proxy/shopify/orders";
   return source === "imported" ? "/api/proxy/imported-products/orders" : "/api/proxy/orders";
 }
 
@@ -113,21 +117,35 @@ async function fetchImportedProducts(): Promise<ImportedProductAdminRead[]> {
 
 async function fetchOrders(statusFilter: string): Promise<UnifiedOrder[]> {
   const qs = statusFilter !== "ALL" ? `?status_filter=${statusFilter}` : "";
-  const [standardRes, importedRes, partnerRes] = await Promise.all([
+  const [standardRes, importedRes, partnerRes, shopifyRes] = await Promise.all([
     fetch(`/api/proxy/orders${qs}`),
     fetch(`/api/proxy/imported-products/orders${qs}`),
     fetch(`/api/proxy/cj/orders${qs}`),
+    fetch(`/api/proxy/shopify/orders${qs}`),
   ]);
   if (!standardRes.ok || !importedRes.ok) throw new Error("Impossibile caricare gli ordini.");
   const standard: OrderRead[] = await standardRes.json();
   const imported: ImportedOrderRead[] = await importedRes.json();
   const merged: UnifiedOrder[] = [
     ...standard.map((o) => ({ ...o, source: "standard" as const })),
-    ...imported.map((o) => ({ ...o, source: "imported" as const })),
+    ...imported.map((o) => ({
+      ...o,
+      source: "imported" as const,
+      residual_amount_cents: o.amount_due_cents ?? o.residual_amount_cents,
+    })),
     ...(partnerRes.ok ? ((await partnerRes.json()) as CjOrderRead[]) : []).map((o) => ({
       ...o,
       product_name: `${o.product_name}${o.quantity > 1 ? ` × ${o.quantity}` : ""} (Shop Lial Partner)`,
       source: "partner" as const,
+      residual_amount_cents: o.amount_due_cents,
+    })),
+    // Marketplace 3 (Shopify, Session 68): confirmed here like every order;
+    // sending to the store and tracking live in its own admin page.
+    ...(shopifyRes.ok ? ((await shopifyRes.json()) as ShopifyOrderRead[]) : []).map((o) => ({
+      ...o,
+      product_name: `${o.product_name}${o.quantity > 1 ? ` × ${o.quantity}` : ""} (Shopify)`,
+      source: "shopify" as const,
+      residual_amount_cents: o.amount_due_cents,
     })),
   ];
   merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -447,10 +465,22 @@ export function AdminOrdersPanel() {
                     <p className="text-xs text-slate-500 mt-0.5">
                       {o.product_name} · Totale {euro(o.amount_cents)}
                       {o.credit_applied_cents > 0 && <> · {lialCash(o.credit_applied_cents)}</>}
-                      {" "}· Residuo {euro(o.residual_amount_cents)}
+                      {" "}· {o.status === "AWAITING_PAYMENT" ? "Residuo" : "Pagato in euro"} {euro(o.residual_amount_cents)}
+                      {(o.card_surcharge_cents ?? 0) > 0 && <> (incl. +{euro(o.card_surcharge_cents!)} aumento carta)</>}
                     </p>
                     {o.cancellation_reason && (
                       <p className="text-[11px] text-rose-400 mt-1">Motivo annullamento: {o.cancellation_reason}</p>
+                    )}
+                    {o.source === "shopify" && o.status === "PAID" && (
+                      <p className={`text-[11px] mt-1 ${o.fulfillment_status === "ERROR" || o.fulfillment_status === "NOT_SENT" || o.fulfillment_status === "CANCELLED" ? "text-amber-400" : "text-sky-400"}`}>
+                        {o.fulfillment_status === "NOT_SENT"
+                          ? "Da inviare al negozio Shopify: Prodotti Shopify → Ordini"
+                          : o.fulfillment_status === "ERROR"
+                            ? "Invio al negozio Shopify non riuscito: Prodotti Shopify → Ordini"
+                            : o.fulfillment_status === "CANCELLED"
+                              ? "Annullato nel negozio Shopify: Prodotti Shopify → Ordini"
+                              : `Spedizione: ${o.fulfillment_status === "SHIPPED" ? "spedito" : o.fulfillment_status === "DELIVERED" ? "consegnato" : "in lavorazione"}`}
+                      </p>
                     )}
                     {o.source === "partner" && o.status === "PAID" && (
                       <p className={`text-[11px] mt-1 ${o.fulfillment_status === "ERROR" || o.fulfillment_status === "NOT_SENT" || o.cj_payment_status === "PAYMENT_REQUIRED" ? "text-amber-400" : "text-sky-400"}`}>

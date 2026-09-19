@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CjProductRead, CustomerRead, ImportedProductRead, ProductCatalogRead } from "@/lib/types";
+import type { CjProductRead, CustomerRead, ImportedProductRead, ProductCatalogRead, ShopifyProductRead } from "@/lib/types";
 import { CjProductModal } from "@/components/cj-product-modal";
+import { useMarketplaceConfig } from "@/components/marketplace-rules-card";
+import { ShopifyProductModal } from "@/components/shopify-product-modal";
 import { ContractRequestWizard } from "@/components/contract-request-wizard";
 import { ImportedProductCheckoutModal } from "@/components/imported-product-checkout-modal";
 import { ProductCheckoutModal } from "@/components/product-checkout-modal";
@@ -38,17 +40,20 @@ type ProductCategory = "INTERNAL" | "DROPSHIPPING" | "PARTNER";
 // stay invisible from the outside. Only ever added to the tab bar when
 // showImportedTab is passed (see CustomerProductsPanelProps below) -- every
 // other caller of this component keeps behaving exactly as before.
-// "MARKETPLACE_1": the products imported from CJ Dropshipping (Shop Lial
-// Partner), their own category again since Session 64 -- by request.
-type ShopTab = ProductCategory | "IMPORTED" | "MARKETPLACE_1";
+// Session 68: the three shops of imported products are "Marketplace 1/2/3"
+// (names are settings, see marketplace-rules-card.tsx): "IMPORTED" is
+// AliExpress, "CJ" is CJ Dropshipping, "SHOPIFY" is Shopify. The customer
+// never sees the source.
+type ShopTab = ProductCategory | "IMPORTED" | "CJ" | "SHOPIFY";
+type MarketplaceProduct = { source: "CJ" | "SHOPIFY"; product: CjProductRead };
 
 const CATEGORY_TABS: { key: ProductCategory; label: string }[] = [
   { key: "INTERNAL", label: "Lial Energy" },
   { key: "PARTNER", label: "Prodotti Partner" },
-  // "Fai la spesa con Lial" is a UI label only -- the DROPSHIPPING category
-  // key is unchanged in the DB/API (see catalog/models.py::Product.category),
-  // same "rename the label, not the value" treatment as admin-products-panel.tsx.
-  { key: "DROPSHIPPING", label: "Fai la spesa con Lial" },
+  // A UI label only -- the DROPSHIPPING category key is unchanged in the
+  // DB/API (see catalog/models.py::Product.category). "Fai la spesa con Lial
+  // Energy" is the title of the whole Shop since Session 68.
+  { key: "DROPSHIPPING", label: "Offerte Lial" },
 ];
 
 const ALL_CATEGORIES: ProductCategory[] = ["INTERNAL", "PARTNER", "DROPSHIPPING"];
@@ -67,6 +72,12 @@ async function fetchMyCustomerRecord(): Promise<CustomerRead | null> {
 async function fetchImportedProducts(): Promise<ImportedProductRead[]> {
   const res = await fetch("/api/proxy/imported-products/products/active");
   if (!res.ok) throw new Error("Impossibile caricare gli Acquisti LialEnergy.");
+  return res.json();
+}
+
+async function fetchShopifyProducts(): Promise<ShopifyProductRead[]> {
+  const res = await fetch("/api/proxy/shopify/products/active");
+  if (!res.ok) return [];
   return res.json();
 }
 
@@ -139,7 +150,18 @@ export function CustomerProductsPanel({
     queryFn: fetchPartnerShopProducts,
     enabled: showImportedTab,
   });
-  const [partnerShopTarget, setPartnerShopTarget] = useState<CjProductRead | null>(null);
+  const { data: shopifyProducts } = useQuery({
+    queryKey: ["customer", "shopify-products"],
+    queryFn: fetchShopifyProducts,
+    enabled: showImportedTab,
+  });
+  const { data: marketplaceConfig } = useMarketplaceConfig();
+  const marketplaceLabels = marketplaceConfig?.labels ?? {
+    aliexpress: "Marketplace 1",
+    cj: "Marketplace 2",
+    shopify: "Marketplace 3",
+  };
+  const [partnerShopTarget, setPartnerShopTarget] = useState<MarketplaceProduct | null>(null);
   // Only the contract catalog depends on who is looking -- the shop grid
   // sells the same products to everyone -- so this is not fetched at all
   // unless an INTERNAL tab is on screen.
@@ -163,14 +185,26 @@ export function CustomerProductsPanel({
 
   const visibleTabs: { key: ShopTab; label: string }[] = [
     ...CATEGORY_TABS.filter((tab) => visibleCategories.includes(tab.key)),
-    ...(showImportedTab ? [{ key: "IMPORTED" as ShopTab, label: "Acquisti LialEnergy" }] : []),
+    ...(showImportedTab && (importedProducts ?? []).length > 0
+      ? [{ key: "IMPORTED" as ShopTab, label: marketplaceLabels.aliexpress }]
+      : []),
     ...(showImportedTab && (partnerShopProducts ?? []).length > 0
-      ? [{ key: "MARKETPLACE_1" as ShopTab, label: "Marketplace 1" }]
+      ? [{ key: "CJ" as ShopTab, label: marketplaceLabels.cj }]
+      : []),
+    ...(showImportedTab && (shopifyProducts ?? []).length > 0
+      ? [{ key: "SHOPIFY" as ShopTab, label: marketplaceLabels.shopify }]
       : []),
   ];
 
-  const partnerCards: CjProductRead[] =
-    showImportedTab && activeCategory === "MARKETPLACE_1" ? partnerShopProducts ?? [] : [];
+  // CJ and Shopify products have the same shape and the same card.
+  const partnerCards: CjProductRead[] = !showImportedTab
+    ? []
+    : activeCategory === "CJ"
+      ? partnerShopProducts ?? []
+      : activeCategory === "SHOPIFY"
+        ? shopifyProducts ?? []
+        : [];
+  const partnerSource: "CJ" | "SHOPIFY" = activeCategory === "SHOPIFY" ? "SHOPIFY" : "CJ";
 
   const activeProducts = (products ?? []).filter(
     (p) => p.status === "ACTIVE" && p.current_version && p.current_version.status === "ACTIVE"
@@ -219,7 +253,7 @@ export function CustomerProductsPanel({
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-white light:text-slate-900">
-          {contractsOnly ? "I pacchetti Lial Energy" : showImportedTab && !referralCode ? "Shop" : "Prodotti & Servizi"}
+          {contractsOnly ? "I pacchetti Lial Energy" : showImportedTab && !referralCode ? "Fai la spesa con Lial Energy" : "Prodotti & Servizi"}
         </h3>
         <p className="text-xs text-slate-400 light:text-slate-500">
           {referralCode
@@ -227,7 +261,7 @@ export function CustomerProductsPanel({
             : contractsOnly
               ? "Apri “Dettagli” per leggere ogni pacchetto. Per attivarli usa “Attiva nuovo contratto”: una pratica può contenere uno o più POD."
               : showImportedTab
-                ? "Usa il tuo cashback LialCash con i nostri partner e acquista prodotti per la casa e per te, con consegna a domicilio."
+                ? "Usa il tuo LialCash con i nostri partner e nei Marketplace, con consegna a casa. Nei Marketplace il bonifico istantaneo costa meno della carta."
                 : "Le offerte luce, gas e dual fuel disponibili per il tuo profilo."}
         </p>
       </div>
@@ -237,8 +271,10 @@ export function CustomerProductsPanel({
         {visibleTabs.map((tab) => {
           const count = tab.key === "IMPORTED"
             ? (importedProducts ?? []).length
-            : tab.key === "MARKETPLACE_1"
+            : tab.key === "CJ"
             ? (partnerShopProducts ?? []).length
+            : tab.key === "SHOPIFY"
+            ? (shopifyProducts ?? []).length
             : activeProducts.filter((p) => p.category === tab.key).length;
           return (
             <button
@@ -308,8 +344,18 @@ export function CustomerProductsPanel({
                     )}
                     <div className="flex items-end justify-between gap-3 pt-4 border-t border-white/5 light:border-slate-200">
                       <div>
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Prezzo</p>
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                          Prezzo{(ip.card_surcharge_percentage ?? 0) > 0 && " · con bonifico istantaneo"}
+                        </p>
                         <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(ip.price_cents)}</span>
+                        {(ip.card_surcharge_percentage ?? 0) > 0 && (
+                          <p className="text-[11px] text-amber-400 mt-0.5">
+                            Con carta +{ip.card_surcharge_percentage}%:{" "}
+                            <strong className="tabular-nums">
+                              {euro(ip.price_cents + Math.floor((ip.price_cents * ip.card_surcharge_percentage! + 50) / 100))}
+                            </strong>
+                          </p>
+                        )}
                       </div>
                       {maxCreditCents > 0 && (
                         <div className="text-right">
@@ -492,7 +538,7 @@ export function CustomerProductsPanel({
               >
                 <button
                   type="button"
-                  onClick={() => setPartnerShopTarget(p)}
+                  onClick={() => setPartnerShopTarget({ source: partnerSource, product: p })}
                   className="relative block w-full h-48 overflow-hidden cursor-pointer bg-white"
                 >
                   <ProductThumbnail
@@ -525,7 +571,7 @@ export function CustomerProductsPanel({
                 </button>
                 <div className="p-5">
                   <h4
-                    onClick={() => setPartnerShopTarget(p)}
+                    onClick={() => setPartnerShopTarget({ source: partnerSource, product: p })}
                     className="text-base font-semibold text-white light:text-slate-900 mb-1 leading-snug cursor-pointer hover:text-orange-400 transition line-clamp-2"
                   >
                     {p.name}
@@ -541,7 +587,17 @@ export function CustomerProductsPanel({
                       <span className="text-2xl font-extrabold text-white light:text-slate-900 tabular-nums">{euro(p.min_price_cents)}</span>
                       <p className="text-[10px] text-slate-500 mt-0.5">
                         {p.shipping_included ? "Spedizione inclusa" : "+ spedizione"}
+                        {p.card_surcharge_percentage > 0 && " · con bonifico istantaneo"}
                       </p>
+                      {/* Session 67: the price shown is the bank-transfer one; card costs more. */}
+                      {p.card_surcharge_percentage > 0 && (
+                        <p className="text-[10px] font-semibold text-amber-400 mt-0.5">
+                          Con carta +{p.card_surcharge_percentage}%:{" "}
+                          <span className="tabular-nums">
+                            {euro(p.min_price_cents + Math.floor((p.min_price_cents * p.card_surcharge_percentage + 50) / 100))}
+                          </span>
+                        </p>
+                      )}
                     </div>
                     {maxCreditCents > 0 && (
                       <div className="text-right">
@@ -551,7 +607,7 @@ export function CustomerProductsPanel({
                     )}
                   </div>
                   <button
-                    onClick={() => setPartnerShopTarget(p)}
+                    onClick={() => setPartnerShopTarget({ source: partnerSource, product: p })}
                     className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-bold shadow-lg shadow-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98]"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -605,8 +661,11 @@ export function CustomerProductsPanel({
         />
       )}
 
-      {partnerShopTarget && (
-        <CjProductModal product={partnerShopTarget} onClose={() => setPartnerShopTarget(null)} />
+      {partnerShopTarget?.source === "CJ" && (
+        <CjProductModal product={partnerShopTarget.product} onClose={() => setPartnerShopTarget(null)} />
+      )}
+      {partnerShopTarget?.source === "SHOPIFY" && (
+        <ShopifyProductModal product={partnerShopTarget.product} onClose={() => setPartnerShopTarget(null)} />
       )}
 
       {activationTarget && (

@@ -46,7 +46,7 @@ class ImportedProductCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     image_url: str | None = Field(default=None, max_length=1000)
     price_cents: int = Field(gt=0)
-    credit_discount_percentage: int = Field(default=0, ge=0, le=100)
+    credit_discount_percentage: int = Field(default=30, ge=0, le=99)
     status: str = "ACTIVE"
 
 
@@ -57,7 +57,7 @@ class ImportedProductUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     image_url: str | None = Field(default=None, max_length=1000)
     price_cents: int | None = Field(default=None, gt=0)
-    credit_discount_percentage: int | None = Field(default=None, ge=0, le=100)
+    credit_discount_percentage: int | None = Field(default=None, ge=0, le=99)
     status: str | None = None
 
 
@@ -91,6 +91,8 @@ class ImportedProductRead(BaseModel):
     image_url: str | None
     price_cents: int
     credit_discount_percentage: int
+    #: Session 68: price_cents is the bank-transfer price; card costs this % more.
+    card_surcharge_percentage: int = 0
 
 
 class ImportedOrderRead(BaseModel):
@@ -107,6 +109,10 @@ class ImportedOrderRead(BaseModel):
     amount_cents: int
     credit_applied_cents: int
     residual_amount_cents: int
+    #: Session 68: extra paid by card (frozen), and residual + that extra.
+    card_surcharge_cents: int = 0
+    amount_due_cents: int = 0
+    card_surcharge_percentage: int = 0
     status: str
     payment_method: str
     stripe_checkout_session_id: str | None = None
@@ -127,6 +133,9 @@ class ImportedOrderQuoteRead(BaseModel):
     customer_wallet_balance_cents: int
     bank_transfer_available: bool
     card_available: bool
+    card_surcharge_percentage: int = 0
+    #: amount_cents paid entirely by card, surcharge included.
+    card_amount_cents: int = 0
 
 
 class ImportedOrderCreateRequest(BaseModel):

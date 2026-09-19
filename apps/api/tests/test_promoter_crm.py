@@ -221,3 +221,138 @@ async def test_reset_password_marks_the_account_email_verified_if_not_already(db
 
     await db.refresh(user)
     assert user.email_verified_at is not None
+
+
+# --- Session 67: the administration registers customers the same way -----------------
+
+
+@pytest.mark.asyncio
+async def test_staff_registers_a_customer_with_login_under_the_chosen_promoter(db, organization_id):
+    """The admin's "Nuovo cliente" used to create an anagrafica with no login:
+    a pratica opened for that customer could never be paid. Now it is the
+    same as a promoter's "Miei Clienti", under the promoter the admin picks."""
+    from app.domains.customers import service as customers_service
+    from app.domains.rbac import service as rbac_service
+
+    await _make_customer_role(db, organization_id)
+    agent, promoter_user = await _make_promoter_with_login(db, organization_id)
+
+    customer = await network_service.create_customer_with_account_by_staff(
+        db, organization_id=organization_id, promoter_agent_id=agent.id,
+        payload=_customer_payload(), actor_user_id=promoter_user.id,
+    )
+    assert customer.user_id is not None
+    roles = await rbac_service.get_roles_for_user(db, user_id=customer.user_id, organization_id=organization_id)
+    assert "CUSTOMER" in roles
+    detail = await customers_service.get_customer_detail(db, organization_id=organization_id, customer_id=customer.id)
+    assert detail["current_promoter_agent_id"] == agent.id
+    # The set-your-password invite is waiting for them.
+    tokens = list((await db.execute(select(PasswordResetToken).where(PasswordResetToken.user_id == customer.user_id))).scalars())
+    assert len(tokens) == 1
+
+
+@pytest.mark.asyncio
+async def test_staff_can_register_a_direct_customer_without_promoter(db, organization_id):
+    await _make_customer_role(db, organization_id)
+    _agent, actor = await _make_promoter_with_login(db, organization_id)
+    customer = await network_service.create_customer_with_account_by_staff(
+        db, organization_id=organization_id, promoter_agent_id=None,
+        payload=_customer_payload(), actor_user_id=actor.id,
+    )
+    assert customer.user_id is not None
+    attributions = list((await db.execute(
+        select(CustomerAttribution).where(CustomerAttribution.customer_id == customer.id)
+    )).scalars())
+    assert attributions == []
+
+
+@pytest.mark.asyncio
+async def test_staff_registration_refuses_an_inactive_promoter_and_a_taken_email(db, organization_id):
+    from app.domains.customers.models import Customer
+
+    await _make_customer_role(db, organization_id)
+    suspended, actor = await _make_promoter_with_login(db, organization_id, status="SUSPENDED")
+    payload = _customer_payload()
+    with pytest.raises(network_service.RecruitedCustomerError):
+        await network_service.create_customer_with_account_by_staff(
+            db, organization_id=organization_id, promoter_agent_id=suspended.id, payload=payload, actor_user_id=actor.id,
+        )
+    with pytest.raises(network_service.RecruitedCustomerError):
+        await network_service.create_customer_with_account_by_staff(
+            db, organization_id=organization_id, promoter_agent_id=None,
+            payload=_customer_payload(email=actor.email), actor_user_id=actor.id,
+        )
+    # Nothing half-created behind a refusal.
+    leftovers = list((await db.execute(select(Customer).where(Customer.email.in_([payload.email, actor.email])))).scalars())
+    assert leftovers == []
+
+
+@pytest.mark.asyncio
+async def test_a_customer_without_login_gets_one_and_keeps_their_promoter(db, organization_id):
+    from app.domains.customers import service as customers_service
+
+    await _make_customer_role(db, organization_id)
+    _agent, actor = await _make_promoter_with_login(db, organization_id)
+    anagrafica = await customers_service.create_customer(
+        db, organization_id=organization_id, payload=_customer_payload(), actor_user_id=actor.id
+    )
+    assert anagrafica.user_id is None
+
+    customer = await network_service.create_login_for_existing_customer(
+        db, organization_id=organization_id, customer_id=anagrafica.id, actor_user_id=actor.id
+    )
+    assert customer.user_id is not None
+    user = await db.get(User, customer.user_id)
+    assert user.email == anagrafica.email
+    with pytest.raises(network_service.RecruitedCustomerError):
+        await network_service.create_login_for_existing_customer(
+            db, organization_id=organization_id, customer_id=anagrafica.id, actor_user_id=actor.id
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_staff_customer_routes_work_and_are_closed_to_promoters(db, organization_id, monkeypatch):
+    """Through FastAPI itself: a router mistake would only show up as a 500
+    on the first real registration. Promoters hold customers.create, so the
+    routes are gated on customers.update, staff only."""
+    import httpx
+
+    from app.core import deps
+    from app.core.db import get_db
+    from app.core.deps import CurrentUser, get_current_user
+    from app.main import app
+
+    await _make_customer_role(db, organization_id)
+    agent, actor = await _make_promoter_with_login(db, organization_id)
+    granted: set[str] = {"customers.create"}
+
+    async def _codes(*args, **kwargs):
+        return granted
+
+    monkeypatch.setattr(deps, "get_permission_codes_for_user", _codes)
+
+    async def _db():
+        yield db
+
+    app.dependency_overrides[get_db] = _db
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        user_id=actor.id, organization_id=organization_id, roles=["PROMOTER"]
+    )
+    body = {
+        "kind": "PRIVATE", "email": f"route-{uuid.uuid4().hex[:8]}@example.demo",
+        "first_name": "Rita", "last_name": "Rotta", "promoter_agent_id": str(agent.id),
+    }
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test/api") as client:
+            refused = await client.post("/customers/with-account", json=body)
+            assert refused.status_code == 403
+
+            granted.add("customers.update")
+            created = await client.post("/customers/with-account", json=body)
+            assert created.status_code == 201, created.text
+            assert created.json()["user_id"] is not None
+
+            again = await client.post(f"/customers/{created.json()['id']}/account")
+            assert again.status_code == 400
+    finally:
+        app.dependency_overrides.clear()

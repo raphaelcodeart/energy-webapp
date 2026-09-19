@@ -37,6 +37,7 @@ from app.domains.cj_dropshipping.models import (
     CjSettings,
     CjVariant,
 )
+from app.domains.marketplaces import rules
 from app.domains.notifications import service as notifications_service
 from app.domains.organizations import service as organizations_service
 from app.domains.users.models import User
@@ -166,6 +167,8 @@ async def update_settings(db: AsyncSession, *, row: CjSettings, updates: dict, a
         raise CjValidationError("Arrotondamento non valido.")
     if "shipping_mode" in updates and updates["shipping_mode"] not in SHIPPING_MODES:
         raise CjValidationError("Modalità di spedizione non valida.")
+    if updates.get("default_credit_percentage") is not None:
+        _check_credit(updates["default_credit_percentage"])
     if "api_key" in updates:
         key = (updates["api_key"] or "").strip() or None
         if key != row.api_key:
@@ -446,6 +449,8 @@ async def import_product(
     db: AsyncSession, *, row: CjSettings, actor_user_id: uuid.UUID, pid: str, name: str, description: str | None,
     credit_discount_percentage: int | None, markup_percentage: int | None, vids: list[str] | None, activate: bool,
 ) -> CjProduct:
+    if credit_discount_percentage is not None:
+        _check_credit(credit_discount_percentage)
     existing = (
         await db.execute(
             select(CjProduct).where(CjProduct.organization_id == row.organization_id, CjProduct.cj_pid == pid)
@@ -515,6 +520,8 @@ async def import_product(
 async def update_product(
     db: AsyncSession, *, row: CjSettings, product: CjProduct, updates: dict, actor_user_id: uuid.UUID
 ) -> CjProduct:
+    if updates.get("credit_discount_percentage") is not None:
+        _check_credit(updates["credit_discount_percentage"])
     reprice = "markup_percentage" in updates and updates["markup_percentage"] != product.markup_percentage
     for key, value in updates.items():
         setattr(product, key, value)
@@ -662,6 +669,11 @@ async def product_customer_dict(db: AsyncSession, product: CjProduct, *, setting
         "credit_discount_percentage": product.credit_discount_percentage,
         "shipping_days": product.shipping_days,
         "shipping_included": settings.shipping_mode == "INCLUDED",
+        #: Session 67: the shown prices are the bank-transfer ones; card costs
+        #: this much more -- one setting for every Marketplace (Session 68).
+        "card_surcharge_percentage": await rules.get_card_surcharge_percentage(
+            db, organization_id=product.organization_id
+        ),
         "in_stock": any(variant_sellable(v) for v in variants),
         "variants": [
             {
@@ -716,8 +728,41 @@ async def shipping_quote(
     }
 
 
+def _check_credit(value: int) -> None:
+    try:
+        rules.check_credit_percentage(value)
+    except rules.CreditPercentageError as exc:
+        raise CjValidationError(str(exc)) from exc
+
+
 def max_creditable_cents(*, amount_cents: int, credit_discount_percentage: int) -> int:
     return round(amount_cents * credit_discount_percentage / 100)
+
+
+def card_total_cents(*, residual_cents: int, percentage: int) -> int:
+    """What a residual costs when paid by card, surcharge included."""
+    return residual_cents + rules.card_surcharge_cents(residual_cents=residual_cents, percentage=percentage)
+
+
+async def freeze_card_surcharge(db: AsyncSession, *, order: CjOrder) -> None:
+    """Sets the order's card surcharge for its current payment method, from
+    today's setting: the percentage of the residual for CARD, 0 otherwise.
+    Called whenever the method is (re)chosen -- at order time, on a switch,
+    and right before a Stripe checkout -- never trusting the browser. Does not
+    commit."""
+    if order.payment_method == "CARD" and order.status == "AWAITING_PAYMENT":
+        order.card_surcharge_cents = rules.card_surcharge_cents(
+            residual_cents=order.amount_cents - order.credit_applied_cents,
+            percentage=await rules.get_card_surcharge_percentage(db, organization_id=order.organization_id),
+        )
+    elif order.status == "AWAITING_PAYMENT":
+        order.card_surcharge_cents = 0
+
+
+def amount_due_cents(order: CjOrder) -> int:
+    """What the customer pays in euro: residual after LialCash, plus the card
+    surcharge when paying by card."""
+    return order.amount_cents - order.credit_applied_cents + (order.card_surcharge_cents or 0)
 
 
 async def payment_methods(db: AsyncSession, *, organization_id: uuid.UUID) -> dict:
@@ -746,6 +791,7 @@ async def get_quote(
     amount = unit * quantity + shipping["shipping_cents"]
     wallet = await wallets_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer_user_id)
     methods = await payment_methods(db, organization_id=organization_id)
+    surcharge_percentage = await rules.get_card_surcharge_percentage(db, organization_id=organization_id)
     user = await db.get(User, customer_user_id)
     return {
         "variant_id": variant.id,
@@ -763,6 +809,10 @@ async def get_quote(
             amount_cents=amount, credit_discount_percentage=product.credit_discount_percentage
         ),
         "customer_wallet_balance_cents": wallet.balance_cents if wallet else 0,
+        # Session 67: card costs more. The browser shows both totals; the
+        # server recomputes the surcharge on the real residual at order time.
+        "card_surcharge_percentage": surcharge_percentage,
+        "card_amount_cents": card_total_cents(residual_cents=amount, percentage=surcharge_percentage),
         "bank_transfer_available": methods["bank_transfer"],
         "card_available": methods["card"],
         "default_address": {
@@ -856,16 +906,18 @@ async def create_order(
     )
     db.add(order)
     await db.flush()
+    await freeze_card_surcharge(db, order=order)
     await notifications_service.notify_roles(
         db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
         type_="CJ_ORDER_CREATED", entity_type="cj_order", entity_id=order.id,
-        title=f"Nuovo ordine Shop Lial Partner: {product.name}",
+        title=f"Nuovo ordine CJ Dropshipping: {product.name}",
         body=f"{amount / 100:.2f} EUR -- {quantity} × {variant.label}",
         exclude_user_id=actor_user_id,
     )
     if credit_applied_cents > 0:
         assert wallet is not None
         if residual == 0:
+            order.card_surcharge_cents = 0
             order.status = "PAID"
             order.paid_by_user_id = actor_user_id
             order.paid_at = utcnow()
@@ -885,7 +937,7 @@ async def create_order(
 
 async def after_paid(db: AsyncSession, *, order: CjOrder) -> None:
     """A paid order goes to CJ by itself when the administrator chose so;
-    otherwise it waits in "Shop Lial Partner → Ordini" for "Invia a CJ"."""
+    otherwise it waits in "Prodotti CJ Dropshipping → Ordini" for "Invia a CJ"."""
     row = await get_settings_row(db, organization_id=order.organization_id)
     if not row.auto_forward:
         return
@@ -947,6 +999,13 @@ async def order_read_dict(db: AsyncSession, order: CjOrder, *, admin: bool) -> d
         "amount_cents": order.amount_cents,
         "credit_applied_cents": order.credit_applied_cents,
         "residual_amount_cents": order.amount_cents - order.credit_applied_cents,
+        "card_surcharge_cents": order.card_surcharge_cents or 0,
+        #: Today's setting, for "switch to card (+5%)" on an unpaid order.
+        "card_surcharge_percentage": await rules.get_card_surcharge_percentage(
+            db, organization_id=order.organization_id
+        ),
+        #: What is (or was) really paid in euro: residual + card surcharge.
+        "amount_due_cents": amount_due_cents(order),
         "status": order.status,
         "payment_method": order.payment_method,
         "stripe_checkout_session_id": order.stripe_checkout_session_id,
@@ -999,7 +1058,7 @@ async def order_read_dict(db: AsyncSession, order: CjOrder, *, admin: bool) -> d
             "unit_cost_usd": float(order.unit_cost_usd),
             "shipping_cost_usd": float(order.shipping_cost_usd),
             "usd_eur_rate": float(order.usd_eur_rate),
-            "estimated_margin_cents": order.amount_cents - cost_cents,
+            "estimated_margin_cents": order.amount_cents + (order.card_surcharge_cents or 0) - cost_cents,
             "forwarded_at": order.forwarded_at,
             "forward_error": order.forward_error,
             "last_cj_sync_at": order.last_cj_sync_at,
@@ -1028,7 +1087,12 @@ async def confirm_payment(db: AsyncSession, *, organization_id: uuid.UUID, order
     return order
 
 
-async def mark_paid_via_stripe(db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str) -> CjOrder | None:
+async def mark_paid_via_stripe(
+    db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str, order_id: str | None = None
+) -> CjOrder | None:
+    """`order_id` comes from the session's metadata: a customer may pay
+    through an older link (the confirmation email's) after a newer checkout
+    replaced the session id stored on the order -- still this order."""
     order = (
         await db.execute(
             select(CjOrder).where(
@@ -1037,6 +1101,11 @@ async def mark_paid_via_stripe(db: AsyncSession, *, organization_id: uuid.UUID, 
             )
         )
     ).scalar_one_or_none()
+    if order is None and order_id:
+        try:
+            order = await get_org_scoped(db, organization_id=organization_id, order_id=uuid.UUID(str(order_id)))
+        except ValueError:
+            order = None
     if order is None or order.status != "AWAITING_PAYMENT":
         return order
     order.status = "PAID"
@@ -1060,7 +1129,7 @@ async def _notify_paid(db: AsyncSession, *, order: CjOrder, by_card: bool) -> No
         db, organization_id=order.organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
         type_="CJ_ORDER_PAID", entity_type="cj_order", entity_id=order.id,
         title=f"{'Pagamento Stripe' if by_card else 'Bonifico'} confermato: {name}",
-        body=f"{order.amount_cents / 100:.2f} EUR -- da inviare a CJ",
+        body=f"{(order.amount_cents + (order.card_surcharge_cents or 0)) / 100:.2f} EUR -- da inviare a CJ",
     )
 
 
@@ -1101,6 +1170,7 @@ async def change_payment_method(db: AsyncSession, *, organization_id: uuid.UUID,
         if order.payment_method == "CARD":
             order.stripe_checkout_session_id = None
         order.payment_method = new_payment_method
+        await freeze_card_surcharge(db, order=order)
         await db.commit()
         await db.refresh(order)
     return order
@@ -1127,7 +1197,7 @@ async def upload_payment_proof(
     await notifications_service.notify_roles(
         db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
         type_="ORDER_PAYMENT_PROOF_UPLOADED", entity_type="cj_order", entity_id=order.id,
-        title="Ricevuta di bonifico caricata: ordine Shop Lial Partner", body=None, exclude_user_id=actor_user_id,
+        title="Ricevuta di bonifico caricata: ordine CJ Dropshipping", body=None, exclude_user_id=actor_user_id,
     )
     await db.commit()
     await db.refresh(order)
@@ -1142,11 +1212,23 @@ def presigned_payment_proof_url(order: CjOrder) -> str:
 
 
 async def attach_stripe_checkout_session(db: AsyncSession, *, order: CjOrder, session_id: str) -> CjOrder:
+    """The surcharge was already frozen by prepare_card_payment() before the
+    Stripe session was created with it; nothing is recomputed here, so the
+    stored amount always matches what Stripe charges."""
     order.payment_method = "CARD"
     order.stripe_checkout_session_id = session_id
     await db.commit()
     await db.refresh(order)
     return order
+
+
+async def prepare_card_payment(db: AsyncSession, *, order: CjOrder) -> int:
+    """Before a Stripe checkout: the order becomes a card order with its
+    surcharge frozen, and the amount Stripe must charge is returned."""
+    order.payment_method = "CARD"
+    await freeze_card_surcharge(db, order=order)
+    await db.flush()
+    return amount_due_cents(order)
 
 
 async def _send_order_email(db: AsyncSession, *, order: CjOrder, product: CjProduct, variant: CjVariant) -> None:
@@ -1175,7 +1257,14 @@ async def _send_order_email(db: AsyncSession, *, order: CjOrder, product: CjProd
         from app.domains.payments import service as payments_service
 
         heading = "Completa il pagamento del tuo ordine"
-        lines += f"<p>Da pagare con carta: <strong>{residual / 100:.2f} &euro;</strong></p>"
+        surcharge = order.card_surcharge_cents or 0
+        lines += f"<p>Da pagare con carta: <strong>{(residual + surcharge) / 100:.2f} &euro;</strong>"
+        if surcharge:
+            lines += (
+                f"<br><small>Include l'aumento per il pagamento con carta ({surcharge / 100:.2f} &euro;). "
+                f"Con bonifico istantaneo paghi {residual / 100:.2f} &euro;.</small>"
+            )
+        lines += "</p>"
         try:
             cta_url = await payments_service.create_checkout_session_for_cj_order(
                 db, organization_id=order.organization_id, order=order,
@@ -1341,7 +1430,7 @@ async def _require_payment(
         await _staff_alert(
             db, order=order, type_="CJ_PAYMENT_REQUIRED",
             title=f"Ordine #{str(order.id)[:8].upper()} pagato dal cliente: CJ richiede ${cost:.2f} (≈ {euros:.2f} €)",
-            body=balance_line + "Pagalo dalla pagina di pagamento CJ o ricarica il saldo: Shop Lial Partner → Ordini.",
+            body=balance_line + "Pagalo dalla pagina di pagamento CJ o ricarica il saldo: Prodotti CJ Dropshipping → Ordini.",
         )
 
 
@@ -1509,7 +1598,7 @@ async def forward_order(
                 await _staff_alert(
                     db, order=order, type_="CJ_ORDER_FAILED",
                     title=f"Ordine #{str(order.id)[:8].upper()}: serve un controllo su CJ",
-                    body=f"{exc}. Il cliente ha pagato e vede \"Ordine ricevuto\". Shop Lial Partner → Ordini.",
+                    body=f"{exc}. Il cliente ha pagato e vede \"Ordine ricevuto\". Prodotti CJ Dropshipping → Ordini.",
                 )
         await db.commit()
     await db.refresh(order)

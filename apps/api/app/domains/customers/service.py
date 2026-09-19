@@ -142,8 +142,16 @@ async def get_customer_detail(db: AsyncSession, *, organization_id: uuid.UUID, c
 
 
 async def create_customer(
-    db: AsyncSession, *, organization_id: uuid.UUID, payload: CustomerCreate, actor_user_id: uuid.UUID
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    payload: CustomerCreate,
+    actor_user_id: uuid.UUID,
+    commit: bool = True,
 ) -> Customer:
+    """`commit=False` leaves the transaction open for a caller that creates
+    the login in the same go (network/service.py), so a failure there never
+    leaves an anagrafica without its account behind."""
     if payload.kind in PRIVATE_LIKE_KINDS and not (payload.first_name and payload.last_name):
         raise CustomerValidationError("first_name and last_name are required for this customer kind")
     if payload.kind in COMPANY_LIKE_KINDS and not payload.company_name:
@@ -178,6 +186,9 @@ async def create_customer(
         action="customer.created", entity_type="customer", entity_id=str(customer.id),
         new_value={"kind": payload.kind, "email": payload.email},
     )
+    if not commit:
+        await db.flush()
+        return customer
     await db.commit()
     await db.refresh(customer)
     return customer

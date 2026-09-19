@@ -17,6 +17,7 @@ from app.domains.imported_products.models import (
     ImportedProductOrder,
     ImportProvider,
 )
+from app.domains.marketplaces import rules
 from app.domains.network.models import AgentProfile
 from app.domains.notifications import service as notifications_service
 from app.domains.organizations import service as organizations_service
@@ -140,6 +141,7 @@ async def create_imported_product(
     external_id: str | None, external_url: str | None, name: str, description: str, image_url: str | None,
     price_cents: int, credit_discount_percentage: int, status: str,
 ) -> ImportedProduct:
+    rules.check_credit_percentage(credit_discount_percentage)
     provider = await get_provider(db, organization_id=organization_id, provider_id=provider_id)
     if provider is None:
         raise ProviderNotFoundError("Provider not found")
@@ -165,6 +167,8 @@ async def get_imported_product(
 
 
 async def update_imported_product(db: AsyncSession, *, product: ImportedProduct, updates: dict) -> ImportedProduct:
+    if updates.get("credit_discount_percentage") is not None:
+        rules.check_credit_percentage(updates["credit_discount_percentage"])
     for key, value in updates.items():
         setattr(product, key, value)
     await db.commit()
@@ -224,6 +228,7 @@ async def get_quote(
     product = await _get_sellable_product(db, organization_id=organization_id, imported_product_id=imported_product_id)
     wallet = await wallets_service.get_wallet_by_user_id(db, organization_id=organization_id, user_id=customer_user_id)
     methods = await get_available_payment_methods(db, organization_id=organization_id)
+    surcharge = await rules.get_card_surcharge_percentage(db, organization_id=organization_id)
     return {
         "imported_product_id": product.id,
         "product_name": product.name,
@@ -235,7 +240,41 @@ async def get_quote(
         "customer_wallet_balance_cents": wallet.balance_cents if wallet else 0,
         "bank_transfer_available": methods["bank_transfer"],
         "card_available": methods["card"],
+        "card_surcharge_percentage": surcharge,
+        "card_amount_cents": product.price_cents
+        + rules.card_surcharge_cents(residual_cents=product.price_cents, percentage=surcharge),
     }
+
+
+async def freeze_card_surcharge(db: AsyncSession, *, order: ImportedProductOrder) -> None:
+    """Session 68: the order's card surcharge for its current payment method,
+    from today's setting -- the percentage of the residual for CARD, 0
+    otherwise. Called whenever the method is (re)chosen, never trusting the
+    browser. Does not commit."""
+    if order.status != "AWAITING_PAYMENT":
+        return
+    if order.payment_method == "CARD":
+        order.card_surcharge_cents = rules.card_surcharge_cents(
+            residual_cents=order.amount_cents - order.credit_applied_cents,
+            percentage=await rules.get_card_surcharge_percentage(db, organization_id=order.organization_id),
+        )
+    else:
+        order.card_surcharge_cents = 0
+
+
+def amount_due_cents(order: ImportedProductOrder) -> int:
+    """What the customer pays in euro: residual after LialCash, plus the card
+    surcharge when paying by card."""
+    return order.amount_cents - order.credit_applied_cents + (order.card_surcharge_cents or 0)
+
+
+async def prepare_card_payment(db: AsyncSession, *, order: ImportedProductOrder) -> int:
+    """Before a Stripe checkout: a card order with its surcharge frozen; the
+    amount Stripe must charge is returned."""
+    order.payment_method = "CARD"
+    await freeze_card_surcharge(db, order=order)
+    await db.flush()
+    return amount_due_cents(order)
 
 
 async def _resolve_display_name(db: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID) -> str:
@@ -282,6 +321,11 @@ async def to_read_dict(db: AsyncSession, order: ImportedProductOrder) -> dict:
         "amount_cents": order.amount_cents,
         "credit_applied_cents": order.credit_applied_cents,
         "residual_amount_cents": order.amount_cents - order.credit_applied_cents,
+        "card_surcharge_cents": order.card_surcharge_cents or 0,
+        "amount_due_cents": amount_due_cents(order),
+        "card_surcharge_percentage": await rules.get_card_surcharge_percentage(
+            db, organization_id=order.organization_id
+        ),
         "status": order.status,
         "payment_method": order.payment_method,
         "stripe_checkout_session_id": order.stripe_checkout_session_id,
@@ -357,17 +401,19 @@ async def create_order(
     )
     db.add(order)
     await db.flush()
+    await freeze_card_surcharge(db, order=order)
 
     await notifications_service.notify_roles(
         db, organization_id=organization_id, roles=notifications_service.STAFF_NOTIFY_ROLES,
         type_="IMPORTED_ORDER_CREATED", entity_type="imported_product_order", entity_id=order.id,
-        title=f"Nuovo ordine Acquisti LialEnergy: {product.name}", body=f"{amount_cents / 100:.2f} EUR -- {payment_method}",
+        title=f"Nuovo ordine AliExpress (Marketplace): {product.name}", body=f"{amount_cents / 100:.2f} EUR -- {payment_method}",
         exclude_user_id=actor_user_id,
     )
 
     if credit_applied_cents > 0:
         assert wallet is not None
         if residual_cents == 0:
+            order.card_surcharge_cents = 0
             order.status = "PAID"
             order.paid_by_user_id = actor_user_id
             order.paid_at = utcnow()
@@ -417,8 +463,13 @@ async def _send_order_confirmation_email(
         body_html = (
             order_code_line
             + f"<p>Il tuo ordine per <strong>{product.name}</strong> è stato registrato.</p>"
-            f"<p>Da pagare: <strong>{residual_cents / 100:.2f} &euro;</strong>"
+            f"<p>Da pagare con carta: <strong>{amount_due_cents(order) / 100:.2f} &euro;</strong>"
             + (f" (dopo {order.credit_applied_cents / 100:.2f} LialCash già applicati)" if order.credit_applied_cents else "")
+            + (
+                f"<br><small>Include l'aumento per il pagamento con carta ({order.card_surcharge_cents / 100:.2f} &euro;). "
+                f"Con bonifico istantaneo paghi {residual_cents / 100:.2f} &euro;.</small>"
+                if order.card_surcharge_cents else ""
+            )
             + "</p><p>Completa il pagamento con carta cliccando il pulsante qui sotto.</p>"
         )
         try:
@@ -478,7 +529,7 @@ async def _send_order_paid_email(db: AsyncSession, *, order: ImportedProductOrde
     method_label = "Carta (Stripe)" if order.payment_method == "CARD" else "Bonifico bancario"
     product_name = product.name if product else "un prodotto"
     paid_at_label = order.paid_at.strftime("%d/%m/%Y %H:%M") if order.paid_at else "-"
-    amount_paid_cents = order.amount_cents - order.credit_applied_cents
+    amount_paid_cents = amount_due_cents(order)
     body_html = (
         "<p>Il pagamento del tuo ordine &egrave; stato confermato.</p>"
         f"<p><strong>Numero ordine:</strong> #{str(order.id)[:8].upper()}<br>"
@@ -625,6 +676,7 @@ async def change_payment_method(
         if order.payment_method == "CARD":
             order.stripe_checkout_session_id = None
         order.payment_method = new_payment_method
+        await freeze_card_surcharge(db, order=order)
         await db.commit()
         await db.refresh(order)
     return order
@@ -687,13 +739,21 @@ async def attach_stripe_checkout_session(db: AsyncSession, *, order: ImportedPro
 
 
 async def mark_paid_via_stripe(
-    db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str
+    db: AsyncSession, *, organization_id: uuid.UUID, stripe_checkout_session_id: str, order_id: str | None = None
 ) -> ImportedProductOrder:
+    """`order_id` from the session's metadata covers a payment through an
+    older link (the confirmation email's) after a newer checkout replaced the
+    session id stored on the order (Session 68)."""
     stmt = select(ImportedProductOrder).where(
         ImportedProductOrder.organization_id == organization_id,
         ImportedProductOrder.stripe_checkout_session_id == stripe_checkout_session_id,
     )
     order = (await db.execute(stmt)).scalar_one_or_none()
+    if order is None and order_id:
+        try:
+            order = await get_org_scoped(db, organization_id=organization_id, order_id=uuid.UUID(str(order_id)))
+        except ValueError:
+            order = None
     if order is None:
         raise ImportedProductsError("Order not found for this Stripe checkout session")
     if order.status != "AWAITING_PAYMENT":

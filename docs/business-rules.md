@@ -1879,6 +1879,41 @@ checkout né pagarlo (la pratica accetta il pagamento solo dall'intestatario);
 lo staff può però confermare un bonifico ricevuto. Chi ha compilato la pratica
 resta scritto sulla pratica e su ogni contratto.
 
+## Marketplace: i tre shop di prodotti importati (Sessions 67-68) {#marketplace}
+
+Tre fonti, tre tabelle separate, una sola promessa al cliente:
+
+| Nello Shop del cliente | Fonte | Dominio / tabelle | Admin |
+|---|---|---|---|
+| **Marketplace 1** | AliExpress (inseriti a mano) | `imported_products` | Prodotti AliExpress |
+| **Marketplace 2** | CJ Dropshipping (API) | `cj_dropshipping` | Prodotti CJ Dropshipping |
+| **Marketplace 3** | Shopify (Admin API) | `shopify_dropshipping` | Prodotti Shopify |
+
+I nomi "Marketplace 1/2/3" sono impostazioni (`organizations.settings.marketplace_labels`,
+card "Regole dei Marketplace" in cima a ciascuna delle tre pagine admin). Il
+cliente non vede mai la fonte. Il titolo dello Shop del cliente è **"Fai la
+spesa con Lial Energy"**; la vecchia scheda di catalogo DROPSHIPPING, che
+aveva quel nome, ora si chiama "Offerte Lial".
+
+Regole comuni (`apps/api/app/domains/marketplaces/rules.py`, l'unico posto dove vivono):
+
+- **La carta costa di più.** Il prezzo mostrato è quello con bonifico
+  istantaneo; pagando con carta la parte in euro (dopo il LialCash) aumenta
+  di `marketplace_card_surcharge_percentage` (default **5%**, 0 = spento),
+  arrotondato al centesimo per eccesso da ,5. Lo calcola sempre il server e lo
+  congela sull'ordine (`card_surcharge_cents`) quando il metodo viene scelto,
+  cambiato, e subito prima di ogni Checkout Stripe; un ordine pagato non
+  cambia più. Vale solo per i Marketplace: contratti, catalogo Lial e partner no.
+- **Niente cashback, LialCash solo in parte.** I prodotti dei Marketplace non
+  generano cashback: servono a spendere il LialCash, mai per il 100% del
+  prezzo. Un prodotto nuovo entra al **30%**; l'amministratore può alzarlo
+  fino al **99%** (vincolo anche nel database). Con LialCash serve l'OTP.
+- **Nota legale (da valutare con il commercialista)**: in Italia/UE la
+  maggiorazione sui pagamenti con carta dei consumatori è vietata (PSD2
+  art. 62(4), D.Lgs. 11/2010 art. 3); uno sconto per chi paga con bonifico è
+  ammesso. Gli importi sono quelli chiesti dall'utente; per rientrare basta
+  presentare la differenza come sconto sul bonifico.
+
 ## Shop Lial Partner: CJ Dropshipping (Session 60) {#partner-shop}
 
 Un secondo negozio "importato", accanto ad "Acquisti LialEnergy", collegato

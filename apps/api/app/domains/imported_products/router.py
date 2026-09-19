@@ -153,10 +153,14 @@ async def list_products_active(
     products = await imported_products_service.list_imported_products(
         db, organization_id=current_user.organization_id, active_only=True
     )
+    from app.domains.marketplaces import rules
+
+    surcharge = await rules.get_card_surcharge_percentage(db, organization_id=current_user.organization_id)
     return [
         ImportedProductRead(
             id=p.id, name=p.name, description=p.description, image_url=p.image_url,
             price_cents=p.price_cents, credit_discount_percentage=p.credit_discount_percentage,
+            card_surcharge_percentage=surcharge,
         )
         for p in products
     ]

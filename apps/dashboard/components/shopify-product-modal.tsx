@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { friendlyApiError } from "@/lib/api-error";
 import { ProductThumbnail } from "@/components/product-thumbnail";
-import type { CjOrderRead, CjProductRead, CjQuoteRead, CustomerRead } from "@/lib/types";
+import type { CustomerRead, ShopifyOrderRead, ShopifyProductRead, ShopifyQuoteRead } from "@/lib/types";
 
 const MAX_QUANTITY = 10;
 
@@ -22,8 +22,14 @@ function lialCash(cents: number): string {
   return `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LialCash`;
 }
 
-async function fetchQuote(variantId: string, quantity: number): Promise<CjQuoteRead> {
-  const res = await fetch(`/api/proxy/cj/orders/quote/mine?variant_id=${variantId}&quantity=${quantity}`);
+async function fetchMarketplaceConfig(): Promise<{ labels: Record<string, string>; max_credit_percentage: number }> {
+  const res = await fetch("/api/proxy/marketplaces/config");
+  if (!res.ok) throw new Error(await friendlyApiError(res));
+  return res.json();
+}
+
+async function fetchQuote(variantId: string, quantity: number): Promise<ShopifyQuoteRead> {
+  const res = await fetch(`/api/proxy/shopify/orders/quote/mine?variant_id=${variantId}&quantity=${quantity}`);
   if (!res.ok) throw new Error(await friendlyApiError(res));
   return res.json();
 }
@@ -76,16 +82,17 @@ function Section({ n, title, done, children }: { n: number; title: string; done?
   );
 }
 
-/** Shop Lial Partner: product page and checkout in one window.
- *
- *  First the product -- photos, variants, quantity, delivery time -- then the
- *  checkout the customer already knows from the other shops (LialCash with
- *  an email code, bonifico or carta for the rest), plus the delivery
- *  address. Every amount is recomputed by the server: shipping is quoted by
- *  the supplier live for this variant and quantity.
+/** Marketplace 3 (Shopify dropshipping, Session 68): product page and
+ *  checkout in one window, the same as the CJ one (cj-product-modal.tsx) --
+ *  photos, variants, quantity, then LialCash with an email code (never the
+ *  whole price), bonifico istantaneo or card (+surcharge) for the rest, and
+ *  the delivery address. Every amount is recomputed by the server; the
+ *  customer is never told where the product comes from.
  */
-export function CjProductModal({ product, onClose }: { product: CjProductRead; onClose: () => void }) {
+export function ShopifyProductModal({ product, onClose }: { product: ShopifyProductRead; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { data: marketplaces } = useQuery({ queryKey: ["marketplaces", "config"], queryFn: fetchMarketplaceConfig, staleTime: 300_000 });
+  const shopLabel = marketplaces?.labels.shopify ?? "Marketplace 3";
   const firstAvailable = product.variants.find((v) => v.in_stock) ?? product.variants[0];
   const [variantId, setVariantId] = useState<string>(firstAvailable?.id ?? "");
   const [quantity, setQuantity] = useState(1);
@@ -99,7 +106,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
   const mainImage = imageOverride ?? gallery[imageIndex] ?? null;
 
   const { data: quote, error: quoteError, isFetching: quoteLoading } = useQuery({
-    queryKey: ["customer", "cj", "quote", variantId, quantity],
+    queryKey: ["customer", "shopify", "quote", variantId, quantity],
     queryFn: () => fetchQuote(variantId, quantity),
     enabled: step === "checkout" && !!variantId,
     retry: false,
@@ -131,7 +138,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
   const [otpError, setOtpError] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [placedOrder, setPlacedOrder] = useState<CjOrderRead | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<ShopifyOrderRead | null>(null);
 
   const { data: paymentInfo } = useQuery({
     queryKey: ["customer", "payment-info"],
@@ -173,7 +180,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
     setOtpRequesting(true);
     setOtpError(null);
     try {
-      const res = await fetch("/api/proxy/cj/orders/mine/request-credit-otp", {
+      const res = await fetch("/api/proxy/shopify/orders/mine/request-credit-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ variant_id: variantId, quantity, credit_applied_cents: creditCents }),
@@ -192,7 +199,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
     setSubmitLoading(true);
     setSubmitError(null);
     try {
-      const res = await fetch("/api/proxy/cj/orders/mine", {
+      const res = await fetch("/api/proxy/shopify/orders/mine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -213,7 +220,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
         }),
       });
       if (!res.ok) throw new Error(await friendlyApiError(res));
-      const order: CjOrderRead = await res.json();
+      const order: ShopifyOrderRead = await res.json();
       setPlacedOrder(order);
       await queryClient.invalidateQueries({ queryKey: ["customer", "wallet"] });
       await queryClient.invalidateQueries({ queryKey: ["wallet"] });
@@ -225,7 +232,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
       if (order.payment_method === "CARD") {
         const returnUrl = window.location.href;
         const sessionRes = await fetch(
-          `/api/proxy/cj/orders/mine/${order.id}/checkout-session?success_url=${encodeURIComponent(returnUrl)}&cancel_url=${encodeURIComponent(returnUrl)}`,
+          `/api/proxy/shopify/orders/mine/${order.id}/checkout-session?success_url=${encodeURIComponent(returnUrl)}&cancel_url=${encodeURIComponent(returnUrl)}`,
           { method: "POST" }
         );
         if (!sessionRes.ok) throw new Error(await friendlyApiError(sessionRes));
@@ -250,7 +257,7 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
       <div className="w-full max-w-3xl glass-card rounded-2xl border-white/10 light:border-slate-300 bg-slate-950 light:bg-white animate-scale-up max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b border-white/5 light:border-slate-200 bg-slate-950/95 light:bg-white/95 backdrop-blur">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Marketplace 1</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">{shopLabel}</p>
             <h3 className="text-base font-bold text-white light:text-slate-900 truncate">
               {step === "product" ? product.name : step === "checkout" ? "Completa l'acquisto" : product.name}
             </h3>
@@ -466,6 +473,9 @@ export function CjProductModal({ product, onClose }: { product: CjProductRead; o
                         </button>
                         <span className="text-[11px] text-slate-500">
                           Saldo {lialCash(quote.customer_wallet_balance_cents)} · qui fino a {lialCash(maxUsableCents)}
+                        </span>
+                        <span className="block w-full text-[10px] text-slate-500">
+                          I LialCash coprono al massimo il {quote.credit_discount_percentage}% dell&apos;ordine: il resto lo paghi con bonifico o carta.
                         </span>
                       </div>
                       {useCredit && (
